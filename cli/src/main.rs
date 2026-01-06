@@ -565,15 +565,36 @@ fn handle_download_progress(
             *bar = Some(pb);
         }
         DownloadProgress::Downloading { offset, total } => {
+            // Switch to block progress bar if not already using it
+            // Check if we need to create or replace the progress bar
+            let needs_new_bar = match bar.as_ref() {
+                None => true,
+                Some(b) => {
+                    // Replace if the bar is not our percentage-based bar (length != Some(100))
+                    b.length() != Some(100)
+                }
+            };
+
+            if needs_new_bar {
+                if let Some(b) = bar.take() {
+                    b.finish_and_clear();
+                    mp.remove(&b);
+                }
+                let pb = mp.add(make_block_progress());
+                pb.set_length(100); // Set to 100 for percentage-based progress
+                *bar = Some(pb);
+            }
+
             if let Some(b) = bar.as_ref() {
-                b.set_length(total);
-                b.set_position(offset);
+                let percent = (offset as f64 / total as f64 * 100.0) as u64;
+                b.set_position(percent);
             }
         }
         DownloadProgress::Completed => {
             if let Some(b) = bar {
-                b.finish_and_clear();
-                mp.remove(b);
+                b.set_position(100); // Ensure it shows 100%
+                b.finish_with_message("✓ Download complete");
+                mp.remove(&b);
                 *bar = None;
             }
         }
@@ -714,6 +735,24 @@ fn make_transfer_progress() -> ProgressBar {
         .unwrap()
         .progress_chars("#>-"),
     );
+    pb
+}
+
+/// Block-based progress bar showing 10 blocks (each = 10%)
+/// Visual: [████████░░] 80%
+fn make_block_progress() -> ProgressBar {
+    let pb = ProgressBar::hidden();
+    pb.enable_steady_tick(Duration::from_millis(250));
+
+    // Custom template that shows 10 blocks
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{prefix}{spinner:.green} Downloading [{wide_bar}] {percent}%",
+        )
+        .unwrap()
+        .progress_chars("█░"), // Use █ for filled, ░ for empty
+    );
+    pb.set_prefix(format!("{} ", style("[3/4]").bold().dim()));
     pb
 }
 
