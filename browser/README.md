@@ -13,6 +13,7 @@ This crate provides WASM bindings for sendme to run in browsers. The browser cra
 The browser crate has its own `[workspace]` section in `Cargo.toml` to exclude it from the parent workspace. This prevents WASM-incompatible dependencies (like `mio`) from being pulled in.
 
 When building, **always** use:
+
 ```bash
 # From the repository root
 cargo build --target=wasm32-unknown-unknown --manifest-path=browser/Cargo.toml
@@ -36,7 +37,7 @@ rustup target install wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.105
 
 # Install Node.js dependencies
-bun install
+pnpm install
 ```
 
 ### Platform-Specific Requirements
@@ -56,6 +57,7 @@ export CC=/opt/homebrew/opt/llvm/bin/clang
 #### Windows
 
 Building for WASM on Windows has limited support. Consider using:
+
 - WSL (Windows Subsystem for Linux)
 - Docker
 - GitHub Actions (linux runners)
@@ -63,6 +65,7 @@ Building for WASM on Windows has limited support. Consider using:
 #### NixOS
 
 Install 32-bit clang:
+
 ```bash
 nix shell nixpkgs#clang_multi
 cargo build --target=wasm32-unknown-unknown
@@ -73,6 +76,7 @@ cargo build --target=wasm32-unknown-unknown
 #### 1. Ring crate build failure
 
 **Error**:
+
 ```
 error: unable to create target: 'No available targets are compatible with triple "wasm32-unknown-unknown"'
 ```
@@ -92,6 +96,7 @@ error: unable to create target: 'No available targets are compatible with triple
 #### 3. wasm-bindgen version mismatch
 
 **Error**:
+
 ```
 rust Wasm file schema version: 0.2.105
    this binary schema version: 0.2.106
@@ -113,9 +118,9 @@ wasm-bindgen target/wasm32-unknown-unknown/debug/sendme_browser.wasm \
   --out-dir=public/wasm --weak-refs --target=web --debug
 
 # Or use npm scripts (recommended)
-bun run build
-bun run build:release
-bun run serve
+pnpm run build
+pnpm run build:release
+pnpm run serve
 ```
 
 Then open [`http://localhost:8080`](http://localhost:8080)
@@ -157,6 +162,7 @@ The browser crate successfully implements full iroh P2P file transfer for the br
 - **`public/index.html`** - Demo web interface with send/receive tabs
 
 ### Key Features
+
 - ✅ Proper BlobTicket creation with endpoint addressing (relay URLs, direct addresses)
 - ✅ P2P connection and remote blob fetching via `get_hash_seq_and_sizes`
 - ✅ Endpoint online status checking with `wait_for_ready()`
@@ -164,6 +170,7 @@ The browser crate successfully implements full iroh P2P file transfer for the br
 - ✅ Workspace exclusion to prevent `mio` dependency conflicts
 
 ### Build Requirements
+
 1. Using llvm.org Clang on macOS (not Apple Clang): `export CC=/opt/homebrew/opt/llvm/bin/clang`
 2. Browser crate has its own `[workspace]` section to exclude from parent workspace
 3. wasm-bindgen version 0.2.105 (must match Cargo.toml)

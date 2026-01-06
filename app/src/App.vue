@@ -2,7 +2,12 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { send_file, receive_file, cancel_transfer, get_transfers } from "@/lib/commands";
+import {
+  send_file,
+  receive_file,
+  cancel_transfer,
+  get_transfers,
+} from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +18,24 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, FolderOpen } from "lucide-vue-next";
+import {
+  Loader2,
+  FolderOpen,
+  Copy,
+  Check,
+  Share2,
+  Download,
+  Send,
+  X,
+  RefreshCw,
+  FileText,
+  FileCode,
+  FileImage,
+  FileArchive,
+  ChevronRight,
+  Monitor,
+} from "lucide-vue-next";
+import { toast, Toaster } from "vue-sonner";
 
 // Types
 interface Transfer {
@@ -55,7 +77,11 @@ const unlisten = ref<(() => void) | null>(null);
 
 // Ticket types
 const ticketTypes = [
-  { value: "id", label: "ID Only", description: "Smallest ticket, requires DNS" },
+  {
+    value: "id",
+    label: "ID Only",
+    description: "Smallest ticket, requires DNS",
+  },
   { value: "relay", label: "Relay", description: "Uses relay server" },
   { value: "addresses", label: "Addresses", description: "Direct addresses" },
   {
@@ -103,9 +129,10 @@ async function handleSend() {
     });
     sendTicket.value = result;
     await loadTransfers();
+    toast.success("File shared successfully!");
   } catch (e) {
     console.error("Send failed:", e);
-    alert(`Send failed: ${e}`);
+    toast.error(`Send failed: ${e}`);
   } finally {
     isSending.value = false;
   }
@@ -125,9 +152,10 @@ async function handleReceive() {
     });
     await loadTransfers();
     receiveTicket.value = "";
+    toast.success("Receive operation started");
   } catch (e) {
     console.error("Receive failed:", e);
-    alert(`Receive failed: ${e}`);
+    toast.error(`Receive failed: ${e}`);
   } finally {
     isReceiving.value = false;
   }
@@ -137,18 +165,56 @@ async function handleCancel(id: string) {
   try {
     await cancel_transfer(id);
     await loadTransfers();
+    toast.info("Transfer cancelled");
   } catch (e) {
     console.error("Cancel failed:", e);
+    toast.error("Failed to cancel transfer");
   }
 }
 
-function getTransferStatus(status: string): { label: string; color: string } {
+function getTransferStatus(status: string): {
+  label: string;
+  color: string;
+  icon: any;
+  pulse: boolean;
+} {
   const s = status.toLowerCase();
-  if (s.includes("error")) return { label: "Error", color: "text-red-500" };
-  if (s.includes("cancel")) return { label: "Cancelled", color: "text-yellow-500" };
-  if (s.includes("complete")) return { label: "Completed", color: "text-green-500" };
-  if (s.includes("serving")) return { label: "Serving", color: "text-blue-500" };
-  return { label: status, color: "text-gray-500" };
+  if (s.includes("error"))
+    return { label: "Error", color: "text-red-500", icon: X, pulse: false };
+  if (s.includes("cancel"))
+    return {
+      label: "Cancelled",
+      color: "text-yellow-500",
+      icon: X,
+      pulse: false,
+    };
+  if (s.includes("complete"))
+    return {
+      label: "Completed",
+      color: "text-green-500",
+      icon: Check,
+      pulse: false,
+    };
+  if (s.includes("serving"))
+    return {
+      label: "Serving",
+      color: "text-blue-500",
+      icon: Share2,
+      pulse: true,
+    };
+  if (s.includes("downloading"))
+    return {
+      label: "Downloading",
+      color: "text-blue-500",
+      icon: Download,
+      pulse: true,
+    };
+  return {
+    label: status,
+    color: "text-gray-500",
+    icon: RefreshCw,
+    pulse: true,
+  };
 }
 
 function formatFileSize(bytes: number): string {
@@ -160,11 +226,17 @@ function formatFileSize(bytes: number): string {
 }
 
 function formatDate(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleString();
+  return new Date(timestamp * 1000).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 async function copyToClipboard(text: string) {
   await navigator.clipboard.writeText(text);
+  toast.success("Ticket copied to clipboard");
 }
 
 // File picker functions
@@ -215,316 +287,509 @@ function getDisplayName(path: string): string {
   const parts = path.split(/[/\\]/);
   return parts[parts.length - 1] || path;
 }
+
+function getFileIcon(filename: string) {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (["jpg", "jpeg", "png", "gif", "svg", "webp"].includes(ext!))
+    return FileImage;
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext!)) return FileArchive;
+  if (["ts", "js", "py", "rs", "go", "html", "css", "vue"].includes(ext!))
+    return FileCode;
+  return FileText;
+}
+
+function getProgressValue(id: string) {
+  const data = progressData.value[id];
+  if (data?.progress?.type === "downloading") {
+    return (data.progress.offset / data.progress.total) * 100;
+  }
+  return 0;
+}
 </script>
 
 <template>
-  <main class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-    <div class="container mx-auto px-4 py-8 max-w-4xl">
+  <Toaster position="top-center" rich-colors />
+  <div
+    class="fixed inset-0 pointer-events-none overflow-hidden blur-[120px] opacity-20 dark:opacity-40"
+  >
+    <div
+      class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500 rounded-full animate-pulse"
+    ></div>
+    <div
+      class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500 rounded-full animate-pulse"
+      style="animation-delay: 2s"
+    ></div>
+  </div>
+
+  <main class="min-h-screen relative flex items-center justify-center p-4">
+    <div
+      class="w-full max-w-2xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000"
+    >
       <!-- Header -->
-      <header class="text-center mb-8">
-        <h1 class="text-4xl font-bold text-slate-900 dark:text-slate-50 mb-2">
+      <header class="text-center space-y-2">
+        <h1
+          class="text-5xl font-extrabold tracking-tighter text-slate-900 dark:text-slate-50 text-glow"
+        >
           Sendme
         </h1>
-        <p class="text-slate-600 dark:text-slate-400">
-          Peer-to-peer file transfer powered by iroh
+        <p class="text-slate-500 dark:text-slate-400 font-medium tracking-wide">
+          PEER-TO-PEER • POWERED BY IROH
         </p>
       </header>
 
-      <!-- Main Tabs -->
-      <Tabs v-model="activeTab" class="space-y-6">
-        <TabsList class="grid w-full grid-cols-2 max-w-md mx-auto">
-          <TabsTrigger value="send">Send</TabsTrigger>
-          <TabsTrigger value="receive">Receive</TabsTrigger>
-        </TabsList>
+      <!-- Main Container -->
+      <div class="glass rounded-3xl overflow-hidden">
+        <Tabs v-model="activeTab" class="w-full">
+          <TabsList
+            class="flex w-full bg-transparent p-2 gap-2 border-b border-white/10"
+          >
+            <TabsTrigger
+              value="send"
+              class="flex-1 py-4 text-sm font-semibold rounded-2xl transition-all data-[state=active]:bg-white/10 data-[state=active]:text-secondary-foreground dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
+            >
+              <Send class="w-4 h-4 mr-2" />
+              Send
+            </TabsTrigger>
+            <TabsTrigger
+              value="receive"
+              class="flex-1 py-4 text-sm font-semibold rounded-2xl transition-all data-[state=active]:bg-white/10 data-[state=active]:text-secondary-foreground dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
+            >
+              <Download class="w-4 h-4 mr-2" />
+              Receive
+            </TabsTrigger>
+          </TabsList>
 
-        <!-- Send Tab -->
-        <TabsContent value="send" class="space-y-4">
-          <div class="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6 space-y-4">
-            <h2 class="text-xl font-semibold text-slate-900 dark:text-slate-50">
-              Send Files
-            </h2>
-
-            <!-- File Path Input -->
-            <div class="space-y-2">
-              <Label for="send-path">File or Directory</Label>
-              <div class="flex gap-2">
-                <Input
-                  id="send-path"
-                  v-model="sendPath"
-                  placeholder="Select a file or directory..."
-                  :disabled="isSending"
-                  class="flex-1"
-                  readonly
-                />
-                <Button
-                  type="button"
+          <div class="p-8">
+            <!-- Send Tab -->
+            <TabsContent value="send" class="space-y-6 mt-0 outline-none">
+              <div class="space-y-6">
+                <!-- Drop Zone Area -->
+                <div
+                  class="group relative flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl hover:border-primary/50 hover:bg-white/5 transition-all cursor-pointer"
                   @click="selectFile"
-                  :disabled="isSending"
-                  variant="outline"
-                  size="icon"
-                  title="Select File"
                 >
-                  <FolderOpen class="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  @click="selectDirectory"
-                  :disabled="isSending"
-                  variant="outline"
-                  size="icon"
-                  title="Select Directory"
-                >
-                  <FolderOpen class="h-4 w-4" />
-                </Button>
-              </div>
-              <p v-if="sendPath" class="text-xs text-slate-500 dark:text-slate-400">
-                Selected: <span class="font-mono">{{ getDisplayName(sendPath) }}</span>
-              </p>
-            </div>
-
-            <!-- Ticket Type Selector -->
-            <div class="space-y-2">
-              <Label>Ticket Type</Label>
-              <Popover>
-                <PopoverTrigger as-child>
-                  <Button
-                    variant="outline"
-                    class="w-full justify-between"
-                    :disabled="isSending"
+                  <div
+                    class="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"
                   >
-                    {{
-                      ticketTypes.find((t) => t.value === sendTicketType)?.label ||
-                      "Select ticket type"
-                    }}
-                    <span class="text-xs text-slate-500 ml-2">▼</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent class="w-56 p-0">
-                  <div class="p-2">
-                    <button
-                      v-for="type in ticketTypes"
-                      :key="type.value"
-                      @click="sendTicketType = type.value"
-                      class="w-full text-left px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                      :class="{
-                        'bg-slate-100 dark:bg-slate-700':
-                          sendTicketType === type.value,
-                      }"
-                    >
-                      <div class="font-medium text-sm">{{ type.label }}</div>
-                      <div class="text-xs text-slate-500 dark:text-slate-400">
-                        {{ type.description }}
-                      </div>
-                    </button>
+                    <FolderOpen class="w-8 h-8 text-primary" />
                   </div>
-                </PopoverContent>
-              </Popover>
-            </div>
+                  <template v-if="!sendPath">
+                    <h3
+                      class="font-semibold text-slate-900 dark:text-slate-200 text-lg"
+                    >
+                      Click to select a file
+                    </h3>
+                    <p class="text-sm text-slate-500 dark:text-slate-500 mt-1">
+                      or select a directory below
+                    </p>
+                  </template>
+                  <template v-else>
+                    <h3
+                      class="font-semibold text-primary text-center break-all text-lg"
+                    >
+                      {{ getDisplayName(sendPath) }}
+                    </h3>
+                    <p
+                      class="text-sm text-slate-500 dark:text-slate-500 mt-1 truncate max-w-[80%]"
+                    >
+                      {{ sendPath }}
+                    </p>
+                  </template>
+                </div>
 
-            <!-- Send Button -->
-            <Button
-              @click="handleSend"
-              :disabled="!sendPath || isSending"
-              class="w-full"
-              size="lg"
-            >
-              <Loader2 v-if="isSending" class="mr-2 h-4 w-4 animate-spin" />
-              {{ isSending ? "Preparing..." : "Send File" }}
-            </Button>
+                <div class="grid grid-cols-2 gap-3">
+                  <Button
+                    type="button"
+                    @click="selectDirectory"
+                    :disabled="isSending"
+                    variant="secondary"
+                    class="h-12 rounded-xl"
+                  >
+                    <FolderOpen class="h-4 w-4 mr-2" />
+                    Select Directory
+                  </Button>
 
-            <!-- Ticket Display -->
-            <div v-if="sendTicket" class="mt-4 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg">
-              <Label class="text-sm text-slate-600 dark:text-slate-400 mb-2 block">
-                Share this ticket to receive files:
-              </Label>
-              <div class="p-3 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 break-all text-sm font-mono">
-                {{ sendTicket }}
-              </div>
-              <Button
-                @click="copyToClipboard(sendTicket)"
-                variant="outline"
-                size="sm"
-                class="mt-2"
-              >
-                Copy Ticket
-              </Button>
-            </div>
-          </div>
-        </TabsContent>
+                  <Popover>
+                    <PopoverTrigger as-child>
+                      <Button
+                        variant="secondary"
+                        class="h-12 rounded-xl justify-between"
+                        :disabled="isSending"
+                      >
+                        <span class="truncate">{{
+                          ticketTypes.find((t) => t.value === sendTicketType)
+                            ?.label
+                        }}</span>
+                        <ChevronRight class="h-4 w-4 opacity-50 ml-1" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      class="w-64 p-2 glass-card rounded-2xl border-white/10"
+                    >
+                      <div class="space-y-1">
+                        <button
+                          v-for="type in ticketTypes"
+                          :key="type.value"
+                          @click="sendTicketType = type.value"
+                          class="w-full text-left px-3 py-2 rounded-xl hover:bg-white/10 transition-all"
+                          :class="{
+                            'bg-white/10': sendTicketType === type.value,
+                          }"
+                        >
+                          <div class="font-semibold text-sm">
+                            {{ type.label }}
+                          </div>
+                          <div class="text-xs text-slate-500">
+                            {{ type.description }}
+                          </div>
+                        </button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
 
-        <!-- Receive Tab -->
-        <TabsContent value="receive" class="space-y-4">
-          <div class="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6 space-y-4">
-            <h2 class="text-xl font-semibold text-slate-900 dark:text-slate-50">
-              Receive Files
-            </h2>
-
-            <!-- Ticket Input -->
-            <div class="space-y-2">
-              <Label for="receive-ticket">Ticket</Label>
-              <Input
-                id="receive-ticket"
-                v-model="receiveTicket"
-                placeholder="Paste the ticket here..."
-                :disabled="isReceiving"
-              />
-            </div>
-
-            <!-- Output Directory (Optional) -->
-            <div class="space-y-2">
-              <Label for="output-dir">Output Directory (Optional)</Label>
-              <div class="flex gap-2">
-                <Input
-                  id="output-dir"
-                  v-model="receiveOutputDir"
-                  placeholder="Select output directory..."
-                  :disabled="isReceiving"
-                  class="flex-1"
-                  readonly
-                />
                 <Button
-                  type="button"
-                  @click="selectOutputDirectory"
-                  :disabled="isReceiving"
-                  variant="outline"
-                  size="icon"
-                  title="Select Directory"
+                  @click="handleSend"
+                  :disabled="!sendPath || isSending"
+                  class="w-full h-14 text-lg font-bold rounded-2xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
                 >
-                  <FolderOpen class="h-4 w-4" />
+                  <Loader2 v-if="isSending" class="mr-2 h-5 w-5 animate-spin" />
+                  <Send v-else class="mr-2 h-5 w-5" />
+                  {{ isSending ? "Generating Ticket..." : "Share File" }}
                 </Button>
-              </div>
-              <p v-if="receiveOutputDir" class="text-xs text-slate-500 dark:text-slate-400">
-                Selected: <span class="font-mono">{{ getDisplayName(receiveOutputDir) }}</span>
-              </p>
-            </div>
 
-            <!-- Receive Button -->
-            <Button
-              @click="handleReceive"
-              :disabled="!receiveTicket || isReceiving"
-              class="w-full"
-              size="lg"
-            >
-              <Loader2 v-if="isReceiving" class="mr-2 h-4 w-4 animate-spin" />
-              {{ isReceiving ? "Receiving..." : "Receive File" }}
-            </Button>
+                <!-- Ticket Display -->
+                <transition
+                  enter-active-class="transition-all duration-500 ease-out"
+                  enter-from-class="opacity-0 translate-y-4 scale-95"
+                  enter-to-class="opacity-100 translate-y-0 scale-100"
+                >
+                  <div
+                    v-if="sendTicket"
+                    class="p-6 glass-card rounded-2xl space-y-4 border-primary/20 ring-1 ring-primary/20"
+                  >
+                    <div class="flex items-center justify-between">
+                      <Label
+                        class="text-xs font-bold uppercase tracking-widest text-primary"
+                        >Shareable Ticket</Label
+                      >
+                      <Share2 class="w-4 h-4 text-primary opacity-50" />
+                    </div>
+                    <div
+                      class="p-4 bg-black/5 dark:bg-white/5 rounded-xl break-all text-sm text-black font-mono leading-relaxed border border-white/5"
+                    >
+                      {{ sendTicket }}
+                    </div>
+                    <Button
+                      @click="copyToClipboard(sendTicket)"
+                      variant="default"
+                      class="w-full h-12 rounded-xl font-bold"
+                    >
+                      <Copy class="w-4 h-4 mr-2" />
+                      Copy Ticket
+                    </Button>
+                  </div>
+                </transition>
+              </div>
+            </TabsContent>
+
+            <!-- Receive Tab -->
+            <TabsContent value="receive" class="space-y-6 mt-0 outline-none">
+              <div class="space-y-6">
+                <div class="space-y-3">
+                  <Label
+                    for="receive-ticket"
+                    class="text-sm font-semibold opacity-70 ml-1"
+                    >Universal Ticket</Label
+                  >
+                  <div class="relative">
+                    <Input
+                      id="receive-ticket"
+                      v-model="receiveTicket"
+                      placeholder="Paste your buddy's ticket here..."
+                      :disabled="isReceiving"
+                      class="h-14 rounded-2xl pl-12 glass shadow-none border-white/10 focus:ring-primary/40 focus:border-primary/40"
+                    />
+                    <Share2
+                      class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-40"
+                    />
+                  </div>
+                </div>
+
+                <div class="space-y-3">
+                  <Label
+                    for="output-dir"
+                    class="text-sm font-semibold opacity-70 ml-1"
+                    >Destination Folder (Optional)</Label
+                  >
+                  <div class="flex gap-2">
+                    <Input
+                      id="output-dir"
+                      v-model="receiveOutputDir"
+                      placeholder="Default downloads folder"
+                      :disabled="isReceiving"
+                      class="h-14 rounded-2xl glass shadow-none border-white/10"
+                      readonly
+                    />
+                    <Button
+                      type="button"
+                      @click="selectOutputDirectory"
+                      :disabled="isReceiving"
+                      variant="secondary"
+                      class="h-14 w-14 rounded-2xl p-0 flex-shrink-0"
+                    >
+                      <FolderOpen class="h-5 w-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div class="relative group">
+                  <div
+                    v-if="isReceiving"
+                    class="absolute -inset-1.5 rounded-[2rem] overflow-hidden opacity-60 blur-md pointer-events-none"
+                  >
+                    <div
+                      class="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent,var(--primary),#3b82f6,#8b5cf6,var(--primary))] animate-[spin_3s_linear_infinite]"
+                    ></div>
+                  </div>
+                  <Button
+                    @click="handleReceive"
+                    :disabled="!receiveTicket || isReceiving"
+                    class="relative w-full h-14 text-lg font-bold rounded-2xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 animate-in fade-in"
+                  >
+                    <Loader2
+                      v-if="isReceiving"
+                      class="mr-2 h-5 w-5 animate-spin"
+                    />
+                    <Download v-else class="mr-2 h-5 w-5" />
+                    {{ isReceiving ? "Connecting..." : "Connect & Receive" }}
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
           </div>
-        </TabsContent>
-      </Tabs>
+        </Tabs>
+      </div>
 
       <!-- Transfers List -->
-      <div class="mt-8 bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-xl font-semibold text-slate-900 dark:text-slate-50">
-            Transfers
-          </h2>
-          <Button @click="loadTransfers" variant="outline" size="sm">
-            Refresh
-          </Button>
-        </div>
-
-        <div v-if="transfers.length === 0" class="text-center py-8 text-slate-500">
-          No transfers yet
-        </div>
-
-        <div v-else class="space-y-4">
-          <div
-            v-for="transfer in transfers"
-            :key="transfer.id"
-            class="p-4 border border-slate-200 dark:border-slate-700 rounded-lg space-y-3"
+      <div v-if="transfers.length > 0" class="space-y-4">
+        <div class="flex items-center justify-between px-2">
+          <h2
+            class="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center"
           >
-            <div class="flex items-start justify-between">
-              <div class="flex-1">
-                <div class="flex items-center gap-2">
-                  <span
-                    class="text-xs font-medium px-2 py-1 rounded"
-                    :class="{
-                      'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300':
-                        transfer.transfer_type === 'send',
-                      'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300':
-                        transfer.transfer_type === 'receive',
-                    }"
-                  >
-                    {{ transfer.transfer_type.toUpperCase() }}
-                  </span>
-                  <span
-                    class="text-sm font-medium"
-                    :class="
-                      getTransferStatus(transfer.status).color
-                    "
-                  >
-                    {{ getTransferStatus(transfer.status).label }}
-                  </span>
-                </div>
-                <div class="text-sm text-slate-600 dark:text-slate-400 mt-1 truncate max-w-md">
-                  {{ transfer.path }}
-                </div>
-                <div class="text-xs text-slate-500 dark:text-slate-500 mt-1">
-                  {{ formatDate(transfer.created_at) }}
-                </div>
-              </div>
+            Recent Activity
+            <span
+              class="ml-2 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full"
+              >{{ transfers.length }}</span
+            >
+          </h2>
+          <button
+            @click="loadTransfers"
+            class="text-xs font-semibold text-primary hover:underline flex items-center"
+          >
+            <RefreshCw class="w-3 h-3 mr-1" />
+            Sync Results
+          </button>
+        </div>
 
-              <Button
-                v-if="!transfer.status.includes('complete') &&
+        <div class="space-y-3">
+          <transition-group
+            name="list"
+            enter-active-class="transition duration-500 ease-out"
+            enter-from-class="opacity-0 translate-x-4"
+            enter-to-class="opacity-100 translate-x-0"
+          >
+            <div
+              v-for="transfer in transfers"
+              :key="transfer.id"
+              class="glass-card group p-5 rounded-2xl hover:scale-[1.01] transition-all duration-300"
+            >
+              <div class="flex items-start gap-4">
+                <div
+                  class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                  :class="
+                    transfer.transfer_type === 'send'
+                      ? 'bg-blue-500/10 text-blue-500'
+                      : 'bg-green-500/10 text-green-500'
+                  "
+                >
+                  <component :is="getFileIcon(transfer.path)" class="w-6 h-6" />
+                </div>
+
+                <div class="flex-1 min-w-0 space-y-1">
+                  <div class="flex items-center justify-between">
+                    <h4
+                      class="font-bold text-slate-900 dark:text-slate-100 truncate pr-4"
+                    >
+                      {{ getDisplayName(transfer.path) }}
+                    </h4>
+                    <span
+                      class="text-[10px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-md"
+                      :class="
+                        transfer.transfer_type === 'send'
+                          ? 'bg-blue-500/20 text-blue-500'
+                          : 'bg-green-500/20 text-green-500'
+                      "
+                    >
+                      {{ transfer.transfer_type }}
+                    </span>
+                  </div>
+
+                  <div
+                    class="flex items-center gap-3 text-xs text-slate-500 font-medium"
+                  >
+                    <div
+                      class="flex items-center gap-1"
+                      :class="getTransferStatus(transfer.status).color"
+                    >
+                      <component
+                        :is="getTransferStatus(transfer.status).icon"
+                        class="w-3 h-3"
+                        :class="{
+                          'animate-spin':
+                            getTransferStatus(transfer.status).pulse &&
+                            transfer.status.includes('RefreshCw'),
+                        }"
+                      />
+                      {{ getTransferStatus(transfer.status).label }}
+                    </div>
+                    <span class="opacity-20">•</span>
+                    <div class="flex items-center gap-1">
+                      <Monitor class="w-3 h-3 opacity-50" />
+                      {{ formatDate(transfer.created_at) }}
+                    </div>
+                  </div>
+
+                  <!-- Progress Section -->
+                  <div
+                    v-if="progressData[transfer.id]"
+                    class="mt-4 pt-4 border-t border-white/5 space-y-2"
+                  >
+                    <div
+                      class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wide opacity-50"
+                    >
+                      <span>{{
+                        progressData[transfer.id].name || "Transferring..."
+                      }}</span>
+                      <span
+                        v-if="
+                          progressData[transfer.id].progress?.type ===
+                          'downloading'
+                        "
+                      >
+                        {{ Math.round(getProgressValue(transfer.id)) }}%
+                      </span>
+                    </div>
+                    <Progress
+                      v-if="
+                        progressData[transfer.id].progress?.type ===
+                        'downloading'
+                      "
+                      :value="getProgressValue(transfer.id)"
+                      class="h-1.5 bg-slate-200/20"
+                    />
+                    <div
+                      v-if="
+                        progressData[transfer.id].progress?.type ===
+                        'downloading'
+                      "
+                      class="text-[10px] text-right font-mono opacity-50"
+                    >
+                      {{
+                        formatFileSize(
+                          progressData[transfer.id].progress.offset
+                        )
+                      }}
+                      /
+                      {{
+                        formatFileSize(progressData[transfer.id].progress.total)
+                      }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-start self-stretch">
+                  <button
+                    v-if="
+                      !transfer.status.includes('complete') &&
                       !transfer.status.includes('error') &&
-                      !transfer.status.includes('cancel')"
-                @click="handleCancel(transfer.id)"
-                variant="destructive"
-                size="sm"
-              >
-                Cancel
-              </Button>
-            </div>
-
-            <!-- Progress Bar -->
-            <div v-if="progressData[transfer.id]" class="space-y-2">
-              <Progress
-                v-if="progressData[transfer.id].progress?.type === 'downloading'"
-                :value="
-                  (progressData[transfer.id].progress.offset /
-                    progressData[transfer.id].progress.total) *
-                  100
-                "
-                class="h-2"
-              />
-              <div class="text-xs text-slate-500 dark:text-slate-400">
-                <template v-if="progressData[transfer.id].name">
-                  {{ progressData[transfer.id].name }}
-                </template>
-                <template v-if="progressData[transfer.id].progress?.type === 'downloading'">
-                  - {{
-                    formatFileSize(progressData[transfer.id].progress.offset) +
-                    " / " +
-                    formatFileSize(progressData[transfer.id].progress.total)
-                  }}
-                </template>
+                      !transfer.status.includes('cancel')
+                    "
+                    @click="handleCancel(transfer.id)"
+                    class="p-2 hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-colors group/cancel"
+                    title="Abort Transfer"
+                  >
+                    <X class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          </transition-group>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div v-if="transfers.length === 0" class="text-center py-12 space-y-4">
+        <div
+          class="w-20 h-20 bg-slate-500/5 rounded-full flex items-center justify-center mx-auto opacity-20"
+        >
+          <Share2 class="w-8 h-8" />
+        </div>
+        <div class="space-y-1">
+          <p class="text-slate-500 font-semibold">Ready for departure</p>
+          <p class="text-xs text-slate-500/60">
+            Your transfer activity will appear here
+          </p>
         </div>
       </div>
     </div>
   </main>
 </template>
 
-<style scoped>
-/* Custom scrollbar */
-:deep(*) {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(203 213 225) transparent;
+<style>
+:root {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
 }
 
-:deep(*):-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Base fade-in for entire app */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-:deep(*):-webkit-scrollbar-track {
-  background: transparent;
+.animate-in {
+  animation: fade-in 0.8s ease-out forwards;
 }
 
-:deep(*):-webkit-scrollbar-thumb {
-  background-color: rgb(203 213 225);
-  border-radius: 4px;
+/* Custom scrollbar override for glass */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
 }
 </style>
