@@ -65,7 +65,7 @@ async fn receive_internal(
     let hash_and_format = ticket.hash_and_format();
     let local = db.remote().local(hash_and_format).await?;
 
-    let (stats, total_files, payload_size) = if !local.is_complete() {
+    let (stats, total_files, payload_size, metadata_collection) = if !local.is_complete() {
         if let Some(ref tx) = progress_tx {
             let _ = tx
                 .send(ProgressEvent::Download(DownloadProgress::Connecting))
@@ -103,29 +103,36 @@ async fn receive_internal(
         let mut stream = get.stream();
         let mut stats = Stats::default();
         let mut metadata_sent = false;
+        let mut metadata_collection: Option<Collection> = None;
+        let mut progress_count = 0u32;
 
         while let Some(item) = stream.next().await {
             match item {
                 iroh_blobs::api::remote::GetProgressItem::Progress(offset) => {
-                    // Try to load collection metadata as soon as the collection blob is available
+                    // Try to load collection metadata as soon as it's available
+                    // Try on first event and then every 10th event to avoid excessive load attempts
                     if !metadata_sent {
-                        if let Ok(collection) = Collection::load(hash_and_format.hash, db.as_ref()).await {
-                            // Successfully loaded collection, emit metadata event
-                            let names: Vec<String> = collection
-                                .iter()
-                                .map(|(name, _hash)| name.to_string())
-                                .collect();
-                            
-                            if let Some(ref tx) = progress_tx {
-                                let _ = tx
-                                    .send(ProgressEvent::Download(DownloadProgress::Metadata {
-                                        total_size: payload_size,
-                                        file_count: total_files,
-                                        names,
-                                    }))
-                                    .await;
+                        progress_count += 1;
+                        if progress_count == 1 || progress_count % 10 == 0 {
+                            if let Ok(collection) = Collection::load(hash_and_format.hash, db.as_ref()).await {
+                                // Successfully loaded collection, emit metadata event
+                                let names: Vec<String> = collection
+                                    .iter()
+                                    .map(|(name, _hash)| name.to_string())
+                                    .collect();
+                                
+                                if let Some(ref tx) = progress_tx {
+                                    let _ = tx
+                                        .send(ProgressEvent::Download(DownloadProgress::Metadata {
+                                            total_size: payload_size,
+                                            file_count: total_files,
+                                            names,
+                                        }))
+                                        .await;
+                                }
+                                metadata_sent = true;
+                                metadata_collection = Some(collection);
                             }
-                            metadata_sent = true;
                         }
                     }
 
@@ -148,7 +155,7 @@ async fn receive_internal(
             }
         }
 
-        (stats, total_files, payload_size)
+        (stats, total_files, payload_size, metadata_collection)
     } else {
         // Collection already cached locally
         let total_files = local.children().unwrap() - 1;
@@ -172,10 +179,14 @@ async fn receive_internal(
                 .await;
         }
         
-        (Stats::default(), total_files, payload_bytes)
+        (Stats::default(), total_files, payload_bytes, Some(collection))
     };
 
-    let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
+    // Use cached collection if available, otherwise load it
+    let collection = match metadata_collection {
+        Some(col) => col,
+        None => Collection::load(hash_and_format.hash, db.as_ref()).await?,
+    };
     export::export(&db, collection.clone(), progress_tx.clone()).await?;
 
     if let Some(ref tx) = progress_tx {
