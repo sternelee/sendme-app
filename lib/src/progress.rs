@@ -53,6 +53,15 @@ pub enum DownloadProgress {
     Connecting,
     /// Getting sizes of blobs to download.
     GettingSizes,
+    /// Metadata received - filenames and total size are now known.
+    Metadata {
+        /// Total size of all files (payload only, excluding metadata)
+        total_size: u64,
+        /// Number of files in the collection
+        file_count: u64,
+        /// Names of files/directories in the collection
+        names: Vec<String>,
+    },
     /// Downloading data.
     Downloading { offset: u64, total: u64 },
     /// Download completed.

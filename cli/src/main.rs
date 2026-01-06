@@ -564,6 +564,37 @@ fn handle_download_progress(
             let pb = mp.add(make_get_sizes_progress());
             *bar = Some(pb);
         }
+        DownloadProgress::Metadata { total_size, file_count, names } => {
+            if let Some(b) = bar {
+                b.finish_and_clear();
+                mp.remove(b);
+            }
+            
+            // Print metadata information
+            println!("\n📦 Transfer Information:");
+            println!("   Files: {}", file_count);
+            println!("   Total size: {}", HumanBytes(total_size));
+            if !names.is_empty() {
+                // Get the root name (first path component)
+                if let Some(first_name) = names.first() {
+                    if let Some(root) = first_name.split('/').next() {
+                        println!("   Name: {}", root);
+                    }
+                }
+                if names.len() <= 5 {
+                    println!("   Contents:");
+                    for name in &names {
+                        println!("     - {}", name);
+                    }
+                } else {
+                    println!("   Contents: {} files (showing first 5):", names.len());
+                    for name in names.iter().take(5) {
+                        println!("     - {}", name);
+                    }
+                }
+            }
+            println!();
+        }
         DownloadProgress::Downloading { offset, total } => {
             // Switch to block progress bar if not already using it
             // Check if we need to create or replace the progress bar

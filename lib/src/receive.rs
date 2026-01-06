@@ -102,10 +102,33 @@ async fn receive_internal(
         let get = db.remote().execute_get(connection, local.missing());
         let mut stream = get.stream();
         let mut stats = Stats::default();
+        let mut metadata_sent = false;
 
         while let Some(item) = stream.next().await {
             match item {
                 iroh_blobs::api::remote::GetProgressItem::Progress(offset) => {
+                    // Try to load collection metadata as soon as the collection blob is available
+                    if !metadata_sent {
+                        if let Ok(collection) = Collection::load(hash_and_format.hash, db.as_ref()).await {
+                            // Successfully loaded collection, emit metadata event
+                            let names: Vec<String> = collection
+                                .iter()
+                                .map(|(name, _hash)| name.to_string())
+                                .collect();
+                            
+                            if let Some(ref tx) = progress_tx {
+                                let _ = tx
+                                    .send(ProgressEvent::Download(DownloadProgress::Metadata {
+                                        total_size: payload_size,
+                                        file_count: total_files,
+                                        names,
+                                    }))
+                                    .await;
+                            }
+                            metadata_sent = true;
+                        }
+                    }
+
                     if let Some(ref tx) = progress_tx {
                         let _ = tx
                             .send(ProgressEvent::Download(DownloadProgress::Downloading {
@@ -127,8 +150,27 @@ async fn receive_internal(
 
         (stats, total_files, payload_size)
     } else {
+        // Collection already cached locally
         let total_files = local.children().unwrap() - 1;
         let payload_bytes = 0;
+        
+        // Load collection and emit metadata event
+        let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
+        let names: Vec<String> = collection
+            .iter()
+            .map(|(name, _hash)| name.to_string())
+            .collect();
+        
+        if let Some(ref tx) = progress_tx {
+            let _ = tx
+                .send(ProgressEvent::Download(DownloadProgress::Metadata {
+                    total_size: payload_bytes,
+                    file_count: total_files,
+                    names,
+                }))
+                .await;
+        }
+        
         (Stats::default(), total_files, payload_bytes)
     };
 

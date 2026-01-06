@@ -451,6 +451,14 @@ fn serialize_download_progress(progress: &DownloadProgress) -> serde_json::Value
         DownloadProgress::GettingSizes => {
             serde_json::json!({"type": "getting_sizes"})
         }
+        DownloadProgress::Metadata { total_size, file_count, names } => {
+            serde_json::json!({
+                "type": "metadata",
+                "total_size": total_size,
+                "file_count": file_count,
+                "names": names
+            })
+        }
         DownloadProgress::Downloading { offset, total } => {
             serde_json::json!({"type": "downloading", "offset": offset, "total": total})
         }
