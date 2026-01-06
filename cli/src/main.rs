@@ -587,7 +587,7 @@ fn handle_download_progress(
                         println!("     - {}", name);
                     }
                 } else {
-                    println!("   Contents: {} files (showing first 5):", names.len());
+                    println!("   Contents (first 5 of {} files):", names.len());
                     for name in names.iter().take(5) {
                         println!("     - {}", name);
                     }
