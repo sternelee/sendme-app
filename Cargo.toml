@@ -2,6 +2,10 @@
 members = ["lib", "cli", "app/src-tauri"]
 resolver = "2"
 
+# Note: browser crate is excluded from workspace because it requires WASM-specific
+# dependency configuration that conflicts with native builds. Build it separately with:
+#   cd browser && export CC=/opt/homebrew/opt/llvm/bin/clang && cargo build --target=wasm32-unknown-unknown
+
 [workspace.package]
 version = "0.31.0"
 edition = "2021"
@@ -12,6 +16,8 @@ rust-version = "1.81"
 
 [workspace.dependencies]
 anyhow = "1.0.75"
+iroh = { version = "0.95", default-features = false }
+iroh-blobs = { version = "0.97", default-features = false }
 tokio = { version = "1.34.0", features = ["full"] }
 
 [profile.release]

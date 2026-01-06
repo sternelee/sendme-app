@@ -1,0 +1,30 @@
+[package]
+name = "sendme-browser"
+version = "0.31.0"
+edition = "2021"
+
+# Exclude this crate from the parent workspace to avoid WASM-incompatible dependencies
+[workspace]
+
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+anyhow = "1.0.86"
+bytes = "1.10.1"
+console_error_panic_hook = "0.1.7"
+hex = "0.4"
+iroh = { version = "0.95", default-features = false }
+iroh-blobs = { version = "0.97", default-features = false }
+js-sys = "0.3.77"
+tokio = { version = "1.44.0", default-features = false, features = ["sync"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-subscriber-wasm = "0.1.0"
+wasm-bindgen = "=0.2.105"
+wasm-bindgen-futures = "0.4"
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["Window"]

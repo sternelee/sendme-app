@@ -38,16 +38,20 @@ Sendme is a Rust CLI tool for sending files and directories over the internet us
 
 ## Workspace Structure
 
-This is a Cargo workspace with three members:
+This is a Cargo workspace with four members:
 
 ```
 iroh-sendme/
 ├── lib/          # sendme-lib crate - core library
 ├── cli/          # sendme CLI - original command-line interface
-└── app/          # Tauri desktop application
-    ├── src/          # Vue frontend
-    ├── src-tauri/    # Rust backend (Tauri commands)
-    └── package.json  # Frontend dependencies
+├── app/          # Tauri desktop application
+│   ├── src/          # Vue frontend
+│   ├── src-tauri/    # Rust backend (Tauri commands)
+│   └── package.json  # Frontend dependencies
+└── browser/      # WebAssembly browser bindings
+    ├── src/          # Rust WASM bindings
+    ├── public/       # Web demo
+    └── package.json  # Build scripts
 ```
 
 ## Architecture
@@ -122,6 +126,59 @@ Tauri Commands:
 - **`cancel_transfer`**: Sends abort signal via oneshot channel
 - **`get_transfers`**: Returns list of all transfers
 - **`get_transfer_status`**: Returns status string for specific transfer
+
+### Browser WASM (`sendme-browser`)
+
+The browser crate (`browser/`) provides WebAssembly bindings for in-browser P2P file transfer:
+
+**IMPORTANT**: The browser crate is **excluded from the workspace** to prevent WASM-incompatible dependencies (like `mio`) from being pulled in. It has its own `[workspace]` section in `Cargo.toml`.
+
+#### Build Requirements
+```bash
+# macOS: Use llvm.org Clang (NOT Apple Clang)
+export CC=/opt/homebrew/opt/llvm/bin/clang
+
+# Build from repository root
+cargo build --target=wasm32-unknown-unknown --manifest-path=browser/Cargo.toml
+
+# Or from browser directory
+cd browser
+cargo build --target=wasm32-unknown-unknown
+bun run build  # Uses npm scripts
+```
+
+#### Structure
+- **`src/lib.rs`**: Main entry point, exports `SendmeNode`
+- **`src/node.rs`**: Core `SendmeNode` implementation using `iroh::Endpoint::builder().bind()`
+  - Uses `MemStore` for in-memory blob storage
+  - Creates proper `BlobTicket` with endpoint addressing
+  - Implements P2P fetching via `get_hash_seq_and_sizes`
+  - Uses JavaScript `setTimeout` for WASM-compatible async sleeping
+- **`src/wasm.rs`**: `wasm-bindgen` exports for JavaScript interop
+- **`public/index.html`**: Demo web interface with Send/Receive tabs
+
+#### Key Implementation Details
+- **Key generation**: Uses `iroh::Endpoint::builder().bind()` which handles key generation internally (WASM-compatible)
+- **No `tokio::time::sleep`**: Uses `web_sys::window().set_timeout()` via `JsFuture` instead
+- **Workspace exclusion**: Has `[workspace]` section to prevent dependency conflicts
+- **No `rand`/`getrandom`**: Removed unused crypto dependencies after switching to `Endpoint::builder().bind()`
+
+#### JavaScript API
+```javascript
+import init, { SendmeNodeWasm } from './wasm/sendme_browser.js';
+
+await init();
+const node = await SendmeNodeWasm.spawn();
+
+// Check endpoint status
+const ready = await node.wait_for_ready(5000);
+
+// Send file (create ticket)
+const ticket = await node.import_and_create_ticket(filename, dataArray);
+
+// Receive file (fetch from ticket)
+const data = await node.get(ticketString);
+```
 
 ## Key Data Structures
 

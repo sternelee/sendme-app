@@ -1,4 +1,4 @@
-/target
+target
 tmp/*
 tmp2/*
 .sendme-*
@@ -6,3 +6,11 @@ matchmaker-logs-*.tgz
 node_modules
 .claude/tsc-cache
 dist
+
+# Browser WASM build artifacts
+browser/target
+browser/public/wasm/*.wasm
+browser/public/wasm/*.js
+browser/public/wasm/*.d.ts
+browser/Cargo.lock
+browser/bun.lock
