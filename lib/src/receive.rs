@@ -152,7 +152,8 @@ async fn receive_internal(
     } else {
         // Collection already cached locally
         let total_files = local.children().unwrap() - 1;
-        let payload_bytes = 0;
+        // Use local_bytes as an approximation for total size (includes some metadata overhead)
+        let payload_bytes = local.local_bytes();
         
         // Load collection and emit metadata event
         let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
