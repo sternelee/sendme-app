@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
 use sendme_lib::{progress::*, types::*};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -18,13 +18,13 @@ pub struct ReceiveFileRequest {
     pub output_dir: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgressUpdate {
     pub event_type: String,
     pub data: serde_json::Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferInfo {
     pub id: String,
     pub transfer_type: String,
@@ -36,7 +36,7 @@ pub struct TransferInfo {
 // Global state for tracking active transfers
 type Transfers = Arc<RwLock<HashMap<String, TransferState>>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct TransferState {
     info: TransferInfo,
     abort_tx: Option<tokio::sync::oneshot::Sender<()>>,
@@ -44,8 +44,6 @@ struct TransferState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
-
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
 
     tauri::Builder::default()
@@ -74,20 +72,21 @@ async fn send_file(
 ) -> Result<String, String> {
     let transfer_id = Uuid::new_v4().to_string();
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
-    let (abort_tx, mut abort_rx) = tokio::sync::oneshot::channel();
+    let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
 
     // Parse ticket type
     let ticket_type = match request.ticket_type.as_str() {
-        "default" => Ok(sendme_lib::types::AddrInfoOptions::Default),
+        "id" => Ok(sendme_lib::types::AddrInfoOptions::Id),
         "relay" => Ok(sendme_lib::types::AddrInfoOptions::Relay),
-        "direct" => Ok(sendme_lib::types::AddrInfoOptions::Direct),
+        "addresses" => Ok(sendme_lib::types::AddrInfoOptions::Addresses),
+        "relay_and_addresses" => Ok(sendme_lib::types::AddrInfoOptions::RelayAndAddresses),
         _ => Err("Invalid ticket type".to_string()),
     }?;
 
     let args = SendArgs {
         path: std::path::PathBuf::from(&request.path),
         ticket_type,
-        ..Default::default()
+        common: CommonConfig::default(),
     };
 
     // Create transfer info
@@ -114,30 +113,26 @@ async fn send_file(
     drop(transfers_guard);
 
     let app_clone = app.clone();
-    let transfers_clone = transfers.clone();
+    let transfers_clone = transfers.inner().clone();
     let transfer_id_clone = transfer_id.clone();
+    let transfer_id_for_abort = transfer_id.clone();
 
     tokio::spawn(async move {
-        let mut done = false;
-
         // Listen for abort signal
         tokio::spawn(async move {
             let _ = abort_rx.await;
-            tracing::info!("Transfer {} aborted", transfer_id_clone);
+            tracing::info!("Transfer {} aborted", transfer_id_for_abort);
         });
 
         while let Some(event) = rx.recv().await {
-            if done {
-                break;
-            }
-
             let update = match event {
                 ProgressEvent::Import(name, progress) => {
                     update_transfer_status(
                         &transfers_clone,
                         &transfer_id_clone,
                         &format!("importing: {}", name),
-                    ).await;
+                    )
+                    .await;
                     ProgressUpdate {
                         event_type: "import".to_string(),
                         data: serde_json::json!({
@@ -152,7 +147,8 @@ async fn send_file(
                         &transfers_clone,
                         &transfer_id_clone,
                         &format!("exporting: {}", name),
-                    ).await;
+                    )
+                    .await;
                     ProgressUpdate {
                         event_type: "export".to_string(),
                         data: serde_json::json!({
@@ -163,11 +159,8 @@ async fn send_file(
                     }
                 }
                 ProgressEvent::Download(progress) => {
-                    update_transfer_status(
-                        &transfers_clone,
-                        &transfer_id_clone,
-                        "downloading",
-                    ).await;
+                    update_transfer_status(&transfers_clone, &transfer_id_clone, "downloading")
+                        .await;
                     ProgressUpdate {
                         event_type: "download".to_string(),
                         data: serde_json::json!({
@@ -181,7 +174,8 @@ async fn send_file(
                         &transfers_clone,
                         &transfer_id_clone,
                         &format!("connection: {:?}", status),
-                    ).await;
+                    )
+                    .await;
                     ProgressUpdate {
                         event_type: "connection".to_string(),
                         data: serde_json::json!({
@@ -219,25 +213,26 @@ async fn receive_file(
 ) -> Result<String, String> {
     let transfer_id = Uuid::new_v4().to_string();
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
-    let (abort_tx, mut abort_rx) = tokio::sync::oneshot::channel();
+    let (abort_tx, _abort_rx) = tokio::sync::oneshot::channel();
 
     // Change to output directory if specified
     if let Some(ref output_dir) = request.output_dir {
         std::env::set_current_dir(output_dir).map_err(|e| e.to_string())?;
     }
 
-    let ticket = request.ticket.parse().map_err(|e| e.to_string())?;
+    let ticket = request
+        .ticket
+        .parse()
+        .map_err(|e| format!("Invalid ticket: {}", e))?;
 
     let args = ReceiveArgs {
         ticket,
         common: CommonConfig {
-            no_progress: true,
-            verbose: 0,
-            format: Format::Hash,
-            relay: Default::default(),
+            format: Format::Hex,
+            relay: RelayModeOption::Default,
+            show_secret: false,
             magic_ipv4_addr: None,
             magic_ipv6_addr: None,
-            show_secret: false,
         },
     };
 
@@ -265,7 +260,7 @@ async fn receive_file(
     drop(transfers_guard);
 
     let app_clone = app.clone();
-    let transfers_clone = transfers.clone();
+    let transfers_clone = transfers.inner().clone();
     let transfer_id_clone = transfer_id.clone();
 
     tokio::spawn(async move {
@@ -276,7 +271,8 @@ async fn receive_file(
                         &transfers_clone,
                         &transfer_id_clone,
                         &format!("importing: {}", name),
-                    ).await;
+                    )
+                    .await;
                     ProgressUpdate {
                         event_type: "import".to_string(),
                         data: serde_json::json!({
@@ -291,7 +287,8 @@ async fn receive_file(
                         &transfers_clone,
                         &transfer_id_clone,
                         &format!("exporting: {}", name),
-                    ).await;
+                    )
+                    .await;
                     ProgressUpdate {
                         event_type: "export".to_string(),
                         data: serde_json::json!({
@@ -302,11 +299,8 @@ async fn receive_file(
                     }
                 }
                 ProgressEvent::Download(progress) => {
-                    update_transfer_status(
-                        &transfers_clone,
-                        &transfer_id_clone,
-                        "downloading",
-                    ).await;
+                    update_transfer_status(&transfers_clone, &transfer_id_clone, "downloading")
+                        .await;
                     ProgressUpdate {
                         event_type: "download".to_string(),
                         data: serde_json::json!({
@@ -320,7 +314,8 @@ async fn receive_file(
                         &transfers_clone,
                         &transfer_id_clone,
                         &format!("connection: {:?}", status),
-                    ).await;
+                    )
+                    .await;
                     ProgressUpdate {
                         event_type: "connection".to_string(),
                         data: serde_json::json!({
@@ -400,13 +395,9 @@ async fn get_transfer_status(
 }
 
 // Helper functions
-async fn update_transfer_status(
-    transfers: &Transfers,
-    id: &str,
-    status: &str,
-) {
+async fn update_transfer_status(transfers: &Transfers, id: &str, status: &str) {
     let mut transfers_guard = transfers.write().await;
-    if let Some(mut state) = transfers_guard.get_mut(id) {
+    if let Some(state) = transfers_guard.get_mut(id) {
         state.info.status = status.to_string();
     }
 }
@@ -416,13 +407,16 @@ fn serialize_import_progress(progress: &ImportProgress) -> serde_json::Value {
         ImportProgress::Started { total_files } => {
             serde_json::json!({"type": "started", "total_files": total_files})
         }
+        ImportProgress::FileStarted { name, size } => {
+            serde_json::json!({"type": "file_started", "name": name, "size": size})
+        }
         ImportProgress::FileProgress { name, offset } => {
             serde_json::json!({"type": "file_progress", "name": name, "offset": offset})
         }
         ImportProgress::FileCompleted { name } => {
             serde_json::json!({"type": "file_completed", "name": name})
         }
-        ImportProgress::Completed => {
+        ImportProgress::Completed { total_size: _ } => {
             serde_json::json!({"type": "completed"})
         }
     }
