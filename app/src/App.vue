@@ -665,45 +665,103 @@ function getProgressValue(id: string) {
                     v-if="progressData[transfer.id]"
                     class="mt-4 pt-4 border-t border-white/5 space-y-2"
                   >
+                    <!-- Metadata Display -->
                     <div
-                      class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wide opacity-50"
+                      v-if="
+                        progressData[transfer.id].progress?.type === 'metadata'
+                      "
+                      class="space-y-2 p-3 bg-black/5 dark:bg-white/5 rounded-xl"
                     >
-                      <span>{{
-                        progressData[transfer.id].name || "Transferring..."
-                      }}</span>
-                      <span
-                        v-if="
-                          progressData[transfer.id].progress?.type ===
-                          'downloading'
-                        "
+                      <div
+                        class="flex items-center gap-2 text-xs font-bold text-primary"
                       >
-                        {{ Math.round(getProgressValue(transfer.id)) }}%
-                      </span>
+                        <FileText class="w-3 h-3" />
+                        Transfer Information
+                      </div>
+                      <div class="space-y-1 text-xs">
+                        <div class="flex justify-between">
+                          <span class="opacity-60">Files:</span>
+                          <span class="font-mono font-semibold">{{
+                            progressData[transfer.id].progress.file_count
+                          }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                          <span class="opacity-60">Size:</span>
+                          <span class="font-mono font-semibold">{{
+                            formatFileSize(
+                              progressData[transfer.id].progress.total_size
+                            )
+                          }}</span>
+                        </div>
+                        <div
+                          v-if="
+                            progressData[transfer.id].progress.names?.length
+                          "
+                          class="pt-2 border-t border-white/5"
+                        >
+                          <div class="opacity-60 mb-1">Contents:</div>
+                          <div class="space-y-0.5 pl-2">
+                            <div
+                              v-for="(name, i) in progressData[
+                                transfer.id
+                              ].progress.names.slice(0, 3)"
+                              :key="i"
+                              class="text-[10px] font-mono opacity-80 truncate"
+                            >
+                              {{ name }}
+                            </div>
+                            <div
+                              v-if="
+                                progressData[transfer.id].progress.names
+                                  .length > 3
+                              "
+                              class="text-[10px] opacity-50"
+                            >
+                              +{{
+                                progressData[transfer.id].progress.names
+                                  .length - 3
+                              }}
+                              more...
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <Progress
-                      v-if="
-                        progressData[transfer.id].progress?.type ===
-                        'downloading'
-                      "
-                      :value="getProgressValue(transfer.id)"
-                      class="h-1.5 bg-slate-200/20"
-                    />
+
+                    <!-- Download Progress -->
                     <div
                       v-if="
                         progressData[transfer.id].progress?.type ===
                         'downloading'
                       "
-                      class="text-[10px] text-right font-mono opacity-50"
                     >
-                      {{
-                        formatFileSize(
-                          progressData[transfer.id].progress.offset
-                        )
-                      }}
-                      /
-                      {{
-                        formatFileSize(progressData[transfer.id].progress.total)
-                      }}
+                      <div
+                        class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wide opacity-50"
+                      >
+                        <span>{{
+                          progressData[transfer.id].name || "Transferring..."
+                        }}</span>
+                        <span>
+                          {{ Math.round(getProgressValue(transfer.id)) }}%
+                        </span>
+                      </div>
+                      <Progress
+                        :value="getProgressValue(transfer.id)"
+                        class="h-1.5 bg-slate-200/20"
+                      />
+                      <div class="text-[10px] text-right font-mono opacity-50">
+                        {{
+                          formatFileSize(
+                            progressData[transfer.id].progress.offset
+                          )
+                        }}
+                        /
+                        {{
+                          formatFileSize(
+                            progressData[transfer.id].progress.total
+                          )
+                        }}
+                      </div>
                     </div>
                   </div>
                 </div>
