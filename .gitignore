@@ -3,3 +3,4 @@ tmp/*
 tmp2/*
 .sendme-*
 matchmaker-logs-*.tgz
+node_modules

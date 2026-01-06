@@ -1,5 +1,5 @@
 [package]
-name = "sendme-app"
+name = "app"
 version = "0.31.0"
 edition = "2021"
 
