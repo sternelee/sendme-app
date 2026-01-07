@@ -569,6 +569,7 @@ fn handle_download_progress(
                 b.finish_and_clear();
                 mp.remove(b);
             }
+            *bar = None; // Reset bar so Downloading phase can create a new one
             
             // Print metadata information
             println!("\n📦 Transfer Information:");
