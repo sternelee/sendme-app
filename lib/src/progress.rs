@@ -55,7 +55,11 @@ pub enum DownloadProgress {
     GettingSizes,
     /// Metadata received - filenames and total size are now known.
     Metadata {
-        /// Total size of all files (payload only, excluding metadata)
+        /// Total size in bytes of all files in the collection.
+        ///
+        /// When downloading from a remote sender, this is calculated by summing
+        /// the actual file sizes from the collection. When using locally cached
+        /// data, this uses the cache's total size which may include metadata overhead.
         total_size: u64,
         /// Number of files in the collection
         file_count: u64,

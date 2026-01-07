@@ -80,7 +80,7 @@ async fn receive_internal(
                 .await;
         }
 
-        let (_hash_seq, sizes) =
+        let (hash_seq, sizes) =
             get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
                 .await
                 .map_err(|e| show_get_error(e))?;
@@ -110,12 +110,22 @@ async fn receive_internal(
             match item {
                 iroh_blobs::api::remote::GetProgressItem::Progress(offset) => {
                     // Try to load collection metadata as soon as it's available
-                    // Try on first event and then every 10th event to avoid excessive load attempts
+                    // Try on first event and then every 10th event thereafter (events 1, 11, 21...) to avoid excessive load attempts
                     if !metadata_sent {
                         progress_count += 1;
-                        if progress_count == 1 || progress_count % 10 == 0 {
+                        if (progress_count - 1) % 10 == 0 {
                             if let Ok(collection) = Collection::load(hash_and_format.hash, db.as_ref()).await {
-                                // Successfully loaded collection, emit metadata event
+                                // Calculate actual payload size from collection files
+                                let mut actual_payload_size = 0u64;
+                                for (_name, file_hash) in collection.iter() {
+                                    // Find the size for this file hash in the hash_seq
+                                    if let Some(idx) = hash_seq.iter().position(|h| h == *file_hash) {
+                                        if idx < sizes.len() {
+                                            actual_payload_size += sizes[idx];
+                                        }
+                                    }
+                                }
+                                
                                 let names: Vec<String> = collection
                                     .iter()
                                     .map(|(name, _hash)| name.to_string())
@@ -124,7 +134,7 @@ async fn receive_internal(
                                 if let Some(ref tx) = progress_tx {
                                     let _ = tx
                                         .send(ProgressEvent::Download(DownloadProgress::Metadata {
-                                            total_size: payload_size,
+                                            total_size: actual_payload_size,
                                             file_count: total_files,
                                             names,
                                         }))
