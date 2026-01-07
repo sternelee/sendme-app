@@ -73,6 +73,7 @@ const isReceiving = ref(false);
 
 // Progress state
 const progressData = ref<Record<string, ProgressData>>({});
+const metadataCache = ref<Record<string, any>>({});
 const unlisten = ref<(() => void) | null>(null);
 
 // Ticket types
@@ -97,6 +98,11 @@ onMounted(async () => {
   unlisten.value = await listen<ProgressUpdate>("progress", (event) => {
     const { transfer_id, ...data } = event.payload.data;
     progressData.value[transfer_id] = { transfer_id, ...data };
+    
+    // Cache metadata when it arrives
+    if (data.progress?.type === 'metadata') {
+      metadataCache.value[transfer_id] = data.progress;
+    }
   });
 });
 
@@ -665,10 +671,11 @@ function getProgressValue(id: string) {
                     v-if="progressData[transfer.id]"
                     class="mt-4 pt-4 border-t border-white/5 space-y-2"
                   >
-                    <!-- Metadata Display -->
+                    <!-- Metadata Display (shown when available, persists during download) -->
                     <div
                       v-if="
-                        progressData[transfer.id].progress?.type === 'metadata'
+                        progressData[transfer.id].progress?.type === 'metadata' ||
+                        metadataCache[transfer.id]
                       "
                       class="space-y-2 p-3 bg-black/5 dark:bg-white/5 rounded-xl"
                     >
@@ -682,29 +689,37 @@ function getProgressValue(id: string) {
                         <div class="flex justify-between">
                           <span class="opacity-60">Files:</span>
                           <span class="font-mono font-semibold">{{
-                            progressData[transfer.id].progress.file_count
+                            (progressData[transfer.id].progress?.type === 'metadata' 
+                              ? progressData[transfer.id].progress.file_count 
+                              : metadataCache[transfer.id]?.file_count) || 0
                           }}</span>
                         </div>
                         <div class="flex justify-between">
                           <span class="opacity-60">Size:</span>
                           <span class="font-mono font-semibold">{{
                             formatFileSize(
-                              progressData[transfer.id].progress.total_size
+                              (progressData[transfer.id].progress?.type === 'metadata'
+                                ? progressData[transfer.id].progress.total_size
+                                : metadataCache[transfer.id]?.total_size) || 0
                             )
                           }}</span>
                         </div>
                         <div
                           v-if="
-                            progressData[transfer.id].progress.names?.length
+                            (progressData[transfer.id].progress?.type === 'metadata'
+                              ? progressData[transfer.id].progress.names?.length
+                              : metadataCache[transfer.id]?.names?.length) > 0
                           "
                           class="pt-2 border-t border-white/5"
                         >
                           <div class="opacity-60 mb-1">Contents:</div>
                           <div class="space-y-0.5 pl-2">
                             <div
-                              v-for="(name, i) in progressData[
-                                transfer.id
-                              ].progress.names.slice(0, 3)"
+                              v-for="(name, i) in (
+                                progressData[transfer.id].progress?.type === 'metadata'
+                                  ? progressData[transfer.id].progress.names
+                                  : metadataCache[transfer.id]?.names || []
+                              ).slice(0, 3)"
                               :key="i"
                               class="text-[10px] font-mono opacity-80 truncate"
                             >
@@ -712,14 +727,16 @@ function getProgressValue(id: string) {
                             </div>
                             <div
                               v-if="
-                                progressData[transfer.id].progress.names
-                                  .length > 3
+                                (progressData[transfer.id].progress?.type === 'metadata'
+                                  ? progressData[transfer.id].progress.names?.length
+                                  : metadataCache[transfer.id]?.names?.length || 0) > 3
                               "
                               class="text-[10px] opacity-50"
                             >
                               +{{
-                                progressData[transfer.id].progress.names
-                                  .length - 3
+                                (progressData[transfer.id].progress?.type === 'metadata'
+                                  ? progressData[transfer.id].progress.names?.length
+                                  : metadataCache[transfer.id]?.names?.length || 0) - 3
                               }}
                               more...
                             </div>

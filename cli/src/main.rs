@@ -576,10 +576,13 @@ fn handle_download_progress(
             println!("   Total size: {}", HumanBytes(total_size));
             if !names.is_empty() {
                 // Get the root name (first path component)
+                // Handle both forward and backward slashes for cross-platform compatibility
                 if let Some(first_name) = names.first() {
-                    if let Some(root) = first_name.split('/').next() {
-                        println!("   Name: {}", root);
-                    }
+                    let root = first_name
+                        .split(|c| c == '/' || c == '\\')
+                        .next()
+                        .unwrap_or(first_name);
+                    println!("   Name: {}", root);
                 }
                 if names.len() <= 5 {
                     println!("   Contents:");
