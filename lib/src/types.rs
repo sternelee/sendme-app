@@ -37,18 +37,7 @@ impl Display for Format {
 }
 
 /// Options for configuring what is included in an EndpointAddr.
-#[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Default,
-    Debug,
-    Display,
-    FromStr,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Default, Debug, Display, FromStr, Serialize, Deserialize)]
 pub enum AddrInfoOptions {
     /// Only the Endpoint ID is added.
     #[default]

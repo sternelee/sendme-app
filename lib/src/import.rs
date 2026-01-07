@@ -2,11 +2,7 @@
 
 use anyhow::Context;
 use futures_buffered::BufferedStreamExt;
-use iroh_blobs::{
-    format::collection::Collection,
-    store::fs::FsStore,
-    BlobFormat,
-};
+use iroh_blobs::{format::collection::Collection, store::fs::FsStore, BlobFormat};
 
 use n0_future::StreamExt;
 
@@ -78,7 +74,10 @@ async fn import_internal(
                     let _ = tx
                         .send(crate::progress::ProgressEvent::Import(
                             name.clone(),
-                            crate::progress::ImportProgress::FileStarted { name: name.clone(), size: 0 },
+                            crate::progress::ImportProgress::FileStarted {
+                                name: name.clone(),
+                                size: 0,
+                            },
                         ))
                         .await;
                 }

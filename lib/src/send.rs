@@ -6,23 +6,17 @@ use std::{
     time::Instant,
 };
 
-use iroh::{
-    discovery::pkarr::PkarrPublisher,
-    Endpoint, RelayMode,
-};
+use iroh::{discovery::pkarr::PkarrPublisher, Endpoint, RelayMode};
 use iroh_blobs::{
-    BlobsProtocol,
     provider::events::{ConnectMode, EventMask, EventSender, ProviderMessage, RequestMode},
     store::fs::FsStore,
-    BlobFormat,
+    BlobFormat, BlobsProtocol,
 };
 
 use n0_future::StreamExt;
 use tokio::select;
 
-use crate::{
-    get_or_create_secret, progress::*, types::*, apply_options, SendArgs, SendResult,
-};
+use crate::{apply_options, get_or_create_secret, progress::*, types::*, SendArgs, SendResult};
 
 use rand::Rng;
 
@@ -71,7 +65,10 @@ async fn send_internal(
     // Create temporary directory for blob storage
     let suffix = rand::rng().random::<[u8; 16]>();
     let cwd = std::env::current_dir()?;
-    let blobs_data_dir = cwd.join(format!(".sendme-send-{}", data_encoding::HEXLOWER.encode(&suffix)));
+    let blobs_data_dir = cwd.join(format!(
+        ".sendme-send-{}",
+        data_encoding::HEXLOWER.encode(&suffix)
+    ));
 
     if blobs_data_dir.exists() {
         anyhow::bail!(
@@ -114,9 +111,7 @@ async fn send_internal(
             tokio::task::spawn(handle_provider_progress(tx.clone(), event_rx));
         } else {
             // Still consume the events to prevent blocking
-            tokio::spawn(async move {
-                while event_rx.recv().await.is_some() {}
-            });
+            tokio::spawn(async move { while event_rx.recv().await.is_some() {} });
         }
 
         let import_result = crate::import::import(path, &store, progress_tx2).await?;

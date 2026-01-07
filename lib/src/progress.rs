@@ -96,10 +96,7 @@ pub enum ConnectionStatus {
         offset: u64,
     },
     /// A transfer request completed.
-    RequestCompleted {
-        connection_id: u64,
-        request_id: u64,
-    },
+    RequestCompleted { connection_id: u64, request_id: u64 },
 }
 
 /// Channel sender type for progress events.

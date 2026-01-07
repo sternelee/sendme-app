@@ -1,2 +1,1 @@
-console.log("Hello via pnpm!");
-
+console.log("Hello via sendme!");

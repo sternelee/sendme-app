@@ -5,24 +5,24 @@
 
 use anyhow::Context;
 
-pub mod types;
-pub mod progress;
-pub mod import;
 pub mod export;
-pub mod send;
+pub mod import;
+pub mod progress;
 pub mod receive;
+pub mod send;
+pub mod types;
 
 pub use import::get_export_path;
-pub use types::*;
 pub use progress::*;
+pub use types::*;
 
 // Re-export commonly used types from dependencies
 pub use iroh::{RelayUrl, SecretKey};
 pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
 
 // Public API
-pub use send::{send, send_with_progress};
 pub use receive::{receive, receive_with_progress};
+pub use send::{send, send_with_progress};
 
 /// Get or create a secret key for the iroh endpoint.
 ///

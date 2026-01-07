@@ -9,9 +9,7 @@ use iroh_blobs::{
 
 use n0_future::StreamExt;
 
-use crate::{
-    get_or_create_secret, progress::*, export, ReceiveArgs, ReceiveResult,
-};
+use crate::{export, get_or_create_secret, progress::*, ReceiveArgs, ReceiveResult};
 
 /// Receive a file or directory.
 ///
@@ -114,28 +112,40 @@ async fn receive_internal(
                     if !metadata_sent {
                         progress_count += 1;
                         if (progress_count - 1) % 10 == 0 {
-                            if let Ok(collection) = Collection::load(hash_and_format.hash, db.as_ref()).await {
+                            if let Ok(collection) =
+                                Collection::load(hash_and_format.hash, db.as_ref()).await
+                            {
                                 // Calculate actual payload size from collection files
                                 let mut actual_payload_size = 0u64;
                                 for (name, file_hash) in collection.iter() {
                                     // Find the size for this file hash in the hash_seq
-                                    if let Some(idx) = hash_seq.iter().position(|h| h == *file_hash) {
+                                    if let Some(idx) = hash_seq.iter().position(|h| h == *file_hash)
+                                    {
                                         if idx < sizes.len() {
                                             actual_payload_size += sizes[idx];
-                                            tracing::debug!("File {}: hash at index {}, size {}", name, idx, sizes[idx]);
+                                            tracing::debug!(
+                                                "File {}: hash at index {}, size {}",
+                                                name,
+                                                idx,
+                                                sizes[idx]
+                                            );
                                         }
                                     } else {
                                         tracing::warn!("File {} hash not found in hash_seq", name);
                                     }
                                 }
-                                
-                                tracing::info!("Metadata: {} files, total size: {}", collection.iter().count(), actual_payload_size);
-                                
+
+                                tracing::info!(
+                                    "Metadata: {} files, total size: {}",
+                                    collection.iter().count(),
+                                    actual_payload_size
+                                );
+
                                 let names: Vec<String> = collection
                                     .iter()
                                     .map(|(name, _hash)| name.to_string())
                                     .collect();
-                                
+
                                 if let Some(ref tx) = progress_tx {
                                     let _ = tx
                                         .send(ProgressEvent::Download(DownloadProgress::Metadata {
@@ -176,14 +186,14 @@ async fn receive_internal(
         let total_files = local.children().unwrap() - 1;
         // Use local_bytes as an approximation for total size (includes some metadata overhead)
         let payload_bytes = local.local_bytes();
-        
+
         // Load collection and emit metadata event
         let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
         let names: Vec<String> = collection
             .iter()
             .map(|(name, _hash)| name.to_string())
             .collect();
-        
+
         if let Some(ref tx) = progress_tx {
             let _ = tx
                 .send(ProgressEvent::Download(DownloadProgress::Metadata {
@@ -193,8 +203,13 @@ async fn receive_internal(
                 }))
                 .await;
         }
-        
-        (Stats::default(), total_files, payload_bytes, Some(collection))
+
+        (
+            Stats::default(),
+            total_files,
+            payload_bytes,
+            Some(collection),
+        )
     };
 
     // Use cached collection if available, otherwise load it

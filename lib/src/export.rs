@@ -1,13 +1,10 @@
 //! File export functionality.
 
-use iroh_blobs::{
-    format::collection::Collection,
-    store::fs::FsStore,
-};
+use iroh_blobs::{format::collection::Collection, store::fs::FsStore};
 
 use n0_future::StreamExt;
 
-use crate::{progress::ProgressSenderTx, get_export_path};
+use crate::{get_export_path, progress::ProgressSenderTx};
 
 /// Export a collection to the current directory.
 pub async fn export(
@@ -41,7 +38,10 @@ pub async fn export(
             let _ = tx
                 .send(crate::progress::ProgressEvent::Export(
                     name.clone(),
-                    crate::progress::ExportProgress::FileStarted { name: name.clone(), size: 0 },
+                    crate::progress::ExportProgress::FileStarted {
+                        name: name.clone(),
+                        size: 0,
+                    },
                 ))
                 .await;
         }
