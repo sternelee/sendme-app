@@ -65,7 +65,7 @@ async fn receive_internal(
     let hash_and_format = ticket.hash_and_format();
     let local = db.remote().local(hash_and_format).await?;
 
-    let (stats, total_files, payload_size) = if !local.is_complete() {
+    let (stats, total_files, payload_size, metadata_collection) = if !local.is_complete() {
         if let Some(ref tx) = progress_tx {
             let _ = tx
                 .send(ProgressEvent::Download(DownloadProgress::Connecting))
@@ -80,7 +80,7 @@ async fn receive_internal(
                 .await;
         }
 
-        let (_hash_seq, sizes) =
+        let (hash_seq, sizes) =
             get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
                 .await
                 .map_err(|e| show_get_error(e))?;
@@ -102,10 +102,55 @@ async fn receive_internal(
         let get = db.remote().execute_get(connection, local.missing());
         let mut stream = get.stream();
         let mut stats = Stats::default();
+        let mut metadata_sent = false;
+        let mut metadata_collection: Option<Collection> = None;
+        let mut progress_count = 0u32;
 
         while let Some(item) = stream.next().await {
             match item {
                 iroh_blobs::api::remote::GetProgressItem::Progress(offset) => {
+                    // Try to load collection metadata as soon as it's available
+                    // Try on first event and then every 10th event thereafter (events 1, 11, 21...) to avoid excessive load attempts
+                    if !metadata_sent {
+                        progress_count += 1;
+                        if (progress_count - 1) % 10 == 0 {
+                            if let Ok(collection) = Collection::load(hash_and_format.hash, db.as_ref()).await {
+                                // Calculate actual payload size from collection files
+                                let mut actual_payload_size = 0u64;
+                                for (name, file_hash) in collection.iter() {
+                                    // Find the size for this file hash in the hash_seq
+                                    if let Some(idx) = hash_seq.iter().position(|h| h == *file_hash) {
+                                        if idx < sizes.len() {
+                                            actual_payload_size += sizes[idx];
+                                            tracing::debug!("File {}: hash at index {}, size {}", name, idx, sizes[idx]);
+                                        }
+                                    } else {
+                                        tracing::warn!("File {} hash not found in hash_seq", name);
+                                    }
+                                }
+                                
+                                tracing::info!("Metadata: {} files, total size: {}", collection.iter().count(), actual_payload_size);
+                                
+                                let names: Vec<String> = collection
+                                    .iter()
+                                    .map(|(name, _hash)| name.to_string())
+                                    .collect();
+                                
+                                if let Some(ref tx) = progress_tx {
+                                    let _ = tx
+                                        .send(ProgressEvent::Download(DownloadProgress::Metadata {
+                                            total_size: actual_payload_size,
+                                            file_count: total_files,
+                                            names,
+                                        }))
+                                        .await;
+                                }
+                                metadata_sent = true;
+                                metadata_collection = Some(collection);
+                            }
+                        }
+                    }
+
                     if let Some(ref tx) = progress_tx {
                         let _ = tx
                             .send(ProgressEvent::Download(DownloadProgress::Downloading {
@@ -125,14 +170,38 @@ async fn receive_internal(
             }
         }
 
-        (stats, total_files, payload_size)
+        (stats, total_files, payload_size, metadata_collection)
     } else {
+        // Collection already cached locally
         let total_files = local.children().unwrap() - 1;
-        let payload_bytes = 0;
-        (Stats::default(), total_files, payload_bytes)
+        // Use local_bytes as an approximation for total size (includes some metadata overhead)
+        let payload_bytes = local.local_bytes();
+        
+        // Load collection and emit metadata event
+        let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
+        let names: Vec<String> = collection
+            .iter()
+            .map(|(name, _hash)| name.to_string())
+            .collect();
+        
+        if let Some(ref tx) = progress_tx {
+            let _ = tx
+                .send(ProgressEvent::Download(DownloadProgress::Metadata {
+                    total_size: payload_bytes,
+                    file_count: total_files,
+                    names,
+                }))
+                .await;
+        }
+        
+        (Stats::default(), total_files, payload_bytes, Some(collection))
     };
 
-    let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
+    // Use cached collection if available, otherwise load it
+    let collection = match metadata_collection {
+        Some(col) => col,
+        None => Collection::load(hash_and_format.hash, db.as_ref()).await?,
+    };
     export::export(&db, collection.clone(), progress_tx.clone()).await?;
 
     if let Some(ref tx) = progress_tx {

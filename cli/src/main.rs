@@ -564,6 +564,41 @@ fn handle_download_progress(
             let pb = mp.add(make_get_sizes_progress());
             *bar = Some(pb);
         }
+        DownloadProgress::Metadata { total_size, file_count, names } => {
+            if let Some(b) = bar {
+                b.finish_and_clear();
+                mp.remove(b);
+            }
+            *bar = None; // Reset bar so Downloading phase can create a new one
+            
+            // Print metadata information
+            println!("\n📦 Transfer Information:");
+            println!("   Files: {}", file_count);
+            println!("   Total size: {}", HumanBytes(total_size));
+            if !names.is_empty() {
+                // Get the root name (first path component)
+                // Handle both forward and backward slashes for cross-platform compatibility
+                if let Some(first_name) = names.first() {
+                    let root = first_name
+                        .split(|c| c == '/' || c == '\\')
+                        .next()
+                        .unwrap_or(first_name);
+                    println!("   Name: {}", root);
+                }
+                if names.len() <= 5 {
+                    println!("   Contents:");
+                    for name in &names {
+                        println!("     - {}", name);
+                    }
+                } else {
+                    println!("   Contents (first 5 of {} files):", names.len());
+                    for name in names.iter().take(5) {
+                        println!("     - {}", name);
+                    }
+                }
+            }
+            println!();
+        }
         DownloadProgress::Downloading { offset, total } => {
             // Switch to block progress bar if not already using it
             // Check if we need to create or replace the progress bar
