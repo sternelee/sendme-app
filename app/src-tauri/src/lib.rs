@@ -47,8 +47,12 @@ pub fn run() {
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
+        // .plugin(tauri_plugin_barcode_scanner::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .setup(move |app| {
             // Store transfers in app state
             app.manage(transfers.clone());
@@ -451,7 +455,11 @@ fn serialize_download_progress(progress: &DownloadProgress) -> serde_json::Value
         DownloadProgress::GettingSizes => {
             serde_json::json!({"type": "getting_sizes"})
         }
-        DownloadProgress::Metadata { total_size, file_count, names } => {
+        DownloadProgress::Metadata {
+            total_size,
+            file_count,
+            names,
+        } => {
             serde_json::json!({
                 "type": "metadata",
                 "total_size": total_size,

@@ -332,7 +332,7 @@ function getProgressValue(id: string) {
       class="w-full max-w-2xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000"
     >
       <!-- Header -->
-      <header class="text-center space-y-2">
+      <header class="text-center space-y-2 mt-6 md:mt-2">
         <h1
           class="text-4xl sm:text-5xl font-extrabold tracking-tighter text-slate-900 dark:text-slate-50 text-glow"
         >

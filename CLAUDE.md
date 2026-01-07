@@ -126,7 +126,7 @@ Key files:
 - **`lib.rs`**: Tauri commands that wrap `sendme-lib` functions
 - Uses `tokio::sync::RwLock<HashMap>` for transfer state management
 - Emits progress events to frontend via `app.emit("progress", update)`
-- Registered plugins: `tauri_plugin_shell`, `tauri_plugin_dialog`
+- Registered plugins: `tauri_plugin_dialog`
 
 Tauri Commands:
 

@@ -1,0 +1,13 @@
+{
+  "identifier": "mobile-capability",
+  "platforms": ["android", "iOS"],
+  "windows": ["main"],
+  "permissions": [
+    "barcode-scanner:default",
+    "notification:default",
+    "clipboard-manager:default",
+    "os:default",
+    "http:default"
+  ]
+}
+

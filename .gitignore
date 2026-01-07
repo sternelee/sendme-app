@@ -13,5 +13,5 @@ browser/public/wasm/*.wasm
 browser/public/wasm/*.js
 browser/public/wasm/*.d.ts
 
-# Tauri generated schemas
-app/src-tauri/gen/
+# android sign file
+keystore.properties
