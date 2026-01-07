@@ -117,14 +117,19 @@ async fn receive_internal(
                             if let Ok(collection) = Collection::load(hash_and_format.hash, db.as_ref()).await {
                                 // Calculate actual payload size from collection files
                                 let mut actual_payload_size = 0u64;
-                                for (_name, file_hash) in collection.iter() {
+                                for (name, file_hash) in collection.iter() {
                                     // Find the size for this file hash in the hash_seq
                                     if let Some(idx) = hash_seq.iter().position(|h| h == *file_hash) {
                                         if idx < sizes.len() {
                                             actual_payload_size += sizes[idx];
+                                            tracing::debug!("File {}: hash at index {}, size {}", name, idx, sizes[idx]);
                                         }
+                                    } else {
+                                        tracing::warn!("File {} hash not found in hash_seq", name);
                                     }
                                 }
+                                
+                                tracing::info!("Metadata: {} files, total size: {}", collection.iter().count(), actual_payload_size);
                                 
                                 let names: Vec<String> = collection
                                     .iter()
