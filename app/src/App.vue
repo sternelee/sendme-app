@@ -98,9 +98,9 @@ onMounted(async () => {
   unlisten.value = await listen<ProgressUpdate>("progress", (event) => {
     const { transfer_id, ...data } = event.payload.data;
     progressData.value[transfer_id] = { transfer_id, ...data };
-    
+
     // Cache metadata when it arrives
-    if (data.progress?.type === 'metadata') {
+    if (data.progress?.type === "metadata") {
       metadataCache.value[transfer_id] = data.progress;
     }
   });
@@ -334,7 +334,7 @@ function getProgressValue(id: string) {
       <!-- Header -->
       <header class="text-center space-y-2">
         <h1
-          class="text-5xl font-extrabold tracking-tighter text-slate-900 dark:text-slate-50 text-glow"
+          class="text-4xl sm:text-5xl font-extrabold tracking-tighter text-slate-900 dark:text-slate-50 text-glow"
         >
           Sendme
         </h1>
@@ -344,7 +344,7 @@ function getProgressValue(id: string) {
       </header>
 
       <!-- Main Container -->
-      <div class="glass rounded-3xl overflow-hidden">
+      <div class="glass rounded-2xl sm:rounded-3xl overflow-hidden">
         <Tabs v-model="activeTab" class="w-full">
           <TabsList
             class="flex w-full bg-transparent p-2 gap-2 border-b border-white/10"
@@ -365,13 +365,13 @@ function getProgressValue(id: string) {
             </TabsTrigger>
           </TabsList>
 
-          <div class="p-8">
+          <div class="p-4 sm:p-6 md:p-8">
             <!-- Send Tab -->
             <TabsContent value="send" class="space-y-6 mt-0 outline-none">
               <div class="space-y-6">
                 <!-- Drop Zone Area -->
                 <div
-                  class="group relative flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl hover:border-primary/50 hover:bg-white/5 transition-all cursor-pointer"
+                  class="group relative flex flex-col items-center justify-center p-6 sm:p-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl hover:border-primary/50 hover:bg-white/5 transition-all cursor-pointer"
                   @click="selectFile"
                 >
                   <div
@@ -403,7 +403,7 @@ function getProgressValue(id: string) {
                   </template>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Button
                     type="button"
                     @click="selectDirectory"
@@ -472,7 +472,7 @@ function getProgressValue(id: string) {
                 >
                   <div
                     v-if="sendTicket"
-                    class="p-6 glass-card rounded-2xl space-y-4 border-primary/20 ring-1 ring-primary/20"
+                    class="p-4 sm:p-6 glass-card rounded-2xl space-y-4 border-primary/20 ring-1 ring-primary/20"
                   >
                     <div class="flex items-center justify-between">
                       <Label
@@ -608,7 +608,7 @@ function getProgressValue(id: string) {
             <div
               v-for="transfer in transfers"
               :key="transfer.id"
-              class="glass-card group p-5 rounded-2xl hover:scale-[1.01] transition-all duration-300"
+              class="glass-card group p-4 sm:p-5 rounded-2xl hover:scale-[1.01] transition-all duration-300"
             >
               <div class="flex items-start gap-4">
                 <div
@@ -642,7 +642,7 @@ function getProgressValue(id: string) {
                   </div>
 
                   <div
-                    class="flex items-center gap-3 text-xs text-slate-500 font-medium"
+                    class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium"
                   >
                     <div
                       class="flex items-center gap-1"
@@ -659,7 +659,7 @@ function getProgressValue(id: string) {
                       />
                       {{ getTransferStatus(transfer.status).label }}
                     </div>
-                    <span class="opacity-20">•</span>
+                    <span class="opacity-20 hidden sm:inline">•</span>
                     <div class="flex items-center gap-1">
                       <Monitor class="w-3 h-3 opacity-50" />
                       {{ formatDate(transfer.created_at) }}
@@ -674,8 +674,8 @@ function getProgressValue(id: string) {
                     <!-- Metadata Display (shown when available, persists during download) -->
                     <div
                       v-if="
-                        progressData[transfer.id].progress?.type === 'metadata' ||
-                        metadataCache[transfer.id]
+                        progressData[transfer.id].progress?.type ===
+                          'metadata' || metadataCache[transfer.id]
                       "
                       class="space-y-2 p-3 bg-black/5 dark:bg-white/5 rounded-xl"
                     >
@@ -689,8 +689,9 @@ function getProgressValue(id: string) {
                         <div class="flex justify-between">
                           <span class="opacity-60">Files:</span>
                           <span class="font-mono font-semibold">{{
-                            (progressData[transfer.id].progress?.type === 'metadata' 
-                              ? progressData[transfer.id].progress.file_count 
+                            (progressData[transfer.id].progress?.type ===
+                            "metadata"
+                              ? progressData[transfer.id].progress.file_count
                               : metadataCache[transfer.id]?.file_count) || 0
                           }}</span>
                         </div>
@@ -698,15 +699,17 @@ function getProgressValue(id: string) {
                           <span class="opacity-60">Size:</span>
                           <span class="font-mono font-semibold">{{
                             formatFileSize(
-                              (progressData[transfer.id].progress?.type === 'metadata'
+                              (progressData[transfer.id].progress?.type ===
+                              "metadata"
                                 ? progressData[transfer.id].progress.total_size
-                                : metadataCache[transfer.id]?.total_size) || 0
+                                : metadataCache[transfer.id]?.total_size) || 0,
                             )
                           }}</span>
                         </div>
                         <div
                           v-if="
-                            (progressData[transfer.id].progress?.type === 'metadata'
+                            (progressData[transfer.id].progress?.type ===
+                            'metadata'
                               ? progressData[transfer.id].progress.names?.length
                               : metadataCache[transfer.id]?.names?.length) > 0
                           "
@@ -715,10 +718,10 @@ function getProgressValue(id: string) {
                           <div class="opacity-60 mb-1">Contents:</div>
                           <div class="space-y-0.5 pl-2">
                             <div
-                              v-for="(name, i) in (
-                                progressData[transfer.id].progress?.type === 'metadata'
-                                  ? progressData[transfer.id].progress.names
-                                  : metadataCache[transfer.id]?.names || []
+                              v-for="(name, i) in (progressData[transfer.id]
+                                .progress?.type === 'metadata'
+                                ? progressData[transfer.id].progress.names
+                                : metadataCache[transfer.id]?.names || []
                               ).slice(0, 3)"
                               :key="i"
                               class="text-[10px] font-mono opacity-80 truncate"
@@ -727,16 +730,22 @@ function getProgressValue(id: string) {
                             </div>
                             <div
                               v-if="
-                                (progressData[transfer.id].progress?.type === 'metadata'
-                                  ? progressData[transfer.id].progress.names?.length
-                                  : metadataCache[transfer.id]?.names?.length || 0) > 3
+                                (progressData[transfer.id].progress?.type ===
+                                'metadata'
+                                  ? progressData[transfer.id].progress.names
+                                      ?.length
+                                  : metadataCache[transfer.id]?.names?.length ||
+                                    0) > 3
                               "
                               class="text-[10px] opacity-50"
                             >
                               +{{
-                                (progressData[transfer.id].progress?.type === 'metadata'
-                                  ? progressData[transfer.id].progress.names?.length
-                                  : metadataCache[transfer.id]?.names?.length || 0) - 3
+                                (progressData[transfer.id].progress?.type ===
+                                "metadata"
+                                  ? progressData[transfer.id].progress.names
+                                      ?.length
+                                  : metadataCache[transfer.id]?.names?.length ||
+                                    0) - 3
                               }}
                               more...
                             </div>
@@ -769,13 +778,13 @@ function getProgressValue(id: string) {
                       <div class="text-[10px] text-right font-mono opacity-50">
                         {{
                           formatFileSize(
-                            progressData[transfer.id].progress.offset
+                            progressData[transfer.id].progress.offset,
                           )
                         }}
                         /
                         {{
                           formatFileSize(
-                            progressData[transfer.id].progress.total
+                            progressData[transfer.id].progress.total,
                           )
                         }}
                       </div>
@@ -823,8 +832,18 @@ function getProgressValue(id: string) {
 
 <style>
 :root {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    "Open Sans",
+    "Helvetica Neue",
+    sans-serif;
 }
 
 /* Base fade-in for entire app */
