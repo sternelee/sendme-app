@@ -13,6 +13,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "preserve",
+    "jsxImportSource": "vue-jsx-vapor",
 
     "baseUrl": ".",
     "paths": {
