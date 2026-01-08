@@ -555,8 +555,12 @@ async fn start_nearby_discovery(
         return Err("Nearby discovery already running".to_string());
     }
 
-    // Create new discovery instance
-    let discovery = sendme_lib::nearby::NearbyDiscovery::new()
+    // Get hostname using tauri-plugin-os for cross-platform compatibility
+    use tauri_plugin_os::hostname;
+    let hostname = hostname();
+
+    // Create new discovery instance with the hostname
+    let discovery = sendme_lib::nearby::NearbyDiscovery::new_with_hostname(hostname)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -647,18 +651,10 @@ async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyDiscovery>) -> Res
 /// Get the local hostname
 #[tauri::command]
 fn get_hostname() -> Result<String, String> {
-    // Get hostname using tauri-plugin-os
-    // Note: this uses the sync API
-    use std::process::Command;
+    // Get hostname using tauri-plugin-os for cross-platform compatibility
+    use tauri_plugin_os::hostname;
 
-    let output = Command::new("hostname")
-        .output()
-        .map_err(|e| format!("Failed to get hostname: {}", e))?;
-
-    let hostname = String::from_utf8(output.stdout)
-        .map_err(|e| format!("Invalid hostname: {}", e))?
-        .trim()
-        .to_string();
+    let hostname = hostname();
 
     if hostname.is_empty() {
         // Fallback to a default name
