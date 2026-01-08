@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "vue-sonner/style.css";
 import { ref, onMounted, onUnmounted } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -18,6 +19,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
+import { Toaster } from "@/components/ui/sonner";
 import {
   Loader2,
   FolderOpen,
@@ -34,8 +36,10 @@ import {
   FileArchive,
   ChevronRight,
   Monitor,
+  Sun,
+  Moon,
 } from "lucide-vue-next";
-import { toast, Toaster } from "vue-sonner";
+import { toast } from "vue-sonner";
 
 // Types
 interface Transfer {
@@ -76,6 +80,38 @@ const progressData = ref<Record<string, ProgressData>>({});
 const metadataCache = ref<Record<string, any>>({});
 const unlisten = ref<(() => void) | null>(null);
 
+// Theme state
+type Theme = "light" | "dark" | "system";
+const theme = ref<Theme>("system");
+
+function setTheme(newTheme: Theme) {
+  theme.value = newTheme;
+  localStorage.setItem("theme", newTheme);
+
+  const root = window.document.documentElement;
+  root.classList.remove("light", "dark");
+
+  if (newTheme === "system") {
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
+      .matches
+      ? "dark"
+      : "light";
+    root.classList.add(systemTheme);
+  } else {
+    root.classList.add(newTheme);
+  }
+}
+
+function toggleTheme() {
+  const themes: Theme[] = ["light", "dark", "system"];
+  const currentIndex = themes.indexOf(theme.value);
+  const nextTheme = themes[(currentIndex + 1) % themes.length];
+  setTheme(nextTheme);
+
+  const labels = { light: "Light", dark: "Dark", system: "System" };
+  toast.success(`Theme changed to ${labels[nextTheme]}`);
+}
+
 // Ticket types
 const ticketTypes = [
   {
@@ -93,7 +129,13 @@ const ticketTypes = [
 ];
 
 onMounted(async () => {
+  // Initialize theme from localStorage or default to system
+  const savedTheme = localStorage.getItem("theme") as Theme | null;
+  setTheme(savedTheme || "system");
+
+  // Load transfers
   await loadTransfers();
+
   // Listen for progress events
   unlisten.value = await listen<ProgressUpdate>("progress", (event) => {
     const { transfer_id, ...data } = event.payload.data;
@@ -314,7 +356,7 @@ function getProgressValue(id: string) {
 </script>
 
 <template>
-  <Toaster position="top-center" rich-colors />
+  <Toaster />
   <div
     class="fixed inset-0 pointer-events-none overflow-hidden blur-[120px] opacity-20 dark:opacity-40"
   >
@@ -332,15 +374,28 @@ function getProgressValue(id: string) {
       class="w-full max-w-2xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000"
     >
       <!-- Header -->
-      <header class="text-center space-y-2 mt-6 md:mt-2">
-        <h1
-          class="text-4xl sm:text-5xl font-extrabold tracking-tighter text-slate-900 dark:text-slate-50 text-glow"
+      <header class="relative mt-6 md:mt-2">
+        <div class="text-center space-y-2">
+          <h1
+            class="text-4xl sm:text-5xl font-extrabold tracking-tighter text-slate-900 dark:text-slate-50 text-glow"
+          >
+            Sendme
+          </h1>
+          <p
+            class="text-slate-500 dark:text-slate-400 font-medium tracking-wide"
+          >
+            PEER-TO-PEER • POWERED BY IROH
+          </p>
+        </div>
+        <button
+          @click="toggleTheme"
+          class="absolute top-0 right-0 p-2 rounded-xl hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors"
+          :title="`Current theme: ${theme}`"
         >
-          Sendme
-        </h1>
-        <p class="text-slate-500 dark:text-slate-400 font-medium tracking-wide">
-          PEER-TO-PEER • POWERED BY IROH
-        </p>
+          <Sun v-if="theme === 'light'" class="w-5 h-5 text-slate-700" />
+          <Moon v-else-if="theme === 'dark'" class="w-5 h-5 text-slate-300" />
+          <Monitor v-else class="w-5 h-5 text-slate-700 dark:text-slate-300" />
+        </button>
       </header>
 
       <!-- Main Container -->

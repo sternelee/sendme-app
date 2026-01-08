@@ -125,3 +125,14 @@
 ::-webkit-scrollbar-thumb {
   @apply bg-muted-foreground/20 hover:bg-muted-foreground/40 rounded-full transition-colors;
 }
+
+/* Ensure body doesn't reserve space */
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  margin: 0;
+  padding: 0;
+}
