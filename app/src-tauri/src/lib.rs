@@ -110,10 +110,19 @@ async fn send_file(
         _ => Err("Invalid ticket type".to_string()),
     }?;
 
+    // Get temp directory for macOS sandbox compatibility
+    let temp_dir = app
+        .path()
+        .temp_dir()
+        .map_err(|e| format!("Failed to get temp directory: {}", e))?;
+
     let args = SendArgs {
         path: std::path::PathBuf::from(&request.path),
         ticket_type,
-        common: CommonConfig::default(),
+        common: CommonConfig {
+            temp_dir: Some(temp_dir),
+            ..Default::default()
+        },
     };
 
     // Create transfer info
@@ -252,6 +261,12 @@ async fn receive_file(
         .parse()
         .map_err(|e| format!("Invalid ticket: {}", e))?;
 
+    // Get temp directory for macOS sandbox compatibility
+    let temp_dir = app
+        .path()
+        .temp_dir()
+        .map_err(|e| format!("Failed to get temp directory: {}", e))?;
+
     let args = ReceiveArgs {
         ticket,
         common: CommonConfig {
@@ -260,6 +275,7 @@ async fn receive_file(
             show_secret: false,
             magic_ipv4_addr: None,
             magic_ipv6_addr: None,
+            temp_dir: Some(temp_dir),
         },
     };
 

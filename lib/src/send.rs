@@ -64,8 +64,22 @@ async fn send_internal(
 
     // Create temporary directory for blob storage
     let suffix = rand::rng().random::<[u8; 16]>();
-    let cwd = std::env::current_dir()?;
-    let blobs_data_dir = cwd.join(format!(
+
+    // Use custom temp_dir if provided (required for macOS sandbox), otherwise use cwd
+    let temp_dir_for_borrow = args
+        .common
+        .temp_dir
+        .as_ref()
+        .map(std::path::PathBuf::as_path);
+    let base_dir = match temp_dir_for_borrow {
+        Some(path) => path,
+        None => {
+            // Store cwd to avoid temporary value issue
+            &*std::path::PathBuf::from(std::env::current_dir()?)
+        }
+    };
+
+    let blobs_data_dir = base_dir.join(format!(
         ".sendme-send-{}",
         data_encoding::HEXLOWER.encode(&suffix)
     ));
@@ -73,12 +87,16 @@ async fn send_internal(
     if blobs_data_dir.exists() {
         anyhow::bail!(
             "can not share twice from the same directory: {}",
-            cwd.display()
+            base_dir.display()
         );
     }
 
-    if cwd.join(&args.path) == cwd {
-        anyhow::bail!("can not share from the current directory");
+    // Check if trying to share from current directory
+    if args.common.temp_dir.is_none() {
+        let cwd = std::env::current_dir()?;
+        if cwd.join(&args.path) == cwd {
+            anyhow::bail!("can not share from the current directory");
+        }
     }
 
     let path = args.path;
