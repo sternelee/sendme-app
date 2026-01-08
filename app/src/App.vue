@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import "vue-sonner/style.css";
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted, onUnmounted, computed } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -81,6 +81,31 @@ const isReceiving = ref(false);
 const progressData = ref<Record<string, ProgressData>>({});
 const metadataCache = ref<Record<string, any>>({});
 const unlisten = ref<(() => void) | null>(null);
+const currentReceivingId = ref<string | null>(null);
+
+// Computed properties for receive progress
+const receiveProgress = computed(() => {
+  if (!currentReceivingId.value) {
+    return 0;
+  }
+  const data = progressData.value[currentReceivingId.value];
+  if (!data?.progress) {
+    return 0;
+  }
+
+  // When downloading, show actual progress
+  if (data.progress.type === "downloading") {
+    return (data.progress.offset / data.progress.total) * 100;
+  }
+
+  // When completed, show 100%
+  if (data.progress.type === "completed") {
+    return 100;
+  }
+
+  // For other states (metadata, connecting, etc.), show 0
+  return 0;
+});
 
 // Theme state
 type Theme = "light" | "dark" | "system";
@@ -143,6 +168,24 @@ onMounted(async () => {
     const { transfer_id, ...data } = event.payload.data;
     progressData.value[transfer_id] = { transfer_id, ...data };
 
+    // Auto-track receiving transfers
+    if (!currentReceivingId.value && data.progress?.type === "metadata") {
+      currentReceivingId.value = transfer_id;
+    }
+
+    // Clear currentReceivingId when download completes
+    if (
+      currentReceivingId.value === transfer_id &&
+      data.progress?.type === "completed"
+    ) {
+      // Keep showing for a moment then clear
+      setTimeout(() => {
+        if (currentReceivingId.value === transfer_id) {
+          currentReceivingId.value = null;
+        }
+      }, 2000);
+    }
+
     // Cache metadata when it arrives
     if (data.progress?.type === "metadata") {
       metadataCache.value[transfer_id] = data.progress;
@@ -196,20 +239,30 @@ async function handleReceive() {
   }
 
   isReceiving.value = true;
+  currentReceivingId.value = null;
 
   try {
     await receive_file({
       ticket: receiveTicket.value,
       output_dir: receiveOutputDir.value || undefined,
     });
+    // currentReceivingId will be set by progress event listener
     await loadTransfers();
     receiveTicket.value = "";
     toast.success("Receive operation started");
   } catch (e) {
     console.error("Receive failed:", e);
     toast.error(`Receive failed: ${e}`);
+    currentReceivingId.value = null;
   } finally {
     isReceiving.value = false;
+  }
+}
+
+async function handleCancelReceive() {
+  if (currentReceivingId.value) {
+    await handleCancel(currentReceivingId.value);
+    currentReceivingId.value = null;
   }
 }
 
@@ -649,25 +702,43 @@ function getProgressValue(id: string) {
                 </div>
 
                 <div class="relative group">
-                  <div
-                    v-if="isReceiving"
-                    class="absolute -inset-1.5 rounded-[2rem] overflow-hidden opacity-60 blur-md pointer-events-none"
-                  >
-                    <div
-                      class="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent,var(--primary),#3b82f6,#8b5cf6,var(--primary))] animate-[spin_3s_linear_infinite]"
-                    ></div>
-                  </div>
                   <Button
-                    @click="handleReceive"
-                    :disabled="!receiveTicket || isReceiving"
-                    class="relative w-full h-14 text-lg font-bold rounded-2xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 animate-in fade-in"
+                    @click="
+                      currentReceivingId
+                        ? handleCancelReceive()
+                        : handleReceive()
+                    "
+                    :disabled="
+                      !receiveTicket || (isReceiving && !currentReceivingId)
+                    "
+                    class="relative w-full h-14 text-lg font-bold rounded-2xl overflow-hidden transition-all"
+                    :class="
+                      currentReceivingId
+                        ? 'bg-slate-900/90 dark:bg-slate-800/90 hover:bg-red-500/20'
+                        : 'bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20'
+                    "
                   >
-                    <Loader2
-                      v-if="isReceiving"
-                      class="mr-2 h-5 w-5 animate-spin"
-                    />
-                    <Download v-else class="mr-2 h-5 w-5" />
-                    {{ isReceiving ? "Connecting..." : "Connect & Receive" }}
+                    <template v-if="currentReceivingId">
+                      <span
+                        class="relative z-10 group-hover:opacity-0 transition-opacity"
+                      >
+                        {{ Math.round(receiveProgress) }}%
+                      </span>
+                      <!-- Hover overlay for cancel hint -->
+                      <div
+                        class="absolute inset-0 flex items-center justify-center bg-red-500/90 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20"
+                      >
+                        <span class="flex items-center"> Click to Cancel </span>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <Loader2
+                        v-if="isReceiving"
+                        class="mr-2 h-5 w-5 animate-spin"
+                      />
+                      <Download v-else class="mr-2 h-5 w-5" />
+                      {{ isReceiving ? "Connecting..." : "Connect & Receive" }}
+                    </template>
                   </Button>
                 </div>
               </div>
@@ -728,7 +799,10 @@ function getProgressValue(id: string) {
                       : 'bg-green-500/10 text-green-500'
                   "
                 >
-                  <component :is="getTransferFileIcon(transfer)" class="w-6 h-6" />
+                  <component
+                    :is="getTransferFileIcon(transfer)"
+                    class="w-6 h-6"
+                  />
                 </div>
 
                 <div class="flex-1 min-w-0 space-y-1">
@@ -1014,6 +1088,15 @@ function getProgressValue(id: string) {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
   }
 }
 
