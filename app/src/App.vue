@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import "vue-sonner/style.css";
 import { ref, onMounted, onUnmounted, computed } from "vue";
+import { useLocalStorage } from "@vueuse/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -74,7 +75,7 @@ const isSending = ref(false);
 
 // Receive state
 const receiveTicket = ref("");
-const receiveOutputDir = ref("");
+const receiveOutputDir = useLocalStorage("receive-output-dir", "");
 const isReceiving = ref(false);
 
 // Progress state
