@@ -5,6 +5,7 @@ import {
   get_nearby_devices,
   stop_nearby_discovery,
   get_hostname,
+  get_device_model,
   type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
@@ -27,6 +28,7 @@ const isScanning = ref(false);
 const devices = ref<NearbyDevice[]>([]);
 const localNodeId = ref<string>("");
 const localHostname = ref<string>("");
+const deviceModel = ref<string>("");
 const refreshInterval = ref<number | null>(null);
 const selectedPath = ref<string>("");
 
@@ -42,6 +44,7 @@ const availableDevices = computed(() => {
 onMounted(async () => {
   await startDiscovery();
   await loadLocalHostname();
+  await loadDeviceModel();
   await loadSystemInfo();
 });
 
@@ -54,6 +57,14 @@ async function loadLocalHostname() {
     localHostname.value = await get_hostname();
   } catch (e) {
     console.error("Failed to get hostname:", e);
+  }
+}
+
+async function loadDeviceModel() {
+  try {
+    deviceModel.value = await get_device_model();
+  } catch (e) {
+    console.error("Failed to get device model:", e);
   }
 }
 
@@ -366,11 +377,11 @@ function getDisplayName(path: string): string {
     </div>
 
     <!-- Local Device Info -->
-    <div v-if="localNodeId || localHostname" class="text-center py-4 space-y-1">
+    <div v-if="localNodeId || deviceModel || localHostname" class="text-center py-4 space-y-1">
       <p class="text-xs text-slate-500 font-medium">
         Your Device:
         <span class="text-slate-700 dark:text-slate-300 font-semibold">{{
-          localHostname || "Unknown"
+          deviceModel || localHostname || "Unknown"
         }}</span>
       </p>
       <p class="text-[10px] text-slate-500/60 font-mono">
@@ -471,6 +482,14 @@ function getDisplayName(path: string): string {
             </div>
             <div class="font-mono text-slate-600 dark:text-slate-500">
               {{ systemInfo.eol || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold text-primary dark:text-primary">
+              deviceModel
+            </div>
+            <div class="font-mono text-primary dark:text-primary break-all">
+              {{ deviceModel || "-" }}
             </div>
           </div>
         </div>

@@ -105,3 +105,10 @@ export async function stop_nearby_discovery(): Promise<void> {
 export function get_hostname(): Promise<string> {
   return invoke("get_hostname");
 }
+
+/**
+ * Get the device model (mobile-specific, returns hostname on desktop)
+ */
+export async function get_device_model(): Promise<string> {
+  return await invoke("get_device_model");
+}
