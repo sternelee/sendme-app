@@ -6,6 +6,20 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+// Nearby discovery types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NearbyDevice {
+    pub node_id: String,
+    pub name: Option<String>,
+    pub display_name: String,
+    pub addresses: Vec<String>,
+    pub ip_addresses: Vec<String>,
+    pub last_seen: i64,
+    pub available: bool,
+}
+
+type NearbyDiscovery = Arc<RwLock<Option<sendme_lib::nearby::NearbyDiscovery>>>;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SendFileRequest {
     pub path: String,
@@ -45,8 +59,10 @@ struct TransferState {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
+    let nearby_discovery: NearbyDiscovery = Arc::new(RwLock::new(None));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -56,6 +72,7 @@ pub fn run() {
         .setup(move |app| {
             // Store transfers in app state
             app.manage(transfers.clone());
+            app.manage(nearby_discovery.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -64,7 +81,11 @@ pub fn run() {
             cancel_transfer,
             get_transfers,
             get_transfer_status,
-            clear_transfers
+            clear_transfers,
+            start_nearby_discovery,
+            get_nearby_devices,
+            stop_nearby_discovery,
+            get_hostname
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -504,4 +525,129 @@ async fn clear_transfers(transfers: tauri::State<'_, Transfers>) -> Result<(), S
     }
 
     Ok(())
+}
+
+/// Start nearby device discovery
+#[tauri::command]
+async fn start_nearby_discovery(
+    nearby: tauri::State<'_, NearbyDiscovery>,
+) -> Result<String, String> {
+    let mut nearby_guard = nearby.write().await;
+
+    // Check if already running
+    if nearby_guard.is_some() {
+        return Err("Nearby discovery already running".to_string());
+    }
+
+    // Create new discovery instance
+    let discovery = sendme_lib::nearby::NearbyDiscovery::new()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let node_id = discovery.node_id().to_string();
+
+    // Store discovery instance
+    *nearby_guard = Some(discovery);
+
+    Ok(node_id)
+}
+
+/// Get list of nearby devices
+#[tauri::command]
+async fn get_nearby_devices(
+    nearby: tauri::State<'_, NearbyDiscovery>,
+) -> Result<Vec<NearbyDevice>, String> {
+    let mut nearby_guard = nearby.write().await;
+
+    let discovery = nearby_guard
+        .as_mut()
+        .ok_or("Nearby discovery not running".to_string())?;
+
+    // Poll for updates
+    let _ = discovery.poll().await;
+
+    let devices = discovery.recent_devices(std::time::Duration::from_secs(600)); // 10 minutes
+
+    // Convert to frontend format with friendly display names
+    let result = devices
+        .into_iter()
+        .map(|d| {
+            // Extract IP addresses from the debug-formatted transport addresses
+            let ip_addresses: Vec<String> = d
+                .addresses
+                .iter()
+                .filter_map(|addr| {
+                    // Parse "Ip(127.0.0.1:8080)" format
+                    if addr.starts_with("Ip(") {
+                        let inner = &addr[3..addr.len() - 1];
+                        // Split by ':' to separate IP from port
+                        inner.split(':').next().map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Create a friendly display name
+            let display_name = if let Some(ref name) = d.name {
+                name.clone()
+            } else if !ip_addresses.is_empty() {
+                // Use first IP address as identifier
+                ip_addresses[0].clone()
+            } else {
+                // Fallback to short node ID
+                format!("...{}", &d.node_id[d.node_id.len().saturating_sub(8)..])
+            };
+
+            NearbyDevice {
+                node_id: d.node_id,
+                name: d.name,
+                display_name,
+                addresses: d.addresses,
+                ip_addresses,
+                last_seen: d.last_seen,
+                available: d.available,
+            }
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// Stop nearby device discovery
+#[tauri::command]
+async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyDiscovery>) -> Result<(), String> {
+    let mut nearby_guard = nearby.write().await;
+
+    if nearby_guard.is_none() {
+        return Err("Nearby discovery not running".to_string());
+    }
+
+    *nearby_guard = None;
+
+    Ok(())
+}
+
+/// Get the local hostname
+#[tauri::command]
+fn get_hostname() -> Result<String, String> {
+    // Get hostname using tauri-plugin-os
+    // Note: this uses the sync API
+    use std::process::Command;
+
+    let output = Command::new("hostname")
+        .output()
+        .map_err(|e| format!("Failed to get hostname: {}", e))?;
+
+    let hostname = String::from_utf8(output.stdout)
+        .map_err(|e| format!("Invalid hostname: {}", e))?
+        .trim()
+        .to_string();
+
+    if hostname.is_empty() {
+        // Fallback to a default name
+        Ok("My Device".to_string())
+    } else {
+        Ok(hostname)
+    }
 }

@@ -24,6 +24,16 @@ export interface ProgressUpdate {
   data: any;
 }
 
+export interface NearbyDevice {
+  node_id: string;
+  name: string | null;
+  display_name: string;
+  addresses: string[];
+  ip_addresses: string[];
+  last_seen: number;
+  available: boolean;
+}
+
 /**
  * Send a file or directory and return the ticket
  */
@@ -66,4 +76,32 @@ export async function get_transfer_status(id: string): Promise<string> {
  */
 export async function clear_transfers(): Promise<void> {
   return await invoke("clear_transfers");
+}
+
+/**
+ * Start nearby device discovery, returns the local node ID
+ */
+export async function start_nearby_discovery(): Promise<string> {
+  return await invoke("start_nearby_discovery");
+}
+
+/**
+ * Get list of nearby devices
+ */
+export async function get_nearby_devices(): Promise<NearbyDevice[]> {
+  return await invoke("get_nearby_devices");
+}
+
+/**
+ * Stop nearby device discovery
+ */
+export async function stop_nearby_discovery(): Promise<void> {
+  return await invoke("stop_nearby_discovery");
+}
+
+/**
+ * Get the local hostname
+ */
+export function get_hostname(): Promise<string> {
+  return invoke("get_hostname");
 }

@@ -10,6 +10,7 @@ import {
   cancel_transfer,
   get_transfers,
   clear_transfers,
+  type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { Toaster } from "@/components/ui/sonner";
+import NearbyDevices from "@/components/NearbyDevices.vue";
 import {
   Loader2,
   FolderOpen,
@@ -41,6 +43,7 @@ import {
   Sun,
   Moon,
   Trash2,
+  Wifi,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 
@@ -72,6 +75,7 @@ const sendPath = ref("");
 const sendTicketType = ref("relay_and_addresses");
 const sendTicket = ref("");
 const isSending = ref(false);
+const selectedNearbyDevice = ref<NearbyDevice | null>(null);
 
 // Receive state
 const receiveTicket = ref("");
@@ -232,6 +236,14 @@ async function handleSend() {
   } finally {
     isSending.value = false;
   }
+}
+
+async function handleSelectNearbyDevice(device: NearbyDevice) {
+  selectedNearbyDevice.value = device;
+  // Switch to send tab and set ticket type to addresses (local-only)
+  sendTicketType.value = "addresses";
+  activeTab.value = "send";
+  toast.success(`Selected device: ${device.display_name}`);
 }
 
 async function handleReceive() {
@@ -510,6 +522,13 @@ function getProgressValue(id: string) {
               Send
             </TabsTrigger>
             <TabsTrigger
+              value="nearby"
+              class="flex-1 py-3 text-sm font-semibold rounded-xl transition-all data-[state=active]:bg-white/10 data-[state=active]:text-secondary-foreground dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
+            >
+              <Wifi class="w-4 h-4 mr-2" />
+              Nearby
+            </TabsTrigger>
+            <TabsTrigger
               value="receive"
               class="flex-1 py-3 text-sm font-semibold rounded-xl transition-all data-[state=active]:bg-white/10 data-[state=active]:text-secondary-foreground dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
             >
@@ -743,6 +762,11 @@ function getProgressValue(id: string) {
                   </Button>
                 </div>
               </div>
+            </TabsContent>
+
+            <!-- Nearby Tab -->
+            <TabsContent value="nearby" class="space-y-6 mt-0 outline-none">
+              <NearbyDevices @select-device="handleSelectNearbyDevice" />
             </TabsContent>
           </div>
         </Tabs>

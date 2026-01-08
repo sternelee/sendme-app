@@ -7,12 +7,14 @@ use anyhow::Context;
 
 pub mod export;
 pub mod import;
+pub mod nearby;
 pub mod progress;
 pub mod receive;
 pub mod send;
 pub mod types;
 
 pub use import::get_export_path;
+pub use nearby::NearbyDevice;
 pub use progress::*;
 pub use types::*;
 

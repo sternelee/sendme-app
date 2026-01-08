@@ -3,6 +3,6 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": ["main"],
-  "permissions": ["dialog:default", "core:default"]
+  "permissions": ["os:default", "dialog:default", "core:default"]
 }
 

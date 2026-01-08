@@ -3,11 +3,14 @@
   "platforms": ["android", "iOS"],
   "windows": ["main"],
   "permissions": [
-    "barcode-scanner:default",
+    "core:default",
+    "os:default",
     "notification:default",
     "clipboard-manager:default",
-    "os:default",
-    "http:default"
+    "http:default",
+    "dialog:default",
+    "fs:default",
+    "barcode-scanner:default"
   ]
 }
 

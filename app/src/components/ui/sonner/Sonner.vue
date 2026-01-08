@@ -5,6 +5,9 @@ import { Toaster as Sonner } from "vue-sonner"
 import { cn } from "@/lib/utils"
 
 const props = defineProps<ToasterProps>()
+
+// Extract class from props for custom styling
+const { class: customClass, position, richColors, expand, ...otherProps } = props
 </script>
 
 <template>
@@ -12,14 +15,14 @@ const props = defineProps<ToasterProps>()
     position="top-right"
     rich-colors
     expand
-    :class="cn('toaster group', props.class)"
+    :class="cn('toaster group', customClass)"
     :style="{
       '--normal-bg': 'var(--popover)',
       '--normal-text': 'var(--popover-foreground)',
       '--normal-border': 'var(--border)',
       '--border-radius': 'var(--radius)',
     }"
-    v-bind="props"
+    v-bind="otherProps"
   >
     <template #success-icon>
       <CircleCheckIcon class="size-4" />
