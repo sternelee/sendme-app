@@ -27,9 +27,7 @@ export interface ProgressUpdate {
 /**
  * Send a file or directory and return the ticket
  */
-export async function send_file(
-  request: SendFileRequest
-): Promise<string> {
+export async function send_file(request: SendFileRequest): Promise<string> {
   return await invoke("send_file", { request });
 }
 
@@ -37,7 +35,7 @@ export async function send_file(
  * Receive a file or directory using a ticket
  */
 export async function receive_file(
-  request: ReceiveFileRequest
+  request: ReceiveFileRequest,
 ): Promise<string> {
   return await invoke("receive_file", { request });
 }
@@ -61,4 +59,11 @@ export async function get_transfers(): Promise<TransferInfo[]> {
  */
 export async function get_transfer_status(id: string): Promise<string> {
   return await invoke("get_transfer_status", { id });
+}
+
+/**
+ * Clear all transfers and clean up temporary directories
+ */
+export async function clear_transfers(): Promise<void> {
+  return await invoke("clear_transfers");
 }

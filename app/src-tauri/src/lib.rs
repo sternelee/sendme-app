@@ -63,7 +63,8 @@ pub fn run() {
             receive_file,
             cancel_transfer,
             get_transfers,
-            get_transfer_status
+            get_transfer_status,
+            clear_transfers
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -474,4 +475,33 @@ fn serialize_download_progress(progress: &DownloadProgress) -> serde_json::Value
             serde_json::json!({"type": "completed"})
         }
     }
+}
+
+#[tauri::command]
+async fn clear_transfers(transfers: tauri::State<'_, Transfers>) -> Result<(), String> {
+    // Cancel all active transfers
+    let mut transfers_guard = transfers.write().await;
+    for (_id, mut state) in transfers_guard.drain() {
+        // Send abort signal
+        if let Some(abort_tx) = state.abort_tx.take() {
+            let _ = abort_tx.send(());
+        }
+    }
+    drop(transfers_guard);
+
+    // Clean up temporary sendme directories
+    let temp_dirs = std::fs::read_dir(".")
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(".sendme-"))
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+
+    for path in temp_dirs {
+        tracing::info!("Removing temporary directory: {:?}", path);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    Ok(())
 }

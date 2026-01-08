@@ -8,6 +8,7 @@ import {
   receive_file,
   cancel_transfer,
   get_transfers,
+  clear_transfers,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,7 @@ import {
   Monitor,
   Sun,
   Moon,
+  Trash2,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 
@@ -156,7 +158,9 @@ onUnmounted(() => {
 
 async function loadTransfers() {
   try {
-    transfers.value = await get_transfers();
+    const loaded = await get_transfers();
+    // Sort by created_at descending (newest first)
+    transfers.value = loaded.sort((a, b) => b.created_at - a.created_at);
   } catch (e) {
     console.error("Failed to load transfers:", e);
   }
@@ -217,6 +221,17 @@ async function handleCancel(id: string) {
   } catch (e) {
     console.error("Cancel failed:", e);
     toast.error("Failed to cancel transfer");
+  }
+}
+
+async function handleClearTransfers() {
+  try {
+    await clear_transfers();
+    transfers.value = [];
+    toast.success("History cleared successfully");
+  } catch (e) {
+    console.error("Clear failed:", e);
+    toast.error("Failed to clear history");
   }
 }
 
@@ -336,6 +351,23 @@ function getDisplayName(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
+function getTransferDisplayName(transfer: Transfer): string {
+  // For receive transfers, try to get filename from metadata
+  if (
+    transfer.transfer_type === "receive" &&
+    metadataCache.value[transfer.id]?.names?.length > 0
+  ) {
+    const names = metadataCache.value[transfer.id].names;
+    if (names.length === 1) {
+      return names[0];
+    }
+    // Multiple files - show first name with count
+    return `${names[0]} (+${names.length - 1} more)`;
+  }
+  // For send transfers or when metadata unavailable, use path
+  return getDisplayName(transfer.path);
+}
+
 function getFileIcon(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase();
   if (["jpg", "jpeg", "png", "gif", "svg", "webp"].includes(ext!))
@@ -344,6 +376,18 @@ function getFileIcon(filename: string) {
   if (["ts", "js", "py", "rs", "go", "html", "css", "vue"].includes(ext!))
     return FileCode;
   return FileText;
+}
+
+function getTransferFileIcon(transfer: Transfer) {
+  // For receive transfers with metadata, use first file name
+  if (
+    transfer.transfer_type === "receive" &&
+    metadataCache.value[transfer.id]?.names?.length > 0
+  ) {
+    return getFileIcon(metadataCache.value[transfer.id].names[0]);
+  }
+  // For send transfers, use path
+  return getFileIcon(transfer.path);
 }
 
 function getProgressValue(id: string) {
@@ -402,18 +446,18 @@ function getProgressValue(id: string) {
       <div class="glass rounded-2xl sm:rounded-3xl overflow-hidden">
         <Tabs v-model="activeTab" class="w-full">
           <TabsList
-            class="flex w-full bg-transparent p-2 gap-2 border-b border-white/10"
+            class="flex w-full h-auto bg-transparent p-2 gap-2 border-b border-white/10"
           >
             <TabsTrigger
               value="send"
-              class="flex-1 py-4 text-sm font-semibold rounded-2xl transition-all data-[state=active]:bg-white/10 data-[state=active]:text-secondary-foreground dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
+              class="flex-1 py-3 text-sm font-semibold rounded-xl transition-all data-[state=active]:bg-white/10 data-[state=active]:text-secondary-foreground dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
             >
               <Send class="w-4 h-4 mr-2" />
               Send
             </TabsTrigger>
             <TabsTrigger
               value="receive"
-              class="flex-1 py-4 text-sm font-semibold rounded-2xl transition-all data-[state=active]:bg-white/10 data-[state=active]:text-secondary-foreground dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
+              class="flex-1 py-3 text-sm font-semibold rounded-xl transition-all data-[state=active]:bg-white/10 data-[state=active]:text-secondary-foreground dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
             >
               <Download class="w-4 h-4 mr-2" />
               Receive
@@ -644,13 +688,23 @@ function getProgressValue(id: string) {
               >{{ transfers.length }}</span
             >
           </h2>
-          <button
-            @click="loadTransfers"
-            class="text-xs font-semibold text-primary hover:underline flex items-center"
-          >
-            <RefreshCw class="w-3 h-3 mr-1" />
-            Sync Results
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              @click="loadTransfers"
+              class="text-xs font-semibold text-primary hover:underline flex items-center"
+            >
+              <RefreshCw class="w-3 h-3 mr-1" />
+              Sync
+            </button>
+            <button
+              v-if="transfers.length > 0"
+              @click="handleClearTransfers"
+              class="text-xs font-semibold text-red-500 hover:text-red-600 hover:underline flex items-center"
+            >
+              <Trash2 class="w-3 h-3 mr-1" />
+              Clear
+            </button>
+          </div>
         </div>
 
         <div class="space-y-3">
@@ -674,7 +728,7 @@ function getProgressValue(id: string) {
                       : 'bg-green-500/10 text-green-500'
                   "
                 >
-                  <component :is="getFileIcon(transfer.path)" class="w-6 h-6" />
+                  <component :is="getTransferFileIcon(transfer)" class="w-6 h-6" />
                 </div>
 
                 <div class="flex-1 min-w-0 space-y-1">
@@ -682,7 +736,7 @@ function getProgressValue(id: string) {
                     <h4
                       class="font-bold text-slate-900 dark:text-slate-100 truncate pr-4"
                     >
-                      {{ getDisplayName(transfer.path) }}
+                      {{ getTransferDisplayName(transfer) }}
                     </h4>
                     <span
                       class="text-[10px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-md"
@@ -694,6 +748,31 @@ function getProgressValue(id: string) {
                     >
                       {{ transfer.transfer_type }}
                     </span>
+                  </div>
+
+                  <div
+                    class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium"
+                  >
+                    <div
+                      class="flex items-center gap-1"
+                      :class="getTransferStatus(transfer.status).color"
+                    >
+                      <component
+                        :is="getTransferStatus(transfer.status).icon"
+                        class="w-3 h-3"
+                        :class="{
+                          'animate-spin':
+                            getTransferStatus(transfer.status).pulse &&
+                            transfer.status.includes('RefreshCw'),
+                        }"
+                      />
+                      {{ getTransferStatus(transfer.status).label }}
+                    </div>
+                    <span class="opacity-20 hidden sm:inline">•</span>
+                    <div class="flex items-center gap-1">
+                      <Monitor class="w-3 h-3 opacity-50" />
+                      {{ formatDate(transfer.created_at) }}
+                    </div>
                   </div>
 
                   <div
