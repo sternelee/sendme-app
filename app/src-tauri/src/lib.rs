@@ -86,7 +86,8 @@ pub fn run() {
             start_nearby_discovery,
             get_nearby_devices,
             stop_nearby_discovery,
-            get_hostname
+            get_hostname,
+            get_device_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -556,12 +557,11 @@ async fn start_nearby_discovery(
         return Err("Nearby discovery already running".to_string());
     }
 
-    // Get hostname using tauri-plugin-os for cross-platform compatibility
-    use tauri_plugin_os::hostname;
-    let hostname = hostname();
+    // Get device model (hostname on desktop, device model on mobile)
+    let device_name = get_device_model()?;
 
-    // Create new discovery instance with the hostname
-    let discovery = sendme_lib::nearby::NearbyDiscovery::new_with_hostname(hostname)
+    // Create new discovery instance with the device name
+    let discovery = sendme_lib::nearby::NearbyDiscovery::new_with_hostname(device_name)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -662,5 +662,159 @@ fn get_hostname() -> Result<String, String> {
         Ok("My Device".to_string())
     } else {
         Ok(hostname)
+    }
+}
+
+/// Get the device model (mobile-specific)
+#[tauri::command]
+fn get_device_model() -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JObject;
+        use jni::signature::JavaType;
+
+        let ctx = ndk_context::android_context();
+        let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
+            .map_err(|e| format!("Failed to get VM: {}", e))?;
+        let mut env = vm
+            .attach_current_thread()
+            .map_err(|e| format!("Failed to attach to VM: {}", e))?;
+
+        // Get Build.MODEL
+        let build_class = env
+            .find_class("android/os/Build")
+            .map_err(|e| format!("Failed to find Build class: {}", e))?;
+        let model_field = env
+            .get_static_field_id(&build_class, "MODEL", "Ljava/lang/String;")
+            .map_err(|e| format!("Failed to get MODEL field: {}", e))?;
+        let model_obj = env
+            .get_static_field_unchecked(
+                &build_class,
+                model_field,
+                JavaType::Object("java/lang/String".to_string()),
+            )
+            .map_err(|e| format!("Failed to get MODEL value: {}", e))?;
+
+        // Get Build.MANUFACTURER
+        let manufacturer_field = env
+            .get_static_field_id(&build_class, "MANUFACTURER", "Ljava/lang/String;")
+            .map_err(|e| format!("Failed to get MANUFACTURER field: {}", e))?;
+        let manufacturer_obj = env
+            .get_static_field_unchecked(
+                &build_class,
+                manufacturer_field,
+                JavaType::Object("java/lang/String".to_string()),
+            )
+            .map_err(|e| format!("Failed to get MANUFACTURER value: {}", e))?;
+
+        // Get the JObject values
+        let model_jobj: JObject = model_obj.l().map_err(|e| format!("Failed to get model object: {}", e))?;
+        let manufacturer_jobj: JObject = manufacturer_obj.l().map_err(|e| format!("Failed to get manufacturer object: {}", e))?;
+
+        // Convert to JString and then to Rust String
+        let model_jstring = jni::objects::JString::from(model_jobj);
+        let manufacturer_jstring = jni::objects::JString::from(manufacturer_jobj);
+
+        let model_str: String = env
+            .get_string(&model_jstring)
+            .map_err(|e| format!("Failed to get model string: {}", e))?
+            .into();
+        let manufacturer_str: String = env
+            .get_string(&manufacturer_jstring)
+            .map_err(|e| format!("Failed to get manufacturer string: {}", e))?
+            .into();
+
+        // Format as "Manufacturer Model" or just "Model" if they start the same
+        if model_str.starts_with(&manufacturer_str) {
+            Ok(model_str)
+        } else {
+            Ok(format!("{} {}", manufacturer_str, model_str))
+        }
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        // Use uname to get machine identifier
+        use std::mem;
+
+        #[repr(C)]
+        struct Utsname {
+            sysname: [i8; 256],
+            nodename: [i8; 256],
+            release: [i8; 256],
+            version: [i8; 256],
+            machine: [i8; 256],
+        }
+
+        extern "C" {
+            fn uname(buf: *mut Utsname) -> i32;
+        }
+
+        unsafe {
+            let mut info: Utsname = mem::zeroed();
+            if uname(&mut info as *mut Utsname) != 0 {
+                return Ok("Unknown iOS Device".to_string());
+            }
+
+            // Convert machine to string
+            let machine = info
+                .machine
+                .iter()
+                .map(|&c| if c == 0 { 0 } else { c as u8 })
+                .take_while(|&c| c != 0)
+                .map(|c| c as char)
+                .collect::<String>();
+
+            // Map common machine identifiers to friendly names
+            Ok(map_ios_machine_to_name(&machine))
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        // Desktop: just return hostname
+        Ok(get_hostname()?)
+    }
+}
+
+/// Map iOS machine identifiers to friendly names
+#[cfg(target_os = "ios")]
+fn map_ios_machine_to_name(machine: &str) -> String {
+    match machine {
+        // iPhone 15 series
+        "iPhone15,4" | "iPhone15,5" => "iPhone 15 Plus".to_string(),
+        "iPhone15,2" | "iPhone15,3" => "iPhone 15 Pro".to_string(),
+        "iPhone16,1" | "iPhone16,2" => "iPhone 15 Pro Max".to_string(),
+
+        // iPhone 14 series
+        "iPhone14,7" | "iPhone14,8" => "iPhone 14".to_string(),
+        "iPhone14,5" | "iPhone14,6" => "iPhone 13".to_string(),
+        "iPhone14,2" | "iPhone14,3" => "iPhone 13 Pro".to_string(),
+        "iPhone14,4" => "iPhone 13 mini".to_string(),
+        "iPhone14,9" => "iPhone SE (3rd gen)".to_string(),
+
+        // iPhone 12 series
+        "iPhone13,2" | "iPhone13,3" => "iPhone 12".to_string(),
+        "iPhone13,1" => "iPhone 12 mini".to_string(),
+        "iPhone13,4" | "iPhone13,5" => "iPhone 12 Pro".to_string(),
+        "iPhone13,6" | "iPhone13,7" => "iPhone 12 Pro Max".to_string(),
+
+        // iPad Pro
+        "iPad13,16" | "iPad13,17" => "iPad Pro 12.9 (6th gen)".to_string(),
+        "iPad13,18" | "iPad13,19" => "iPad Pro 12.9 (6th gen)".to_string(),
+        "iPad13,10" | "iPad13,11" => "iPad Pro 11 (4th gen)".to_string(),
+        "iPad13,6" | "iPad13,7" => "iPad Pro 12.9 (5th gen)".to_string(),
+        "iPad13,4" | "iPad13,5" => "iPad Pro 11 (3rd gen)".to_string(),
+        "iPad13,1" | "iPad13,2" => "iPad Pro 11 (3rd gen)".to_string(),
+
+        // iPad Air
+        "iPad13,16" | "iPad13,17" => "iPad Air (5th gen)".to_string(),
+        "iPad13,18" | "iPad13,19" => "iPad Air (5th gen)".to_string(),
+
+        // iPad mini
+        "iPad14,1" | "iPad14,2" => "iPad mini (6th gen)".to_string(),
+
+        // Fallback - return the machine identifier
+        _ => machine.to_string(),
     }
 }
