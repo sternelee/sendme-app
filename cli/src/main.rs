@@ -76,6 +76,7 @@ impl From<CommonArgsCli> for CommonConfig {
             format: args.format,
             relay: args.relay,
             show_secret: args.show_secret,
+            temp_dir: None,
         }
     }
 }

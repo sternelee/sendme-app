@@ -134,6 +134,9 @@ pub struct CommonConfig {
     pub relay: RelayModeOption,
     /// Whether to show the secret key.
     pub show_secret: bool,
+    /// Optional custom temp directory for blob storage.
+    /// If None, uses current working directory (not compatible with macOS sandbox).
+    pub temp_dir: Option<PathBuf>,
 }
 
 impl Default for CommonConfig {
@@ -144,6 +147,7 @@ impl Default for CommonConfig {
             format: Format::default(),
             relay: RelayModeOption::Default,
             show_secret: false,
+            temp_dir: None,
         }
     }
 }
