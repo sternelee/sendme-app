@@ -1,8 +1,10 @@
 use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_fs::FsExt;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -19,6 +21,62 @@ pub struct NearbyDevice {
 }
 
 type NearbyDiscovery = Arc<RwLock<Option<sendme_lib::nearby::NearbyDiscovery>>>;
+
+/// Handle Android content URIs by reading the file and writing to a temporary location.
+///
+/// On Android, when using the file picker, the returned path may be a `content://` URI
+/// which cannot be read directly by `std::fs`. This function uses `tauri_plugin_fs`
+/// which can handle content URIs, and copies the content to a temporary file.
+async fn handle_content_uri(app: &AppHandle, path: &str) -> Result<std::path::PathBuf, String> {
+    use std::str::FromStr;
+    use tauri_plugin_fs::FilePath;
+
+    // Check if this is a content URI
+    if path.starts_with("content://") {
+        tracing::info!("Detected content URI, using tauri_plugin_fs to read file");
+
+        // Use tauri_plugin_fs to read the file content
+        let fs = app.fs(); // From FsExt trait
+
+        // Parse the path as a FilePath (which handles content:// URIs)
+        let file_path =
+            FilePath::from_str(path).map_err(|e| format!("Failed to parse file path: {:?}", e))?;
+
+        // Read the file content using the fs plugin which can handle content URIs
+        let content = fs
+            .read(file_path)
+            .map_err(|e| format!("Failed to read content URI: {}", e))?;
+
+        // Create a temporary file to store the content
+        let temp_dir = app
+            .path()
+            .temp_dir()
+            .map_err(|e| format!("Failed to get temp directory: {}", e))?;
+
+        // Generate a unique filename using timestamp and UUID suffix
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let unique_id = Uuid::new_v4().simple().to_string();
+        let filename = format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8]);
+
+        let temp_file_path = temp_dir.join(filename);
+
+        // Write the content to the temporary file
+        let mut file = std::fs::File::create(&temp_file_path)
+            .map_err(|e| format!("Failed to create temp file: {}", e))?;
+        file.write_all(&content)
+            .map_err(|e| format!("Failed to write to temp file: {}", e))?;
+
+        tracing::info!("Copied content URI to temporary file: {:?}", temp_file_path);
+
+        Ok(temp_file_path)
+    } else {
+        // Regular file path, just return it as PathBuf
+        Ok(std::path::PathBuf::from(path))
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SendFileRequest {
@@ -61,15 +119,22 @@ pub fn run() {
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
     let nearby_discovery: NearbyDiscovery = Arc::new(RwLock::new(None));
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        // .plugin(tauri_plugin_sharesheet::init())
-        // .plugin(tauri_plugin_barcode_scanner::init())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    #[cfg(mobile)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_barcode_scanner::init())
+            .plugin(tauri_plugin_sharesheet::init());
+    }
+
+    builder
         .setup(move |app| {
             // Store transfers in app state
             app.manage(transfers.clone());
@@ -118,8 +183,11 @@ async fn send_file(
         .temp_dir()
         .map_err(|e| format!("Failed to get temp directory: {}", e))?;
 
+    // Handle Android content URIs - if path is a content:// URI, copy to temp file
+    let file_path = handle_content_uri(&app, &request.path).await?;
+
     let args = SendArgs {
-        path: std::path::PathBuf::from(&request.path),
+        path: file_path,
         ticket_type,
         common: CommonConfig {
             temp_dir: Some(temp_dir),
@@ -708,8 +776,12 @@ fn get_device_model() -> Result<String, String> {
             .map_err(|e| format!("Failed to get MANUFACTURER value: {}", e))?;
 
         // Get the JObject values
-        let model_jobj: JObject = model_obj.l().map_err(|e| format!("Failed to get model object: {}", e))?;
-        let manufacturer_jobj: JObject = manufacturer_obj.l().map_err(|e| format!("Failed to get manufacturer object: {}", e))?;
+        let model_jobj: JObject = model_obj
+            .l()
+            .map_err(|e| format!("Failed to get model object: {}", e))?;
+        let manufacturer_jobj: JObject = manufacturer_obj
+            .l()
+            .map_err(|e| format!("Failed to get manufacturer object: {}", e))?;
 
         // Convert to JString and then to Rust String
         let model_jstring = jni::objects::JString::from(model_jobj);

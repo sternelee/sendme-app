@@ -11,7 +11,7 @@
     "http:default",
     "dialog:default",
     "fs:default",
+    "sharesheet:default",
     "barcode-scanner:default"
   ]
 }
-

@@ -10,11 +10,13 @@ Sendme is a Rust CLI tool for sending files and directories over the internet us
 
 ## Package Manager
 
-**Use Bun instead of npm/pnpm** for all JavaScript/TypeScript operations:
+Use **pnpm** for JavaScript/TypeScript operations (defined in app/package.json):
 
-- `pnpm install` instead of `npm install` or `pnpm install`
-- `pnpm run <script>` instead of `npm run <script>` or `pnpm run <script>`
-- `bunx <package>` instead of `npx <package>`
+- `pnpm install` - Install dependencies
+- `pnpm run <script>` - Run npm scripts (e.g., `pnpm run tauri dev`)
+- `pnpm run build` - Build frontend with TypeScript check + Vite
+
+Note: The project scripts use `pnpm` internally regardless of whether you use Bun or pnpm as the package manager.
 
 ## Development Commands
 
@@ -27,15 +29,21 @@ Sendme is a Rust CLI tool for sending files and directories over the internet us
 - `cargo build --release` - Build optimized release binaries
 - `cargo test` - Run all tests
 - `cargo test --test cli` - Run CLI integration tests specifically
+- `cargo test --lib` - Run library unit tests only
+- `cargo test -p sendme-lib` - Run tests for the library crate only
 - `cargo fmt --all -- --check` - Check code formatting
 - `cargo clippy --locked --workspace --all-targets --all-features` - Run Clippy lints
 - `cargo fmt` - Format code
 
 ### Tauri Desktop App (`app/`)
 
-- `cd app && pnpm run tauri dev` - Start development server with hot reload
-- `cd app && pnpm run build` - Build frontend only (TypeScript check + Vite build)
-- `cd app && pnpm run tauri build` - Build complete desktop app
+```bash
+cd app
+pnpm install              # Install frontend dependencies
+pnpm run tauri dev        # Start development server with hot reload
+pnpm run build            # Build frontend only (TypeScript check + Vite build)
+pnpm run tauri build      # Build complete desktop app
+```
 
 ## Workspace Structure
 
@@ -67,6 +75,7 @@ The core library (`lib/`) contains all transfer logic:
 - **`import.rs`**: File/directory import into iroh-blobs store (parallelized)
 - **`export.rs`**: Export from iroh-blobs store to filesystem
 - **`progress.rs`**: Progress event types and channels for real-time updates
+- **`nearby.rs`**: mDNS-based local device discovery
 - **`types.rs`**: Common types (`AddrInfoOptions`, `CommonConfig`, `Format`, etc.)
 
 #### Send Flow (`send_with_progress`)
@@ -95,6 +104,19 @@ The core library (`lib/`) contains all transfer logic:
 - **`ExportProgress`**: Started/FileStarted/FileProgress/FileCompleted/Completed
 - **`DownloadProgress`**: Connecting/GettingSizes/Downloading/Completed
 - **`ConnectionStatus`**: ClientConnected/ConnectionClosed/RequestStarted/RequestProgress/RequestCompleted
+
+#### Nearby Device Discovery (`nearby.rs`)
+
+The library supports discovering nearby Sendme devices on the local network using mDNS:
+
+- **`NearbyDiscovery`**: Manages mDNS discovery using `iroh::discovery::mdns::MdnsDiscovery`
+- Creates endpoint with `RelayMode::Disabled` for local-only discovery
+- Broadcasts hostname via `user_data_for_discovery()` for device identification
+- Polls for `DiscoveryEvent` (Discovered/Expired) to update device list
+- **`create_nearby_ticket()`**: Creates direct-address-only tickets for LAN transfers
+
+Key types:
+- **`NearbyDevice`**: Discovered device info (node_id, name, addresses, last_seen, available)
 
 ### CLI (`sendme`)
 
@@ -126,7 +148,16 @@ Key files:
 - **`lib.rs`**: Tauri commands that wrap `sendme-lib` functions
 - Uses `tokio::sync::RwLock<HashMap>` for transfer state management
 - Emits progress events to frontend via `app.emit("progress", update)`
-- Registered plugins: `tauri_plugin_dialog`
+
+Registered Tauri Plugins:
+- `tauri_plugin_dialog` - File/folder dialogs
+- `tauri_plugin_clipboard_manager` - Clipboard access
+- `tauri_plugin_notification` - System notifications
+- `tauri_plugin_os` - Cross-platform OS info (hostname, device model, etc.)
+- `tauri_plugin_fs` - Filesystem access
+- `tauri_plugin_http` - HTTP requests
+- `tauri_plugin_barcode_scanner` - QR code scanning (mobile, commented out)
+- `tauri_plugin_sharesheet` - Native share sheets (mobile, commented out)
 
 Tauri Commands:
 
@@ -135,6 +166,9 @@ Tauri Commands:
 - **`cancel_transfer`**: Sends abort signal via oneshot channel
 - **`get_transfers`**: Returns list of all transfers
 - **`get_transfer_status`**: Returns status string for specific transfer
+- **`start_nearby_discovery`**: Starts mDNS discovery for local devices
+- **`get_nearby_devices`**: Returns list of discovered nearby devices
+- **`stop_nearby_discovery`**: Stops mDNS discovery
 
 ### Browser WASM (`sendme-browser`)
 
@@ -262,3 +296,27 @@ Do NOT replace this with a sleep loop or the router will drop.
 ## MSRV
 
 Minimum Supported Rust Version: **1.81** (defined in workspace Cargo.toml)
+
+## Mobile Development
+
+The Tauri app supports mobile platforms (iOS/Android) with special considerations:
+
+### Platform-Specific Handling
+
+- **Hostname detection**: Uses `tauri_plugin_os::hostname()` for cross-platform compatibility
+- **Temp directories**: Uses `std::env::temp_dir()` for macOS sandbox compatibility
+- **Device model**: Uses `tauri_plugin_os::platform()` to detect mobile platforms
+
+### Mobile-Optimized UI
+
+- Uses `vconsole` for mobile debugging (in app dependencies)
+- QR code scanning via `tauri_plugin_barcode_scanner` (currently commented out)
+- Native share sheets via `tauri_plugin_sharesheet` (currently commented out)
+
+### Building for Mobile
+
+```bash
+cd app
+pnpm run tauri android build  # Build Android APK
+pnpm run tauri ios build      # Build iOS app
+```

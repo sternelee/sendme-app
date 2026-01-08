@@ -46,6 +46,7 @@ import {
   Wifi,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
+import { shareText } from "./lib/sharesheet";
 
 // Types
 interface Transfer {
@@ -484,7 +485,7 @@ function getProgressValue(id: string) {
       class="w-full max-w-2xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000"
     >
       <!-- Header -->
-      <header class="relative mt-6 md:mt-2">
+      <header class="relative pt-10 md:pt-2">
         <div class="text-center space-y-2">
           <h1
             class="text-4xl sm:text-5xl font-extrabold tracking-tighter text-slate-900 dark:text-slate-50 text-glow"
@@ -651,7 +652,10 @@ function getProgressValue(id: string) {
                         class="text-xs font-bold uppercase tracking-widest text-primary"
                         >Shareable Ticket</Label
                       >
-                      <Share2 class="w-4 h-4 text-primary opacity-50" />
+                      <Share2
+                        class="w-4 h-4 text-primary opacity-50 cursor-pointer"
+                        @click="shareText(sendTicket)"
+                      />
                     </div>
                     <div
                       class="p-4 bg-black/5 dark:bg-white/5 rounded-xl break-all text-sm text-black font-mono leading-relaxed border border-white/5"
@@ -847,31 +851,6 @@ function getProgressValue(id: string) {
                     >
                       {{ transfer.transfer_type }}
                     </span>
-                  </div>
-
-                  <div
-                    class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium"
-                  >
-                    <div
-                      class="flex items-center gap-1"
-                      :class="getTransferStatus(transfer.status).color"
-                    >
-                      <component
-                        :is="getTransferStatus(transfer.status).icon"
-                        class="w-3 h-3"
-                        :class="{
-                          'animate-spin':
-                            getTransferStatus(transfer.status).pulse &&
-                            transfer.status.includes('RefreshCw'),
-                        }"
-                      />
-                      {{ getTransferStatus(transfer.status).label }}
-                    </div>
-                    <span class="opacity-20 hidden sm:inline">•</span>
-                    <div class="flex items-center gap-1">
-                      <Monitor class="w-3 h-3 opacity-50" />
-                      {{ formatDate(transfer.created_at) }}
-                    </div>
                   </div>
 
                   <div
