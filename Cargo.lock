@@ -156,6 +156,7 @@ dependencies = [
  "tauri-plugin-http",
  "tauri-plugin-notification",
  "tauri-plugin-os",
+ "tauri-plugin-sharesheet",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -6719,6 +6720,20 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "tauri-plugin-sharesheet"
+version = "0.0.1"
+source = "git+https://github.com/rittme/tauri-plugin-sharesheet#3790ffa22036cd417d55d7c9c21e2cd8c0c026da"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

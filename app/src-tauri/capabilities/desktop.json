@@ -5,6 +5,7 @@
   "permissions": [
     "core:default",
     "os:default",
+    "os:allow-hostname",
     "notification:default",
     "clipboard-manager:default",
     "http:default",

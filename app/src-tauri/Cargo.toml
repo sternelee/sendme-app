@@ -22,6 +22,7 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-os = "2"
 tauri-plugin-http = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-sharesheet = { git = "https://github.com/rittme/tauri-plugin-sharesheet" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

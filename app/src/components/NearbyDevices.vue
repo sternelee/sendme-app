@@ -9,7 +9,13 @@ import {
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Wifi, WifiOff, FolderOpen } from "lucide-vue-next";
+import {
+  RefreshCw,
+  Wifi,
+  WifiOff,
+  FolderOpen,
+  ChevronDown,
+} from "lucide-vue-next";
 import { toast } from "vue-sonner";
 
 const emit = defineEmits<{
@@ -24,6 +30,10 @@ const localHostname = ref<string>("");
 const refreshInterval = ref<number | null>(null);
 const selectedPath = ref<string>("");
 
+// System info for debugging
+const showSystemInfo = ref(false);
+const systemInfo = ref<Record<string, string>>({});
+
 // Computed
 const availableDevices = computed(() => {
   return devices.value.filter((d) => d.available);
@@ -32,6 +42,7 @@ const availableDevices = computed(() => {
 onMounted(async () => {
   await startDiscovery();
   await loadLocalHostname();
+  await loadSystemInfo();
 });
 
 onUnmounted(async () => {
@@ -43,6 +54,65 @@ async function loadLocalHostname() {
     localHostname.value = await get_hostname();
   } catch (e) {
     console.error("Failed to get hostname:", e);
+  }
+}
+
+async function loadSystemInfo() {
+  try {
+    const os = await import("@tauri-apps/plugin-os");
+    const info: Record<string, string> = {};
+
+    try {
+      info.hostname = (await os.hostname()) ?? "null";
+    } catch (e) {
+      info.hostname = `Error: ${e}`;
+    }
+    try {
+      info.platform = (await os.platform()) ?? "null";
+    } catch (e) {
+      info.platform = `Error: ${e}`;
+    }
+    try {
+      info.version = (await os.version()) ?? "null";
+    } catch (e) {
+      info.version = `Error: ${e}`;
+    }
+    try {
+      info.arch = (await os.arch()) ?? "null";
+    } catch (e) {
+      info.arch = `Error: ${e}`;
+    }
+    try {
+      info.type = (await os.type()) ?? "null";
+    } catch (e) {
+      info.type = `Error: ${e}`;
+    }
+    try {
+      info.family = (await os.family()) ?? "null";
+    } catch (e) {
+      info.family = `Error: ${e}`;
+    }
+    try {
+      info.locale = (await os.locale()) ?? "null";
+    } catch (e) {
+      info.locale = `Error: ${e}`;
+    }
+    try {
+      info.exeExtension = (await os.exeExtension()) ?? "null";
+    } catch (e) {
+      info.exeExtension = `Error: ${e}`;
+    }
+    try {
+      info.eol = (await os.eol()) ?? "null";
+    } catch (e) {
+      info.eol = `Error: ${e}`;
+    }
+
+    systemInfo.value = info;
+    console.log("System Info:", info);
+  } catch (e) {
+    console.error("Failed to load system info:", e);
+    systemInfo.value = { error: String(e) };
   }
 }
 
@@ -153,9 +223,7 @@ function getDisplayName(path: string): string {
         @click="selectFile"
       >
         <div v-if="!selectedPath" class="text-center">
-          <FolderOpen
-            class="w-8 h-8 mx-auto mb-2 text-primary opacity-50"
-          />
+          <FolderOpen class="w-8 h-8 mx-auto mb-2 text-primary opacity-50" />
           <p class="text-sm text-slate-500 dark:text-slate-400">
             Click to select a file or directory
           </p>
@@ -224,10 +292,7 @@ function getDisplayName(path: string): string {
         size="sm"
         class="rounded-xl"
       >
-        <RefreshCw
-          class="w-4 h-4"
-          :class="{ 'animate-spin': isScanning }"
-        />
+        <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isScanning }" />
       </Button>
     </div>
 
@@ -269,7 +334,9 @@ function getDisplayName(path: string): string {
               <h4 class="font-bold text-slate-900 dark:text-slate-100 truncate">
                 {{ device.display_name }}
               </h4>
-              <span class="text-[10px] font-medium text-slate-500 flex-shrink-0 ml-2">
+              <span
+                class="text-[10px] font-medium text-slate-500 flex-shrink-0 ml-2"
+              >
                 {{ formatLastSeen(device.last_seen) }}
               </span>
             </div>
@@ -302,11 +369,112 @@ function getDisplayName(path: string): string {
     <div v-if="localNodeId || localHostname" class="text-center py-4 space-y-1">
       <p class="text-xs text-slate-500 font-medium">
         Your Device:
-        <span class="text-slate-700 dark:text-slate-300 font-semibold">{{ localHostname || 'Unknown' }}</span>
+        <span class="text-slate-700 dark:text-slate-300 font-semibold">{{
+          localHostname || "Unknown"
+        }}</span>
       </p>
       <p class="text-[10px] text-slate-500/60 font-mono">
-        ID: <span class="text-primary">{{ localNodeId || 'Unknown' }}</span>
+        ID: <span class="text-primary">{{ localNodeId || "Unknown" }}</span>
       </p>
+    </div>
+
+    <!-- System Info Debug Panel -->
+    <div class="border-t border-slate-200 dark:border-slate-800 pt-4">
+      <Button
+        type="button"
+        @click="showSystemInfo = !showSystemInfo"
+        variant="ghost"
+        size="sm"
+        class="w-full justify-between px-3 py-2 rounded-xl"
+      >
+        <span class="text-xs font-semibold text-slate-500"
+          >Debug: System Info</span
+        >
+        <ChevronDown
+          class="w-4 h-4 text-slate-500 transition-transform"
+          :class="{ 'rotate-180': showSystemInfo }"
+        />
+      </Button>
+
+      <div
+        v-if="showSystemInfo"
+        class="mt-3 p-3 bg-slate-100 dark:bg-slate-900 rounded-xl text-xs"
+      >
+        <div class="grid grid-cols-2 gap-2">
+          <div class="space-y-1">
+            <div class="font-semibold text-slate-700 dark:text-slate-300">
+              hostname
+            </div>
+            <div class="font-mono text-slate-600 dark:text-slate-500 break-all">
+              {{ systemInfo.hostname || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold text-slate-700 dark:text-slate-300">
+              platform
+            </div>
+            <div class="font-mono text-slate-600 dark:text-slate-500">
+              {{ systemInfo.platform || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold text-slate-700 dark:text-slate-300">
+              arch
+            </div>
+            <div class="font-mono text-slate-600 dark:text-slate-500">
+              {{ systemInfo.arch || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold text-slate-700 dark:text-slate-300">
+              type
+            </div>
+            <div class="font-mono text-slate-600 dark:text-slate-500">
+              {{ systemInfo.type || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold text-slate-700 dark:text-slate-300">
+              family
+            </div>
+            <div class="font-mono text-slate-600 dark:text-slate-500">
+              {{ systemInfo.family || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold text-slate-700 dark:text-slate-300">
+              version
+            </div>
+            <div class="font-mono text-slate-600 dark:text-slate-500 break-all">
+              {{ systemInfo.version || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold text-slate-700 dark:text-slate-300">
+              locale
+            </div>
+            <div class="font-mono text-slate-600 dark:text-slate-500">
+              {{ systemInfo.locale || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold text-slate-700 dark:text-slate-300">
+              exeExtension
+            </div>
+            <div class="font-mono text-slate-600 dark:text-slate-500">
+              {{ systemInfo.exeExtension || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold text-slate-700 dark:text-slate-300">
+              eol
+            </div>
+            <div class="font-mono text-slate-600 dark:text-slate-500">
+              {{ systemInfo.eol || "-" }}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
