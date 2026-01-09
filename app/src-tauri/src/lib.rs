@@ -30,7 +30,6 @@ type NearbyDiscovery = Arc<RwLock<Option<sendme_lib::nearby::NearbyDiscovery>>>;
 #[cfg(target_os = "android")]
 fn get_filename_from_content_uri(uri: &str) -> Result<String, String> {
     use jni::objects::{JObject, JString};
-    use jni::signature::{JavaType, Primitive};
 
     let ctx = ndk_context::android_context();
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
@@ -46,14 +45,11 @@ fn get_filename_from_content_uri(uri: &str) -> Result<String, String> {
     let uri_class = env
         .find_class("android/net/Uri")
         .map_err(|e| format!("Failed to find Uri class: {}", e))?;
-    let parse_method = env
-        .get_static_method_id(&uri_class, "parse", "(Ljava/lang/String;)Landroid/net/Uri;")
-        .map_err(|e| format!("Failed to get parse method: {}", e))?;
     let uri_obj = env
-        .call_static_method_unchecked(
+        .call_static_method(
             &uri_class,
-            parse_method,
-            JavaType::Object("android/net/Uri".into()),
+            "parse",
+            "(Ljava/lang/String;)Landroid/net/Uri;",
             &[(&uri_string).into()],
         )
         .and_then(|v| v.l())
@@ -72,13 +68,11 @@ fn get_filename_from_content_uri(uri: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to get ContentResolver: {}", e))?;
 
     // Query the content URI for the display name
+    let display_name_string = env
+        .new_string("_display_name")
+        .map_err(|e| format!("Failed to create projection string: {}", e))?;
     let projection = env
-        .new_object_array(
-            1,
-            "java/lang/String",
-            env.new_string("_display_name")
-                .map_err(|e| format!("Failed to create projection string: {}", e))?,
-        )
+        .new_object_array(1, "java/lang/String", &display_name_string)
         .map_err(|e| format!("Failed to create projection array: {}", e))?;
 
     let cursor = env
@@ -89,9 +83,9 @@ fn get_filename_from_content_uri(uri: &str) -> Result<String, String> {
             &[
                 (&uri_obj).into(),
                 (&projection).into(),
-                JObject::null().into(),
-                JObject::null().into(),
-                JObject::null().into(),
+                (&JObject::null()).into(),
+                (&JObject::null()).into(),
+                (&JObject::null()).into(),
             ],
         )
         .and_then(|v| v.l())
@@ -293,7 +287,7 @@ pub fn run() {
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
     let nearby_discovery: NearbyDiscovery = Arc::new(RwLock::new(None));
 
-    let builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
