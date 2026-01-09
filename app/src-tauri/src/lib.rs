@@ -954,6 +954,6 @@ fn check_wifi_connection() -> Result<bool, String> {
         }
     }
 
-    tracing::warn("No WiFi connection detected");
+    tracing::warn!("No WiFi connection detected");
     Ok(false)
 }
