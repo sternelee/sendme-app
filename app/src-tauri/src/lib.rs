@@ -166,7 +166,11 @@ fn get_filename_from_content_uri(_uri: &str) -> Result<String, String> {
 /// which can handle content URIs, and copies the content to a temporary file.
 ///
 /// The function attempts to preserve the original filename by querying the ContentResolver.
-async fn handle_content_uri(app: &AppHandle, path: &str) -> Result<std::path::PathBuf, String> {
+/// Returns (temp_file_path, display_name) where display_name is the original filename without UUID suffix.
+async fn handle_content_uri(
+    app: &AppHandle,
+    path: &str,
+) -> Result<(std::path::PathBuf, String), String> {
     use std::str::FromStr;
     use tauri_plugin_fs::FilePath;
 
@@ -193,18 +197,19 @@ async fn handle_content_uri(app: &AppHandle, path: &str) -> Result<std::path::Pa
             .map_err(|e| format!("Failed to get temp directory: {}", e))?;
 
         // Try to get the original filename from the content URI
-        let filename = match get_filename_from_content_uri(path) {
+        let (filename, display_name) = match get_filename_from_content_uri(path) {
             Ok(name) if !name.is_empty() => {
                 tracing::info!("Retrieved original filename from content URI: {}", name);
                 // Sanitize the filename to prevent directory traversal
                 let sanitized = name.replace(['/', '\\', '\0'], "_");
                 // Add a unique suffix to prevent conflicts
                 let unique_id = &Uuid::new_v4().simple().to_string()[..8];
-                if let Some((stem, ext)) = sanitized.rsplit_once('.') {
+                let filename_with_uuid = if let Some((stem, ext)) = sanitized.rsplit_once('.') {
                     format!("{}-{}.{}", stem, unique_id, ext)
                 } else {
                     format!("{}-{}", sanitized, unique_id)
-                }
+                };
+                (filename_with_uuid, sanitized)
             }
             Ok(_name) => {
                 tracing::warn!("Retrieved empty filename, using fallback");
@@ -213,7 +218,8 @@ async fn handle_content_uri(app: &AppHandle, path: &str) -> Result<std::path::Pa
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
                 let unique_id = Uuid::new_v4().simple().to_string();
-                format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8])
+                let filename = format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8]);
+                (filename.clone(), filename)
             }
             Err(e) => {
                 tracing::warn!(
@@ -225,7 +231,8 @@ async fn handle_content_uri(app: &AppHandle, path: &str) -> Result<std::path::Pa
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
                 let unique_id = Uuid::new_v4().simple().to_string();
-                format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8])
+                let filename = format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8]);
+                (filename.clone(), filename)
             }
         };
 
@@ -239,10 +246,15 @@ async fn handle_content_uri(app: &AppHandle, path: &str) -> Result<std::path::Pa
 
         tracing::info!("Copied content URI to temporary file: {:?}", temp_file_path);
 
-        Ok(temp_file_path)
+        Ok((temp_file_path, display_name))
     } else {
-        // Regular file path, just return it as PathBuf
-        Ok(std::path::PathBuf::from(path))
+        // Regular file path, just return it as PathBuf with the path as display name
+        let display_name = std::path::Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path)
+            .to_string();
+        Ok((std::path::PathBuf::from(path), display_name))
     }
 }
 
@@ -354,7 +366,7 @@ async fn send_file(
         .map_err(|e| format!("Failed to get temp directory: {}", e))?;
 
     // Handle Android content URIs - if path is a content:// URI, copy to temp file
-    let file_path = handle_content_uri(&app, &request.path).await?;
+    let (file_path, display_name) = handle_content_uri(&app, &request.path).await?;
 
     let args = SendArgs {
         path: file_path,
@@ -365,11 +377,11 @@ async fn send_file(
         },
     };
 
-    // Create transfer info
+    // Create transfer info - use display_name for better UI
     let transfer_info = TransferInfo {
         id: transfer_id.clone(),
         transfer_type: "send".to_string(),
-        path: request.path.clone(),
+        path: display_name,
         status: "initializing".to_string(),
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
