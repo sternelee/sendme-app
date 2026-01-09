@@ -112,3 +112,13 @@ export function get_hostname(): Promise<string> {
 export async function get_device_model(): Promise<string> {
   return await invoke("get_device_model");
 }
+
+/**
+ * Check if device is connected to WiFi
+ *
+ * Returns true if connected to WiFi, false otherwise.
+ * WiFi connection is required for nearby device discovery.
+ */
+export async function check_wifi_connection(): Promise<boolean> {
+  return await invoke("check_wifi_connection");
+}

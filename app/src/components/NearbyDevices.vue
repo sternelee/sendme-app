@@ -6,6 +6,7 @@ import {
   stop_nearby_discovery,
   get_hostname,
   get_device_model,
+  check_wifi_connection,
   type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
@@ -31,6 +32,8 @@ const localHostname = ref<string>("");
 const deviceModel = ref<string>("");
 const refreshInterval = ref<number | null>(null);
 const selectedPath = ref<string>("");
+const isWifiConnected = ref(false);
+const wifiCheckInterval = ref<number | null>(null);
 
 // System info for debugging
 const showSystemInfo = ref(false);
@@ -42,15 +45,38 @@ const availableDevices = computed(() => {
 });
 
 onMounted(async () => {
+  await checkWifiStatus();
   await startDiscovery();
   await loadLocalHostname();
   await loadDeviceModel();
   await loadSystemInfo();
+
+  // Check WiFi status every 10 seconds
+  wifiCheckInterval.value = window.setInterval(async () => {
+    await checkWifiStatus();
+  }, 10000);
 });
 
 onUnmounted(async () => {
+  if (wifiCheckInterval.value) {
+    clearInterval(wifiCheckInterval.value);
+    wifiCheckInterval.value = null;
+  }
   await stopDiscovery();
 });
+
+async function checkWifiStatus() {
+  try {
+    isWifiConnected.value = await check_wifi_connection();
+    if (!isWifiConnected.value && isScanning.value) {
+      // WiFi disconnected while scanning
+      await stopDiscovery();
+      toast.error("WiFi connection lost. Nearby discovery stopped.");
+    }
+  } catch (e) {
+    console.error("Failed to check WiFi status:", e);
+  }
+}
 
 async function loadLocalHostname() {
   try {
@@ -279,26 +305,31 @@ function getDisplayName(path: string): string {
         <div
           class="w-10 h-10 rounded-xl flex items-center justify-center"
           :class="
-            isScanning
+            isScanning && isWifiConnected
               ? 'bg-blue-500/10 text-blue-500'
-              : 'bg-slate-500/10 text-slate-500'
+              : !isWifiConnected
+                ? 'bg-amber-500/10 text-amber-500'
+                : 'bg-slate-500/10 text-slate-500'
           "
         >
-          <Wifi v-if="isScanning" class="w-5 h-5 animate-pulse" />
+          <Wifi v-if="isScanning && isWifiConnected" class="w-5 h-5 animate-pulse" />
           <WifiOff v-else class="w-5 h-5" />
         </div>
         <div>
           <div class="font-semibold text-sm">
-            {{ isScanning ? "Scanning for devices..." : "Discovery stopped" }}
+            <span v-if="isScanning && isWifiConnected">Scanning for devices...</span>
+            <span v-else-if="!isWifiConnected" class="text-amber-600 dark:text-amber-500">WiFi not connected</span>
+            <span v-else>Discovery stopped</span>
           </div>
           <div class="text-xs text-slate-500">
-            {{ availableDevices.length }} device(s) found
+            <span v-if="isWifiConnected">{{ availableDevices.length }} device(s) found</span>
+            <span v-else>WiFi required for nearby discovery</span>
           </div>
         </div>
       </div>
       <Button
         @click="refreshDevices"
-        :disabled="!isScanning"
+        :disabled="!isScanning || !isWifiConnected"
         variant="ghost"
         size="sm"
         class="rounded-xl"
@@ -323,7 +354,10 @@ function getDisplayName(path: string): string {
           {{ isScanning ? "Scanning for devices..." : "No devices found" }}
         </p>
         <p class="text-xs text-slate-500/60 mt-1">
-          Make sure both devices are on the same network
+          Make sure both devices are connected to the same WiFi network
+        </p>
+        <p v-if="!isWifiConnected" class="text-xs text-amber-600 dark:text-amber-500 mt-2 font-medium">
+          ⚠️ WiFi not detected. Nearby discovery requires WiFi connection.
         </p>
       </div>
 
@@ -490,6 +524,14 @@ function getDisplayName(path: string): string {
             </div>
             <div class="font-mono text-primary dark:text-primary break-all">
               {{ deviceModel || "-" }}
+            </div>
+          </div>
+          <div class="space-y-1">
+            <div class="font-semibold" :class="isWifiConnected ? 'text-green-600 dark:text-green-500' : 'text-amber-600 dark:text-amber-500'">
+              wifiConnected
+            </div>
+            <div class="font-mono" :class="isWifiConnected ? 'text-green-600 dark:text-green-500' : 'text-amber-600 dark:text-amber-500'">
+              {{ isWifiConnected ? "✓ Yes" : "✗ No" }}
             </div>
           </div>
         </div>

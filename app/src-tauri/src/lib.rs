@@ -1,3 +1,4 @@
+use netdev::interface::get_interfaces;
 use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -152,7 +153,8 @@ pub fn run() {
             get_nearby_devices,
             stop_nearby_discovery,
             get_hostname,
-            get_device_model
+            get_device_model,
+            check_wifi_connection
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -625,6 +627,11 @@ async fn start_nearby_discovery(
         return Err("Nearby discovery already running".to_string());
     }
 
+    // Check WiFi connection before starting
+    if !check_wifi_connection()? {
+        return Err("WiFi connection required for nearby device discovery. Please connect to a WiFi network and try again.".to_string());
+    }
+
     // Get device model (hostname on desktop, device model on mobile)
     let device_name = get_device_model()?;
 
@@ -889,4 +896,64 @@ fn map_ios_machine_to_name(machine: &str) -> String {
         // Fallback - return the machine identifier
         _ => machine.to_string(),
     }
+}
+
+/// Check if device is connected to WiFi
+///
+/// Returns true if the device has an active WiFi connection,
+/// false otherwise. This is required for nearby device discovery
+/// which uses mDNS over the local network.
+#[tauri::command]
+fn check_wifi_connection() -> Result<bool, String> {
+    // Get all network interfaces
+    let interfaces = get_interfaces();
+
+    // Check if any interface is connected and appears to be WiFi
+    for interface in interfaces {
+        // Skip loopback and down interfaces
+        if interface.is_loopback() || !interface.is_up() {
+            continue;
+        }
+
+        // Check if interface has an IP address (v4 or v6)
+        let has_ip = !interface.ipv4.is_empty() || !interface.ipv6.is_empty();
+
+        if !has_ip {
+            continue;
+        }
+
+        // Interface name patterns that indicate WiFi:
+        // - Contains "wi-fi", "wifi", "wlan" (case insensitive)
+        // - macOS: "en0" is typically WiFi on most Macs
+        // - Windows: name may contain "Wi-Fi" or "Wireless"
+        // - Linux: "wlan0", "wlp*"
+        // - Android/iOS: various patterns
+        let name_lower = interface.name.to_lowercase();
+
+        // Check for common WiFi interface name patterns
+        let is_wifi = name_lower.contains("wi-fi")
+            || name_lower.contains("wifi")
+            || name_lower.contains("wlan")
+            || name_lower.contains("wireless")
+            || name_lower.starts_with("wlp")
+            // macOS common WiFi interface
+            || (cfg!(target_os = "macos") && interface.name == "en0")
+            // iOS WiFi interface
+            || (cfg!(target_os = "ios") && interface.name.starts_with("en"));
+
+        if is_wifi {
+            tracing::info!(
+                "Found WiFi connection on interface: {} ({})",
+                interface.name,
+                interface
+                    .friendly_name
+                    .as_ref()
+                    .unwrap_or(&"Unknown".to_string())
+            );
+            return Ok(true);
+        }
+    }
+
+    tracing::warn("No WiFi connection detected");
+    Ok(false)
 }
