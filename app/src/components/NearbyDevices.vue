@@ -10,13 +10,13 @@ import {
   type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
-import { Label } from "@/components/ui/label";
 import {
-  RefreshCw,
   Wifi,
   WifiOff,
-  FolderOpen,
   ChevronDown,
+  Laptop,
+  Smartphone,
+  Monitor,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 
@@ -31,7 +31,6 @@ const localNodeId = ref<string>("");
 const localHostname = ref<string>("");
 const deviceModel = ref<string>("");
 const refreshInterval = ref<number | null>(null);
-const selectedPath = ref<string>("");
 const isWifiConnected = ref(false);
 const wifiCheckInterval = ref<number | null>(null);
 
@@ -195,10 +194,6 @@ async function refreshDevices() {
 }
 
 function handleSelectDevice(device: NearbyDevice) {
-  if (!selectedPath.value) {
-    toast.error("Please select a file first");
-    return;
-  }
   emit("selectDevice", device);
 }
 
@@ -211,212 +206,218 @@ function formatLastSeen(timestamp: number): string {
   return `${Math.floor(diff / 3600)}h ago`;
 }
 
-async function selectFile() {
-  try {
-    const { open } = await import("@tauri-apps/plugin-dialog");
-    const selected = await open({
-      multiple: false,
-      directory: false,
-    });
-    if (selected && typeof selected === "string") {
-      selectedPath.value = selected;
-    }
-  } catch (e) {
-    console.error("Failed to select file:", e);
-  }
+interface DevicePlatform {
+  icon: any;
+  label: string;
+  colorClass: string;
 }
 
-async function selectDirectory() {
-  try {
-    const { open } = await import("@tauri-apps/plugin-dialog");
-    const selected = await open({
-      multiple: false,
-      directory: true,
-    });
-    if (selected && typeof selected === "string") {
-      selectedPath.value = selected;
-    }
-  } catch (e) {
-    console.error("Failed to select directory:", e);
+function detectDevicePlatform(device: NearbyDevice): DevicePlatform {
+  const name = (device.display_name || device.name || "").toLowerCase();
+
+  // Check for iPhone/iPad patterns
+  if (
+    name.includes("iphone") ||
+    name.includes("ipad") ||
+    name.includes("ipod")
+  ) {
+    return {
+      icon: Smartphone,
+      label: "iOS",
+      colorClass: "text-slate-700 dark:text-slate-300",
+    };
   }
+
+  // Check for Mac patterns
+  if (
+    name.includes("macbook") ||
+    name.includes("imac") ||
+    name.includes("mac mini") ||
+    name.includes(".local") ||
+    name.includes("mbp") ||
+    name.includes("mba")
+  ) {
+    return {
+      icon: Laptop,
+      label: "macOS",
+      colorClass: "text-slate-700 dark:text-slate-300",
+    };
+  }
+
+  // Check for Android patterns
+  if (
+    name.includes("android") ||
+    name.includes("pixel") ||
+    name.includes("samsung") ||
+    name.includes("oneplus") ||
+    name.includes("xiaomi") ||
+    name.includes("huawei") ||
+    name.includes("oppo") ||
+    name.includes("vivo") ||
+    name.includes("realme")
+  ) {
+    return {
+      icon: Smartphone,
+      label: "Android",
+      colorClass: "text-green-600 dark:text-green-500",
+    };
+  }
+
+  // Check for Windows patterns
+  if (
+    name.includes("windows") ||
+    name.includes("desktop-") ||
+    name.includes("pc-") ||
+    name.includes("win-") ||
+    name.includes("laptop-")
+  ) {
+    return {
+      icon: Laptop,
+      label: "Windows",
+      colorClass: "text-blue-600 dark:text-blue-500",
+    };
+  }
+
+  // Check for Linux patterns
+  if (
+    name.includes("linux") ||
+    name.includes("ubuntu") ||
+    name.includes("debian") ||
+    name.includes("fedora") ||
+    name.includes("arch")
+  ) {
+    return {
+      icon: Laptop,
+      label: "Linux",
+      colorClass: "text-orange-600 dark:text-orange-500",
+    };
+  }
+
+  // Default to generic monitor/device icon
+  return {
+    icon: Monitor,
+    label: "Device",
+    colorClass: "text-slate-600 dark:text-slate-400",
+  };
 }
 
-function getDisplayName(path: string): string {
-  if (!path) return "";
-  const parts = path.split(/[/\\]/);
-  return parts[parts.length - 1] || path;
-}
+// Expose state and methods to parent component
+defineExpose({
+  isScanning,
+  availableDevices,
+  refreshDevices,
+});
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- File Selection -->
-    <div class="space-y-3">
-      <Label class="text-sm font-semibold opacity-70 ml-1"
-        >Select File to Send</Label
-      >
+  <div class="space-y-4">
+    <!-- Device List -->
+    <div v-if="availableDevices.length === 0" class="text-center py-6">
       <div
-        class="p-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl hover:border-primary/50 hover:bg-white/5 transition-all cursor-pointer"
-        @click="selectFile"
+        class="w-12 h-12 bg-slate-500/5 rounded-full flex items-center justify-center mx-auto mb-2"
       >
-        <div v-if="!selectedPath" class="text-center">
-          <FolderOpen class="w-8 h-8 mx-auto mb-2 text-primary opacity-50" />
-          <p class="text-sm text-slate-500 dark:text-slate-400">
-            Click to select a file or directory
-          </p>
-        </div>
-        <div v-else class="text-center">
-          <p class="font-semibold text-primary">
-            {{ getDisplayName(selectedPath) }}
-          </p>
-          <p class="text-xs text-slate-500 dark:text-slate-500 mt-1 truncate">
-            {{ selectedPath }}
-          </p>
-        </div>
+        <WifiOff class="w-5 h-5 opacity-20" />
       </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Button
-          type="button"
-          @click="selectFile"
-          :disabled="isScanning"
-          variant="secondary"
-          class="h-12 rounded-xl"
-        >
-          <FolderOpen class="h-4 w-4 mr-2" />
-          Select File
-        </Button>
-        <Button
-          type="button"
-          @click="selectDirectory"
-          :disabled="isScanning"
-          variant="secondary"
-          class="h-12 rounded-xl"
-        >
-          <FolderOpen class="h-4 w-4 mr-2" />
-          Select Directory
-        </Button>
-      </div>
+      <p class="text-sm text-slate-500 font-medium">
+        {{ isScanning ? "Scanning for devices..." : "No devices found" }}
+      </p>
+      <p class="text-xs text-slate-500/60 mt-1">
+        Make sure both devices are connected to the same WiFi network
+      </p>
+      <p
+        v-if="!isWifiConnected"
+        class="text-xs text-amber-600 dark:text-amber-500 mt-2 font-medium"
+      >
+        WiFi not detected. Nearby discovery requires WiFi connection.
+      </p>
     </div>
 
-    <!-- Discovery Status -->
-    <div class="flex items-center justify-between p-4 glass-card rounded-2xl">
+    <div
+      v-for="device in availableDevices"
+      :key="device.node_id"
+      class="p-3 glass-card rounded-xl hover:scale-[1.01] transition-all duration-200 cursor-pointer group"
+      @click="handleSelectDevice(device)"
+    >
       <div class="flex items-center gap-3">
         <div
-          class="w-10 h-10 rounded-xl flex items-center justify-center"
-          :class="
-            isScanning && isWifiConnected
-              ? 'bg-blue-500/10 text-blue-500'
-              : !isWifiConnected
-                ? 'bg-amber-500/10 text-amber-500'
-                : 'bg-slate-500/10 text-slate-500'
-          "
+          class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-green-500/10 text-green-500"
         >
-          <Wifi v-if="isScanning && isWifiConnected" class="w-5 h-5 animate-pulse" />
-          <WifiOff v-else class="w-5 h-5" />
+          <Wifi class="w-5 h-5" />
         </div>
-        <div>
-          <div class="font-semibold text-sm">
-            <span v-if="isScanning && isWifiConnected">Scanning for devices...</span>
-            <span v-else-if="!isWifiConnected" class="text-amber-600 dark:text-amber-500">WiFi not connected</span>
-            <span v-else>Discovery stopped</span>
-          </div>
-          <div class="text-xs text-slate-500">
-            <span v-if="isWifiConnected">{{ availableDevices.length }} device(s) found</span>
-            <span v-else>WiFi required for nearby discovery</span>
-          </div>
-        </div>
-      </div>
-      <Button
-        @click="refreshDevices"
-        :disabled="!isScanning || !isWifiConnected"
-        variant="ghost"
-        size="sm"
-        class="rounded-xl"
-      >
-        <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isScanning }" />
-      </Button>
-    </div>
 
-    <!-- Device List -->
-    <div class="space-y-3">
-      <Label class="text-sm font-semibold opacity-70 ml-1"
-        >Nearby Devices</Label
-      >
-
-      <div v-if="availableDevices.length === 0" class="text-center py-8">
-        <div
-          class="w-16 h-16 bg-slate-500/5 rounded-full flex items-center justify-center mx-auto mb-3"
-        >
-          <WifiOff class="w-6 h-6 opacity-20" />
-        </div>
-        <p class="text-sm text-slate-500 font-medium">
-          {{ isScanning ? "Scanning for devices..." : "No devices found" }}
-        </p>
-        <p class="text-xs text-slate-500/60 mt-1">
-          Make sure both devices are connected to the same WiFi network
-        </p>
-        <p v-if="!isWifiConnected" class="text-xs text-amber-600 dark:text-amber-500 mt-2 font-medium">
-          ⚠️ WiFi not detected. Nearby discovery requires WiFi connection.
-        </p>
-      </div>
-
-      <div
-        v-for="device in availableDevices"
-        :key="device.node_id"
-        class="p-4 glass-card rounded-2xl hover:scale-[1.01] transition-all duration-300 cursor-pointer group"
-        @click="handleSelectDevice(device)"
-      >
-        <div class="flex items-center gap-4">
-          <div
-            class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-green-500/10 text-green-500"
-          >
-            <Wifi class="w-6 h-6" />
-          </div>
-
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between">
-              <h4 class="font-bold text-slate-900 dark:text-slate-100 truncate">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
+              <h4
+                class="font-bold text-sm text-slate-900 dark:text-slate-100 truncate"
+              >
                 {{ device.display_name }}
               </h4>
-              <span
-                class="text-[10px] font-medium text-slate-500 flex-shrink-0 ml-2"
-              >
-                {{ formatLastSeen(device.last_seen) }}
-              </span>
+              <component
+                :is="detectDevicePlatform(device).icon"
+                class="w-3.5 h-3.5 flex-shrink-0 opacity-60"
+                :class="detectDevicePlatform(device).colorClass"
+                :title="detectDevicePlatform(device).label"
+              />
             </div>
-            <div
-              v-if="device.ip_addresses.length > 0"
-              class="text-xs text-primary font-mono mt-1 flex items-center gap-1"
-            >
-              <Wifi class="w-3 h-3 opacity-50" />
-              {{ device.ip_addresses.join(", ") }}
-            </div>
-            <div
-              v-else-if="device.addresses.length > 0"
-              class="text-xs text-slate-500 font-mono mt-1 truncate"
-            >
-              {{ device.addresses[0] }}
-            </div>
-            <div
-              v-if="device.name && device.name !== device.display_name"
-              class="text-[10px] text-slate-500 mt-1 truncate"
-              :title="device.name"
-            >
-              {{ device.name }}
-            </div>
+            <span class="text-[10px] font-medium text-slate-500 flex-shrink-0">
+              {{ formatLastSeen(device.last_seen) }}
+            </span>
+          </div>
+          <div
+            v-if="device.ip_addresses.length > 0"
+            class="text-xs text-primary font-mono mt-0.5 flex items-center gap-1"
+          >
+            <Wifi class="w-3 h-3 opacity-50" />
+            {{ device.ip_addresses.join(", ") }}
+          </div>
+          <div
+            v-else-if="device.addresses.length > 0"
+            class="text-xs text-slate-500 font-mono mt-0.5 truncate"
+          >
+            {{ device.addresses[0] }}
           </div>
         </div>
       </div>
     </div>
 
     <!-- Local Device Info -->
-    <div v-if="localNodeId || deviceModel || localHostname" class="text-center py-4 space-y-1">
-      <p class="text-xs text-slate-500 font-medium">
-        Your Device:
+    <div
+      v-if="localNodeId || deviceModel || localHostname"
+      class="text-center py-3 space-y-1"
+    >
+      <p
+        class="text-xs text-slate-500 font-medium flex items-center justify-center gap-1.5"
+      >
+        <span>Your Device:</span>
         <span class="text-slate-700 dark:text-slate-300 font-semibold">{{
           deviceModel || localHostname || "Unknown"
         }}</span>
+        <component
+          :is="
+            detectDevicePlatform({
+              display_name: deviceModel || localHostname || '',
+              name: null,
+              node_id: localNodeId,
+              addresses: [],
+              ip_addresses: [],
+              last_seen: 0,
+              available: true,
+            }).icon
+          "
+          class="w-3.5 h-3.5 opacity-60"
+          :class="
+            detectDevicePlatform({
+              display_name: deviceModel || localHostname || '',
+              name: null,
+              node_id: localNodeId,
+              addresses: [],
+              ip_addresses: [],
+              last_seen: 0,
+              available: true,
+            }).colorClass
+          "
+        />
       </p>
       <p class="text-[10px] text-slate-500/60 font-mono">
         ID: <span class="text-primary">{{ localNodeId || "Unknown" }}</span>
@@ -424,7 +425,7 @@ function getDisplayName(path: string): string {
     </div>
 
     <!-- System Info Debug Panel -->
-    <div class="border-t border-slate-200 dark:border-slate-800 pt-4">
+    <div class="border-t border-slate-200 dark:border-slate-800 pt-3">
       <Button
         type="button"
         @click="showSystemInfo = !showSystemInfo"
@@ -527,10 +528,24 @@ function getDisplayName(path: string): string {
             </div>
           </div>
           <div class="space-y-1">
-            <div class="font-semibold" :class="isWifiConnected ? 'text-green-600 dark:text-green-500' : 'text-amber-600 dark:text-amber-500'">
+            <div
+              class="font-semibold"
+              :class="
+                isWifiConnected
+                  ? 'text-green-600 dark:text-green-500'
+                  : 'text-amber-600 dark:text-amber-500'
+              "
+            >
               wifiConnected
             </div>
-            <div class="font-mono" :class="isWifiConnected ? 'text-green-600 dark:text-green-500' : 'text-amber-600 dark:text-amber-500'">
+            <div
+              class="font-mono"
+              :class="
+                isWifiConnected
+                  ? 'text-green-600 dark:text-green-500'
+                  : 'text-amber-600 dark:text-amber-500'
+              "
+            >
               {{ isWifiConnected ? "✓ Yes" : "✗ No" }}
             </div>
           </div>

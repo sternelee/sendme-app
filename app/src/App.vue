@@ -10,6 +10,7 @@ import {
   cancel_transfer,
   get_transfers,
   clear_transfers,
+  check_wifi_connection,
   type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
@@ -44,6 +45,7 @@ import {
   Moon,
   Trash2,
   Wifi,
+  ChevronDown,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { shareText } from "./lib/sharesheet";
@@ -70,6 +72,9 @@ interface ProgressUpdate {
 // State
 const activeTab = ref("send");
 const transfers = ref<Transfer[]>([]);
+const isNearbyExpanded = ref(false);
+const isWifiConnected = ref(false);
+const nearbyDevicesRef = ref<InstanceType<typeof NearbyDevices> | null>(null);
 
 // Send state
 const sendPath = ref("");
@@ -169,6 +174,9 @@ onMounted(async () => {
   // Load transfers
   await loadTransfers();
 
+  // Check WiFi status
+  await checkWifiStatus();
+
   // Listen for progress events
   unlisten.value = await listen<ProgressUpdate>("progress", (event) => {
     const { transfer_id, ...data } = event.payload.data;
@@ -197,6 +205,11 @@ onMounted(async () => {
       metadataCache.value[transfer_id] = data.progress;
     }
   });
+
+  // Check WiFi status periodically
+  setInterval(async () => {
+    await checkWifiStatus();
+  }, 10000);
 });
 
 onUnmounted(() => {
@@ -244,7 +257,41 @@ async function handleSelectNearbyDevice(device: NearbyDevice) {
   // Switch to send tab and set ticket type to addresses (local-only)
   sendTicketType.value = "addresses";
   activeTab.value = "send";
+  // Collapse nearby section
+  isNearbyExpanded.value = false;
   toast.success(`Selected device: ${device.display_name}`);
+}
+
+async function checkWifiStatus() {
+  try {
+    isWifiConnected.value = await check_wifi_connection();
+    // Auto-expand nearby section when WiFi is connected
+    if (isWifiConnected.value && !isNearbyExpanded.value) {
+      // Don't auto-expand if user has manually collapsed it
+      const manuallyCollapsed = sessionStorage.getItem(
+        "nearbyManuallyCollapsed",
+      );
+      if (!manuallyCollapsed) {
+        isNearbyExpanded.value = true;
+      }
+    }
+    // Auto-collapse when WiFi disconnects
+    if (!isWifiConnected.value && isNearbyExpanded.value) {
+      isNearbyExpanded.value = false;
+    }
+  } catch (e) {
+    console.error("Failed to check WiFi status:", e);
+  }
+}
+
+function toggleNearbySection() {
+  isNearbyExpanded.value = !isNearbyExpanded.value;
+  // Remember user's manual toggle
+  if (!isNearbyExpanded.value) {
+    sessionStorage.setItem("nearbyManuallyCollapsed", "true");
+  } else {
+    sessionStorage.removeItem("nearbyManuallyCollapsed");
+  }
 }
 
 async function handleReceive() {
@@ -511,6 +558,63 @@ function getProgressValue(id: string) {
 
       <!-- Main Container -->
       <div class="glass rounded-2xl sm:rounded-3xl overflow-hidden">
+        <!-- Collapsible Nearby Devices Section -->
+        <div v-if="isWifiConnected" class="border-b border-white/10">
+          <div
+            class="w-full px-4 sm:px-6 py-3 flex items-center justify-between"
+          >
+            <button
+              @click="toggleNearbySection"
+              class="flex-1 flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
+              <Wifi
+                class="w-4 h-4 text-primary"
+                :class="{ 'animate-pulse': nearbyDevicesRef?.isScanning }"
+              />
+              <span class="text-sm font-semibold">Nearby Devices</span>
+              <span
+                class="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full"
+              >
+                {{ nearbyDevicesRef?.availableDevices?.length || 0 }}
+              </span>
+              <ChevronDown
+                class="w-4 h-4 transition-transform duration-200 ml-auto"
+                :class="{ 'rotate-180': isNearbyExpanded }"
+              />
+            </button>
+            <button
+              @click="nearbyDevicesRef?.refreshDevices()"
+              :disabled="!nearbyDevicesRef?.isScanning"
+              class="p-1.5 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-2"
+              title="Refresh devices"
+            >
+              <RefreshCw
+                class="w-4 h-4"
+                :class="{ 'animate-spin': nearbyDevicesRef?.isScanning }"
+              />
+            </button>
+          </div>
+
+          <transition
+            enter-active-class="transition-all duration-300 ease-out"
+            enter-from-class="opacity-0 max-h-0"
+            enter-to-class="opacity-100 max-h-[800px]"
+            leave-active-class="transition-all duration-300 ease-in"
+            leave-from-class="opacity-100 max-h-[800px]"
+            leave-to-class="opacity-0 max-h-0"
+          >
+            <div
+              v-if="isNearbyExpanded"
+              class="px-4 sm:px-6 pb-6 overflow-hidden"
+            >
+              <NearbyDevices
+                ref="nearbyDevicesRef"
+                @select-device="handleSelectNearbyDevice"
+              />
+            </div>
+          </transition>
+        </div>
+
         <Tabs v-model="activeTab" class="w-full">
           <TabsList
             class="flex w-full h-auto bg-transparent p-2 gap-2 border-b border-white/10"
@@ -521,13 +625,6 @@ function getProgressValue(id: string) {
             >
               <Send class="w-4 h-4 mr-2" />
               Send
-            </TabsTrigger>
-            <TabsTrigger
-              value="nearby"
-              class="flex-1 py-3 text-sm font-semibold rounded-xl transition-all data-[state=active]:bg-white/10 data-[state=active]:text-secondary-foreground dark:data-[state=active]:text-white data-[state=active]:shadow-sm"
-            >
-              <Wifi class="w-4 h-4 mr-2" />
-              Nearby
             </TabsTrigger>
             <TabsTrigger
               value="receive"
@@ -766,11 +863,6 @@ function getProgressValue(id: string) {
                   </Button>
                 </div>
               </div>
-            </TabsContent>
-
-            <!-- Nearby Tab -->
-            <TabsContent value="nearby" class="space-y-6 mt-0 outline-none">
-              <NearbyDevices @select-device="handleSelectNearbyDevice" />
             </TabsContent>
           </div>
         </Tabs>
