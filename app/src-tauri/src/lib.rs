@@ -23,11 +23,155 @@ pub struct NearbyDevice {
 
 type NearbyDiscovery = Arc<RwLock<Option<sendme_lib::nearby::NearbyDiscovery>>>;
 
+/// Get the real filename from an Android content URI using ContentResolver.
+///
+/// This function queries the ContentResolver to get the original filename from the URI.
+/// Returns the filename if available, otherwise returns a generic name.
+#[cfg(target_os = "android")]
+fn get_filename_from_content_uri(uri: &str) -> Result<String, String> {
+    use jni::objects::{JObject, JString};
+    use jni::signature::{JavaType, Primitive};
+
+    let ctx = ndk_context::android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
+        .map_err(|e| format!("Failed to get VM: {}", e))?;
+    let mut env = vm
+        .attach_current_thread()
+        .map_err(|e| format!("Failed to attach thread: {}", e))?;
+
+    // Get the URI object
+    let uri_string = env
+        .new_string(uri)
+        .map_err(|e| format!("Failed to create URI string: {}", e))?;
+    let uri_class = env
+        .find_class("android/net/Uri")
+        .map_err(|e| format!("Failed to find Uri class: {}", e))?;
+    let parse_method = env
+        .get_static_method_id(&uri_class, "parse", "(Ljava/lang/String;)Landroid/net/Uri;")
+        .map_err(|e| format!("Failed to get parse method: {}", e))?;
+    let uri_obj = env
+        .call_static_method_unchecked(
+            &uri_class,
+            parse_method,
+            JavaType::Object("android/net/Uri".into()),
+            &[(&uri_string).into()],
+        )
+        .and_then(|v| v.l())
+        .map_err(|e| format!("Failed to parse URI: {}", e))?;
+
+    // Get ContentResolver
+    let context = unsafe { JObject::from_raw(ctx.context().cast()) };
+    let content_resolver = env
+        .call_method(
+            &context,
+            "getContentResolver",
+            "()Landroid/content/ContentResolver;",
+            &[],
+        )
+        .and_then(|v| v.l())
+        .map_err(|e| format!("Failed to get ContentResolver: {}", e))?;
+
+    // Query the content URI for the display name
+    let projection = env
+        .new_object_array(
+            1,
+            "java/lang/String",
+            env.new_string("_display_name")
+                .map_err(|e| format!("Failed to create projection string: {}", e))?,
+        )
+        .map_err(|e| format!("Failed to create projection array: {}", e))?;
+
+    let cursor = env
+        .call_method(
+            &content_resolver,
+            "query",
+            "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;",
+            &[
+                (&uri_obj).into(),
+                (&projection).into(),
+                JObject::null().into(),
+                JObject::null().into(),
+                JObject::null().into(),
+            ],
+        )
+        .and_then(|v| v.l())
+        .map_err(|e| format!("Failed to query cursor: {}", e))?;
+
+    if cursor.is_null() {
+        return Err("Cursor is null".to_string());
+    }
+
+    // Move cursor to first row
+    let move_result = env
+        .call_method(&cursor, "moveToFirst", "()Z", &[])
+        .and_then(|v| v.z())
+        .map_err(|e| format!("Failed to move cursor: {}", e))?;
+
+    if !move_result {
+        // Close cursor and return error
+        let _ = env.call_method(&cursor, "close", "()V", &[]);
+        return Err("No data in cursor".to_string());
+    }
+
+    // Get the display name column index
+    let column_name = env
+        .new_string("_display_name")
+        .map_err(|e| format!("Failed to create column name: {}", e))?;
+    let column_index = env
+        .call_method(
+            &cursor,
+            "getColumnIndex",
+            "(Ljava/lang/String;)I",
+            &[(&column_name).into()],
+        )
+        .and_then(|v| v.i())
+        .map_err(|e| format!("Failed to get column index: {}", e))?;
+
+    if column_index == -1 {
+        let _ = env.call_method(&cursor, "close", "()V", &[]);
+        return Err("Column not found".to_string());
+    }
+
+    // Get the string value
+    let filename_obj = env
+        .call_method(
+            &cursor,
+            "getString",
+            "(I)Ljava/lang/String;",
+            &[column_index.into()],
+        )
+        .and_then(|v| v.l())
+        .map_err(|e| format!("Failed to get string: {}", e))?;
+
+    // Close cursor
+    let _ = env.call_method(&cursor, "close", "()V", &[]);
+
+    if filename_obj.is_null() {
+        return Err("Filename is null".to_string());
+    }
+
+    // Convert to Rust string
+    let filename_jstring = JString::from(filename_obj);
+    let filename: String = env
+        .get_string(&filename_jstring)
+        .map_err(|e| format!("Failed to convert string: {}", e))?
+        .into();
+
+    Ok(filename)
+}
+
+#[cfg(not(target_os = "android"))]
+fn get_filename_from_content_uri(_uri: &str) -> Result<String, String> {
+    Err("Not supported on this platform".to_string())
+}
+
 /// Handle Android content URIs by reading the file and writing to a temporary location.
 ///
 /// On Android, when using the file picker, the returned path may be a `content://` URI
 /// which cannot be read directly by `std::fs`. This function uses `tauri_plugin_fs`
 /// which can handle content URIs, and copies the content to a temporary file.
+///
+/// The function attempts to preserve the original filename by querying the ContentResolver.
 async fn handle_content_uri(app: &AppHandle, path: &str) -> Result<std::path::PathBuf, String> {
     use std::str::FromStr;
     use tauri_plugin_fs::FilePath;
@@ -54,15 +198,44 @@ async fn handle_content_uri(app: &AppHandle, path: &str) -> Result<std::path::Pa
             .temp_dir()
             .map_err(|e| format!("Failed to get temp directory: {}", e))?;
 
-        // Generate a unique filename using timestamp and UUID suffix
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let unique_id = Uuid::new_v4().simple().to_string();
-        let filename = format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8]);
+        // Try to get the original filename from the content URI
+        let filename = match get_filename_from_content_uri(path) {
+            Ok(name) if !name.is_empty() => {
+                tracing::info!("Retrieved original filename from content URI: {}", name);
+                // Sanitize the filename to prevent directory traversal
+                let sanitized = name.replace(['/', '\\', '\0'], "_");
+                // Add a unique suffix to prevent conflicts
+                let unique_id = &Uuid::new_v4().simple().to_string()[..8];
+                if let Some((stem, ext)) = sanitized.rsplit_once('.') {
+                    format!("{}-{}.{}", stem, unique_id, ext)
+                } else {
+                    format!("{}-{}", sanitized, unique_id)
+                }
+            }
+            Ok(_name) => {
+                tracing::warn!("Retrieved empty filename, using fallback");
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let unique_id = Uuid::new_v4().simple().to_string();
+                format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8])
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to get filename from content URI: {}, using fallback",
+                    e
+                );
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let unique_id = Uuid::new_v4().simple().to_string();
+                format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8])
+            }
+        };
 
-        let temp_file_path = temp_dir.join(filename);
+        let temp_file_path = temp_dir.join(&filename);
 
         // Write the content to the temporary file
         let mut file = std::fs::File::create(&temp_file_path)
@@ -120,7 +293,7 @@ pub fn run() {
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
     let nearby_discovery: NearbyDiscovery = Arc::new(RwLock::new(None));
 
-    let mut builder = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
