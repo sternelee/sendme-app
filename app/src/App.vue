@@ -4,6 +4,7 @@ import { ref, onMounted, onUnmounted, computed } from "vue";
 import { useLocalStorage } from "@vueuse/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { platform } from "@tauri-apps/plugin-os";
 import {
   send_file,
   receive_file,
@@ -11,6 +12,7 @@ import {
   get_transfers,
   clear_transfers,
   check_wifi_connection,
+  get_default_download_folder,
   type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
@@ -447,15 +449,32 @@ async function selectDirectory() {
 
 async function selectOutputDirectory() {
   try {
-    const selected = await open({
-      multiple: false,
-      directory: true,
-    });
-    if (selected && typeof selected === "string") {
-      receiveOutputDir.value = selected;
+    // Check if we're on a mobile platform
+    const currentPlatform = platform();
+    const isMobile = currentPlatform === "android" || currentPlatform === "ios";
+
+    if (isMobile) {
+      // On mobile, use the default download folder
+      const defaultFolder = await get_default_download_folder();
+      receiveOutputDir.value = defaultFolder;
+      toast.success("Using default Downloads folder", {
+        description: defaultFolder,
+      });
+    } else {
+      // On desktop, use the dialog picker
+      const selected = await open({
+        multiple: false,
+        directory: true,
+      });
+      if (selected && typeof selected === "string") {
+        receiveOutputDir.value = selected;
+      }
     }
   } catch (e) {
     console.error("Failed to select output directory:", e);
+    toast.error("Failed to select folder", {
+      description: String(e),
+    });
   }
 }
 

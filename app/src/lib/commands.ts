@@ -122,3 +122,14 @@ export async function get_device_model(): Promise<string> {
 export async function check_wifi_connection(): Promise<boolean> {
   return await invoke("check_wifi_connection");
 }
+
+/**
+ * Get the default download folder path (mobile only)
+ *
+ * On Android, returns the public Downloads directory.
+ * On iOS, returns the Documents directory.
+ * On desktop platforms, returns an error.
+ */
+export async function get_default_download_folder(): Promise<string> {
+  return await invoke("get_default_download_folder");
+}

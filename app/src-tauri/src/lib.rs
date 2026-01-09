@@ -321,7 +321,8 @@ pub fn run() {
             stop_nearby_discovery,
             get_hostname,
             get_device_model,
-            check_wifi_connection
+            check_wifi_connection,
+            get_default_download_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1123,4 +1124,77 @@ fn check_wifi_connection() -> Result<bool, String> {
 
     tracing::warn!("No WiFi connection detected");
     Ok(false)
+}
+
+/// Get the default download folder path for mobile devices
+///
+/// On Android, returns the path to the public Downloads directory.
+/// On iOS, returns the Documents directory.
+/// On desktop platforms, returns an error.
+#[tauri::command]
+#[cfg(target_os = "android")]
+fn get_default_download_folder() -> Result<String, String> {
+    let ctx = ndk_context::android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
+        .map_err(|e| format!("Failed to get VM: {}", e))?;
+    let mut env = vm
+        .attach_current_thread()
+        .map_err(|e| format!("Failed to attach thread: {}", e))?;
+
+    // Get Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+    let environment_class = env
+        .find_class("android/os/Environment")
+        .map_err(|e| format!("Failed to find Environment class: {}", e))?;
+
+    let downloads_string = env
+        .new_string("Download")
+        .map_err(|e| format!("Failed to create Downloads string: {}", e))?;
+
+    let downloads_file = env
+        .call_static_method(
+            &environment_class,
+            "getExternalStoragePublicDirectory",
+            "(Ljava/lang/String;)Ljava/io/File;",
+            &[(&downloads_string).into()],
+        )
+        .and_then(|v| v.l())
+        .map_err(|e| format!("Failed to get Downloads directory: {}", e))?;
+
+    // Get the absolute path
+    let path_obj = env
+        .call_method(
+            &downloads_file,
+            "getAbsolutePath",
+            "()Ljava/lang/String;",
+            &[],
+        )
+        .and_then(|v| v.l())
+        .map_err(|e| format!("Failed to get absolute path: {}", e))?;
+
+    // Convert to Rust string
+    let path_jstring = jni::objects::JString::from(path_obj);
+    let path: String = env
+        .get_string(&path_jstring)
+        .map_err(|e| format!("Failed to convert path to string: {}", e))?
+        .into();
+
+    Ok(path)
+}
+
+#[tauri::command]
+#[cfg(target_os = "ios")]
+fn get_default_download_folder(app: AppHandle) -> Result<String, String> {
+    // On iOS, use the Documents directory
+    let path = app
+        .path()
+        .document_dir()
+        .map_err(|e| format!("Failed to get Documents directory: {}", e))?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn get_default_download_folder() -> Result<String, String> {
+    Err("This function is only available on mobile platforms".to_string())
 }
