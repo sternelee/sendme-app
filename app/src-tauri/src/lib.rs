@@ -9,6 +9,10 @@ use tauri_plugin_fs::FsExt;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+// Import tracing for non-Android platforms
+#[cfg(not(target_os = "android"))]
+use tracing;
+
 // Logging macros that work on both Android and other platforms
 #[cfg(target_os = "android")]
 macro_rules! log_info {
@@ -20,7 +24,7 @@ macro_rules! log_info {
 #[cfg(not(target_os = "android"))]
 macro_rules! log_info {
     ($($arg:tt)*) => {
-        log_info!($($arg)*)
+        tracing::info!($($arg)*)
     };
 }
 
@@ -34,7 +38,7 @@ macro_rules! log_error {
 #[cfg(not(target_os = "android"))]
 macro_rules! log_error {
     ($($arg:tt)*) => {
-        log_error!($($arg)*)
+        tracing::error!($($arg)*)
     };
 }
 
@@ -48,7 +52,7 @@ macro_rules! log_warn {
 #[cfg(not(target_os = "android"))]
 macro_rules! log_warn {
     ($($arg:tt)*) => {
-        log_warn!($($arg)*)
+        tracing::warn!($($arg)*)
     };
 }
 
@@ -369,7 +373,7 @@ pub fn run() {
 
     eprintln!("Building Tauri app...");
 
-    let mut builder = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
@@ -416,27 +420,62 @@ async fn send_file(
     transfers: tauri::State<'_, Transfers>,
     request: SendFileRequest,
 ) -> Result<String, String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📤 SEND_FILE STARTED");
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📋 Request details:");
+    log_info!("  - Path: {}", request.path);
+    log_info!("  - Ticket type: {}", request.ticket_type);
+    log_info!(
+        "  - Is content URI: {}",
+        request.path.starts_with("content://")
+    );
+
     let transfer_id = Uuid::new_v4().to_string();
+    log_info!("📝 Generated transfer_id: {}", transfer_id);
+
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
 
     // Parse ticket type
     let ticket_type = match request.ticket_type.as_str() {
-        "id" => Ok(sendme_lib::types::AddrInfoOptions::Id),
-        "relay" => Ok(sendme_lib::types::AddrInfoOptions::Relay),
-        "addresses" => Ok(sendme_lib::types::AddrInfoOptions::Addresses),
-        "relay_and_addresses" => Ok(sendme_lib::types::AddrInfoOptions::RelayAndAddresses),
-        _ => Err("Invalid ticket type".to_string()),
+        "id" => {
+            log_info!("🎫 Ticket type: ID only");
+            Ok(sendme_lib::types::AddrInfoOptions::Id)
+        }
+        "relay" => {
+            log_info!("🎫 Ticket type: Relay");
+            Ok(sendme_lib::types::AddrInfoOptions::Relay)
+        }
+        "addresses" => {
+            log_info!("🎫 Ticket type: Addresses (local-only)");
+            Ok(sendme_lib::types::AddrInfoOptions::Addresses)
+        }
+        "relay_and_addresses" => {
+            log_info!("🎫 Ticket type: Relay + Addresses");
+            Ok(sendme_lib::types::AddrInfoOptions::RelayAndAddresses)
+        }
+        _ => {
+            let err = format!("Invalid ticket type: {}", request.ticket_type);
+            log_error!("❌ {}", err);
+            Err(err)
+        }
     }?;
 
     // Get temp directory for macOS sandbox compatibility
-    let temp_dir = app
-        .path()
-        .temp_dir()
-        .map_err(|e| format!("Failed to get temp directory: {}", e))?;
+    log_info!("📁 Getting temp directory...");
+    let temp_dir = app.path().temp_dir().map_err(|e| {
+        let err_msg = format!("Failed to get temp directory: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
+    log_info!("✅ Temp dir: {:?}", temp_dir);
 
     // Handle Android content URIs - if path is a content:// URI, copy to temp file
+    log_info!("🔍 Handling content URI...");
     let (file_path, display_name) = handle_content_uri(&app, &request.path).await?;
+    log_info!("✅ File path resolved: {:?}", file_path);
+    log_info!("✅ Display name: {}", display_name);
 
     let args = SendArgs {
         path: file_path,
@@ -446,8 +485,10 @@ async fn send_file(
             ..Default::default()
         },
     };
+    log_info!("⚙️  SendArgs created successfully");
 
     // Create transfer info - use display_name for better UI
+    log_info!("📊 Creating transfer info...");
     let transfer_info = TransferInfo {
         id: transfer_id.clone(),
         transfer_type: "send".to_string(),
@@ -458,8 +499,14 @@ async fn send_file(
             .unwrap()
             .as_secs() as i64,
     };
+    log_info!(
+        "✅ Transfer info created: {} - {}",
+        transfer_info.id,
+        transfer_info.path
+    );
 
     // Store transfer
+    log_info!("💾 Storing transfer in state...");
     let mut transfers_guard = transfers.write().await;
     transfers_guard.insert(
         transfer_id.clone(),
@@ -469,20 +516,43 @@ async fn send_file(
         },
     );
     drop(transfers_guard);
+    log_info!("✅ Transfer stored with id: {}", transfer_id);
 
     let app_clone = app.clone();
     let transfers_clone = transfers.inner().clone();
     let transfer_id_clone = transfer_id.clone();
     let transfer_id_for_abort = transfer_id.clone();
 
+    log_info!("🔄 Spawning progress listener task...");
     tokio::spawn(async move {
+        log_info!(
+            "  [Progress Task] Started for transfer: {}",
+            transfer_id_clone
+        );
+
         // Listen for abort signal
         tokio::spawn(async move {
             let _ = abort_rx.await;
-            log_info!("Transfer {} aborted", transfer_id_for_abort);
+            log_info!(
+                "  [Progress Task] Transfer {} aborted",
+                transfer_id_for_abort
+            );
         });
 
+        let mut event_count = 0;
         while let Some(event) = rx.recv().await {
+            event_count += 1;
+            log_info!(
+                "  [Progress Task] Event #{}: {:?}",
+                event_count,
+                match &event {
+                    ProgressEvent::Import(name, _) => format!("Import({})", name),
+                    ProgressEvent::Export(name, _) => format!("Export({})", name),
+                    ProgressEvent::Download(_) => "Download".to_string(),
+                    ProgressEvent::Connection(status) => format!("Connection({:?})", status),
+                }
+            );
+
             let update = match event {
                 ProgressEvent::Import(name, progress) => {
                     update_transfer_status(
@@ -547,16 +617,28 @@ async fn send_file(
             let _ = app_clone.emit("progress", update);
         }
 
+        log_info!("  [Progress Task] Completed. Total events: {}", event_count);
         // Mark transfer as complete
         update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
     });
 
+    log_info!("🚀 Calling sendme_lib::send_with_progress...");
     match sendme_lib::send_with_progress(args, tx).await {
         Ok(result) => {
+            log_info!("═══════════════════════════════════════════════════");
+            log_info!("✅ SEND COMPLETED SUCCESSFULLY");
+            log_info!("═══════════════════════════════════════════════════");
+            log_info!("🎫 Ticket: {}", result.ticket.to_string());
+            log_info!("📊 Transfer ID: {}", transfer_id);
             update_transfer_status(transfers.inner(), &transfer_id, "serving").await;
             Ok(result.ticket.to_string())
         }
         Err(e) => {
+            log_error!("═══════════════════════════════════════════════════");
+            log_error!("❌ SEND FAILED");
+            log_error!("═══════════════════════════════════════════════════");
+            log_error!("Error: {}", e);
+            log_error!("Transfer ID: {}", transfer_id);
             update_transfer_status(transfers.inner(), &transfer_id, &format!("error: {}", e)).await;
             Err(e.to_string())
         }
@@ -995,30 +1077,49 @@ async fn clear_transfers(transfers: tauri::State<'_, Transfers>) -> Result<(), S
 async fn start_nearby_discovery(
     nearby: tauri::State<'_, NearbyDiscovery>,
 ) -> Result<String, String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("🔍 START_NEARBY_DISCOVERY");
+    log_info!("═══════════════════════════════════════════════════");
+
     let mut nearby_guard = nearby.write().await;
 
     // Check if already running
     if nearby_guard.is_some() {
+        log_warn!("⚠️  Nearby discovery already running");
         return Err("Nearby discovery already running".to_string());
     }
 
     // Check WiFi connection before starting
+    log_info!("📡 Checking WiFi connection...");
     if !check_wifi_connection()? {
+        log_error!("❌ WiFi not connected. Nearby discovery requires WiFi.");
         return Err("WiFi connection required for nearby device discovery. Please connect to a WiFi network and try again.".to_string());
     }
+    log_info!("✅ WiFi connection confirmed");
 
     // Get device model (hostname on desktop, device model on mobile)
+    log_info!("📱 Getting device model/hostname...");
     let device_name = get_device_model()?;
+    log_info!("✅ Device name: {}", device_name);
 
     // Create new discovery instance with the device name
+    log_info!("🔭 Creating NearbyDiscovery instance...");
     let discovery = sendme_lib::nearby::NearbyDiscovery::new_with_hostname(device_name)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let err_msg = format!("Failed to create NearbyDiscovery: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?;
 
     let node_id = discovery.node_id().to_string();
+    log_info!("✅ NearbyDiscovery created successfully");
+    log_info!("🆔 Local node ID: {}", node_id);
 
     // Store discovery instance
     *nearby_guard = Some(discovery);
+
+    log_info!("✅ Nearby discovery started successfully");
 
     Ok(node_id)
 }
@@ -1028,6 +1129,8 @@ async fn start_nearby_discovery(
 async fn get_nearby_devices(
     nearby: tauri::State<'_, NearbyDiscovery>,
 ) -> Result<Vec<NearbyDevice>, String> {
+    log_info!("📋 GET_NEARBY_DEVICES called");
+
     let mut nearby_guard = nearby.write().await;
 
     let discovery = nearby_guard
@@ -1035,9 +1138,11 @@ async fn get_nearby_devices(
         .ok_or("Nearby discovery not running".to_string())?;
 
     // Poll for updates
+    log_info!("🔄 Polling for device updates...");
     let _ = discovery.poll().await;
 
     let devices = discovery.recent_devices(std::time::Duration::from_secs(600)); // 10 minutes
+    log_info!("✅ Found {} recent devices", devices.len());
 
     // Convert to frontend format with friendly display names
     let result = devices
@@ -1088,13 +1193,20 @@ async fn get_nearby_devices(
 /// Stop nearby device discovery
 #[tauri::command]
 async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyDiscovery>) -> Result<(), String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("🛑 STOP_NEARBY_DISCOVERY");
+    log_info!("═══════════════════════════════════════════════════");
+
     let mut nearby_guard = nearby.write().await;
 
     if nearby_guard.is_none() {
+        log_warn!("⚠️  Nearby discovery not running");
         return Err("Nearby discovery not running".to_string());
     }
 
     *nearby_guard = None;
+
+    log_info!("✅ Nearby discovery stopped");
 
     Ok(())
 }
@@ -1118,52 +1230,85 @@ fn get_hostname() -> Result<String, String> {
 /// Get the device model (mobile-specific)
 #[tauri::command]
 fn get_device_model() -> Result<String, String> {
+    log_info!("📱 GET_DEVICE_MODEL called");
+
     #[cfg(target_os = "android")]
     {
         use jni::objects::JObject;
         use jni::signature::JavaType;
 
+        log_info!("🤖 Android platform detected");
         let ctx = ndk_context::android_context();
-        let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-            .map_err(|e| format!("Failed to get VM: {}", e))?;
-        let mut env = vm
-            .attach_current_thread()
-            .map_err(|e| format!("Failed to attach to VM: {}", e))?;
+        let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| {
+            let err_msg = format!("Failed to get VM: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?;
+        let mut env = vm.attach_current_thread().map_err(|e| {
+            let err_msg = format!("Failed to attach to VM: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?;
+        log_info!("✅ Attached to Java VM");
 
         // Get Build.MODEL
-        let build_class = env
-            .find_class("android/os/Build")
-            .map_err(|e| format!("Failed to find Build class: {}", e))?;
+        log_info!("📋 Getting Build.MODEL...");
+        let build_class = env.find_class("android/os/Build").map_err(|e| {
+            let err_msg = format!("Failed to find Build class: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?;
         let model_field = env
             .get_static_field_id(&build_class, "MODEL", "Ljava/lang/String;")
-            .map_err(|e| format!("Failed to get MODEL field: {}", e))?;
+            .map_err(|e| {
+                let err_msg = format!("Failed to get MODEL field: {}", e);
+                log_error!("❌ {}", err_msg);
+                err_msg
+            })?;
         let model_obj = env
             .get_static_field_unchecked(
                 &build_class,
                 model_field,
                 JavaType::Object("java/lang/String".to_string()),
             )
-            .map_err(|e| format!("Failed to get MODEL value: {}", e))?;
+            .map_err(|e| {
+                let err_msg = format!("Failed to get MODEL value: {}", e);
+                log_error!("❌ {}", err_msg);
+                err_msg
+            })?;
 
         // Get Build.MANUFACTURER
+        log_info!("📋 Getting Build.MANUFACTURER...");
         let manufacturer_field = env
             .get_static_field_id(&build_class, "MANUFACTURER", "Ljava/lang/String;")
-            .map_err(|e| format!("Failed to get MANUFACTURER field: {}", e))?;
+            .map_err(|e| {
+                let err_msg = format!("Failed to get MANUFACTURER field: {}", e);
+                log_error!("❌ {}", err_msg);
+                err_msg
+            })?;
         let manufacturer_obj = env
             .get_static_field_unchecked(
                 &build_class,
                 manufacturer_field,
                 JavaType::Object("java/lang/String".to_string()),
             )
-            .map_err(|e| format!("Failed to get MANUFACTURER value: {}", e))?;
+            .map_err(|e| {
+                let err_msg = format!("Failed to get MANUFACTURER value: {}", e);
+                log_error!("❌ {}", err_msg);
+                err_msg
+            })?;
 
         // Get the JObject values
-        let model_jobj: JObject = model_obj
-            .l()
-            .map_err(|e| format!("Failed to get model object: {}", e))?;
-        let manufacturer_jobj: JObject = manufacturer_obj
-            .l()
-            .map_err(|e| format!("Failed to get manufacturer object: {}", e))?;
+        let model_jobj: JObject = model_obj.l().map_err(|e| {
+            let err_msg = format!("Failed to get model object: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?;
+        let manufacturer_jobj: JObject = manufacturer_obj.l().map_err(|e| {
+            let err_msg = format!("Failed to get manufacturer object: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?;
 
         // Convert to JString and then to Rust String
         let model_jstring = jni::objects::JString::from(model_jobj);
@@ -1171,25 +1316,43 @@ fn get_device_model() -> Result<String, String> {
 
         let model_str: String = env
             .get_string(&model_jstring)
-            .map_err(|e| format!("Failed to get model string: {}", e))?
+            .map_err(|e| {
+                let err_msg = format!("Failed to get model string: {}", e);
+                log_error!("❌ {}", err_msg);
+                err_msg
+            })?
             .into();
         let manufacturer_str: String = env
             .get_string(&manufacturer_jstring)
-            .map_err(|e| format!("Failed to get manufacturer string: {}", e))?
+            .map_err(|e| {
+                let err_msg = format!("Failed to get manufacturer string: {}", e);
+                log_error!("❌ {}", err_msg);
+                err_msg
+            })?
             .into();
 
+        log_info!(
+            "📋 Model: {}, Manufacturer: {}",
+            model_str,
+            manufacturer_str
+        );
+
         // Format as "Manufacturer Model" or just "Model" if they start the same
-        if model_str.starts_with(&manufacturer_str) {
-            Ok(model_str)
+        let result = if model_str.starts_with(&manufacturer_str) {
+            model_str.clone()
         } else {
-            Ok(format!("{} {}", manufacturer_str, model_str))
-        }
+            format!("{} {}", manufacturer_str, model_str)
+        };
+        log_info!("✅ Device model: {}", result);
+        Ok(result)
     }
 
     #[cfg(target_os = "ios")]
     {
         // Use uname to get machine identifier
         use std::mem;
+
+        log_info!("🍎 iOS platform detected");
 
         #[repr(C)]
         struct Utsname {
@@ -1207,6 +1370,7 @@ fn get_device_model() -> Result<String, String> {
         unsafe {
             let mut info: Utsname = mem::zeroed();
             if uname(&mut info as *mut Utsname) != 0 {
+                log_warn!("⚠️  Failed to call uname, returning generic name");
                 return Ok("Unknown iOS Device".to_string());
             }
 
@@ -1219,15 +1383,22 @@ fn get_device_model() -> Result<String, String> {
                 .map(|c| c as char)
                 .collect::<String>();
 
+            log_info!("📱 Machine identifier: {}", machine);
+
             // Map common machine identifiers to friendly names
-            Ok(map_ios_machine_to_name(&machine))
+            let result = map_ios_machine_to_name(&machine);
+            log_info!("✅ Device model: {}", result);
+            Ok(result)
         }
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         // Desktop: just return hostname
-        Ok(get_hostname()?)
+        log_info!("💻 Desktop platform detected");
+        let hostname = get_hostname()?;
+        log_info!("✅ Using hostname: {}", hostname);
+        Ok(hostname)
     }
 }
 
@@ -1280,13 +1451,30 @@ fn map_ios_machine_to_name(machine: &str) -> String {
 /// which uses mDNS over the local network.
 #[tauri::command]
 fn check_wifi_connection() -> Result<bool, String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📡 CHECK_WIFI_CONNECTION");
+    log_info!("═══════════════════════════════════════════════════");
+
     // Get all network interfaces
+    log_info!("🔍 Scanning network interfaces...");
     let interfaces = get_interfaces();
+    log_info!("📊 Found {} network interfaces", interfaces.len());
 
     // Check if any interface is connected and appears to be WiFi
-    for interface in interfaces {
+    for (index, interface) in interfaces.iter().enumerate() {
+        log_info!("📋 Interface #{}: {}", index, interface.name);
+        log_info!("  - Loopback: {}", interface.is_loopback());
+        log_info!("  - Up: {}", interface.is_up());
+        log_info!("  - IPv4: {:?}", interface.ipv4);
+        log_info!("  - IPv6: {:?}", interface.ipv6);
+
         // Skip loopback and down interfaces
-        if interface.is_loopback() || !interface.is_up() {
+        if interface.is_loopback() {
+            log_info!("  ⏭️  Skipping (loopback)");
+            continue;
+        }
+        if !interface.is_up() {
+            log_info!("  ⏭️  Skipping (down)");
             continue;
         }
 
@@ -1294,6 +1482,7 @@ fn check_wifi_connection() -> Result<bool, String> {
         let has_ip = !interface.ipv4.is_empty() || !interface.ipv6.is_empty();
 
         if !has_ip {
+            log_info!("  ⏭️  Skipping (no IP)");
             continue;
         }
 
@@ -1316,9 +1505,11 @@ fn check_wifi_connection() -> Result<bool, String> {
             // iOS WiFi interface
             || (cfg!(target_os = "ios") && interface.name.starts_with("en"));
 
+        log_info!("  - WiFi match: {}", is_wifi);
+
         if is_wifi {
             log_info!(
-                "Found WiFi connection on interface: {} ({})",
+                "✅ Found WiFi connection on interface: {} ({})",
                 interface.name,
                 interface
                     .friendly_name
@@ -1329,7 +1520,7 @@ fn check_wifi_connection() -> Result<bool, String> {
         }
     }
 
-    log_warn!("No WiFi connection detected");
+    log_warn!("⚠️  No WiFi connection detected");
     Ok(false)
 }
 
@@ -1341,21 +1532,37 @@ fn check_wifi_connection() -> Result<bool, String> {
 #[tauri::command]
 #[cfg(target_os = "android")]
 fn get_default_download_folder() -> Result<String, String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📁 GET_DEFAULT_DOWNLOAD_FOLDER (Android)");
+    log_info!("═══════════════════════════════════════════════════");
+
     let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-        .map_err(|e| format!("Failed to get VM: {}", e))?;
-    let mut env = vm
-        .attach_current_thread()
-        .map_err(|e| format!("Failed to attach thread: {}", e))?;
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| {
+        let err_msg = format!("Failed to get VM: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
+    let mut env = vm.attach_current_thread().map_err(|e| {
+        let err_msg = format!("Failed to attach thread: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
+    log_info!("✅ Attached to Java VM");
 
     // Get Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-    let environment_class = env
-        .find_class("android/os/Environment")
-        .map_err(|e| format!("Failed to find Environment class: {}", e))?;
+    log_info!("📋 Getting Environment class...");
+    let environment_class = env.find_class("android/os/Environment").map_err(|e| {
+        let err_msg = format!("Failed to find Environment class: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
 
-    let downloads_string = env
-        .new_string("Download")
-        .map_err(|e| format!("Failed to create Downloads string: {}", e))?;
+    log_info!("📋 Calling Environment.getExternalStoragePublicDirectory...");
+    let downloads_string = env.new_string("Download").map_err(|e| {
+        let err_msg = format!("Failed to create Downloads string: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
 
     let downloads_file = env
         .call_static_method(
@@ -1365,9 +1572,15 @@ fn get_default_download_folder() -> Result<String, String> {
             &[(&downloads_string).into()],
         )
         .and_then(|v| v.l())
-        .map_err(|e| format!("Failed to get Downloads directory: {}", e))?;
+        .map_err(|e| {
+            let err_msg = format!("Failed to get Downloads directory: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?;
+    log_info!("✅ Got Downloads File object");
 
     // Get the absolute path
+    log_info!("📋 Getting absolute path...");
     let path_obj = env
         .call_method(
             &downloads_file,
@@ -1376,32 +1589,52 @@ fn get_default_download_folder() -> Result<String, String> {
             &[],
         )
         .and_then(|v| v.l())
-        .map_err(|e| format!("Failed to get absolute path: {}", e))?;
+        .map_err(|e| {
+            let err_msg = format!("Failed to get absolute path: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?;
 
     // Convert to Rust string
     let path_jstring = jni::objects::JString::from(path_obj);
     let path: String = env
         .get_string(&path_jstring)
-        .map_err(|e| format!("Failed to convert path to string: {}", e))?
+        .map_err(|e| {
+            let err_msg = format!("Failed to convert path to string: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?
         .into();
 
+    log_info!("✅ Download folder: {}", path);
     Ok(path)
 }
 
 #[tauri::command]
 #[cfg(target_os = "ios")]
 fn get_default_download_folder(app: AppHandle) -> Result<String, String> {
-    // On iOS, use the Documents directory
-    let path = app
-        .path()
-        .document_dir()
-        .map_err(|e| format!("Failed to get Documents directory: {}", e))?;
+    log_info!("═════════════════════════════════════════════════");
+    log_info!("📁 GET_DEFAULT_DOWNLOAD_FOLDER (iOS)");
+    log_info!("═══════════════════════════════════════════════════");
 
+    // On iOS, use the Documents directory
+    log_info!("📋 Getting Documents directory...");
+    let path = app.path().document_dir().map_err(|e| {
+        let err_msg = format!("Failed to get Documents directory: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
+
+    log_info!("✅ Documents directory: {:?}", path);
     Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn get_default_download_folder() -> Result<String, String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📁 GET_DEFAULT_DOWNLOAD_FOLDER (Desktop)");
+    log_info!("═══════════════════════════════════════════════════");
+    log_warn!("⚠️  This function is only available on mobile platforms");
     Err("This function is only available on mobile platforms".to_string())
 }
