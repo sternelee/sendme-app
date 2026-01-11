@@ -179,16 +179,17 @@ The browser crate (`browser/`) provides WebAssembly bindings for in-browser P2P 
 #### Build Requirements
 
 ```bash
-# macOS: Use llvm.org Clang (NOT Apple Clang)
+# macOS: Use llvm.org Clang (NOT Apple Clang) for WASM builds
 export CC=/opt/homebrew/opt/llvm/bin/clang
 
 # Build from repository root
 cargo build --target=wasm32-unknown-unknown --manifest-path=browser/Cargo.toml
 
-# Or from browser directory
+# Or use npm scripts from browser directory
 cd browser
-cargo build --target=wasm32-unknown-unknown
-pnpm run build  # Uses npm scripts
+pnpm run build           # Debug build with wasm-bindgen
+pnpm run build:release   # Release build with wasm-bindgen
+pnpm run serve           # Serve demo locally
 ```
 
 #### Structure
@@ -255,6 +256,16 @@ interface ProgressUpdate {
 
 ## Important Implementation Details
 
+### Recursion Limit
+
+The Tauri app backend (`app/src-tauri/src/lib.rs`) defines platform-specific logging macros. If you encounter "recursion limit reached while expanding `log_info!`" compilation errors, add to the top of the file:
+
+```rust
+#![recursion_limit = "256"]
+```
+
+Note: The non-Android variants of these macros are currently stubs that recursively call themselves - they should be fixed to actually call the underlying `log` macros.
+
 ### Router Keep-Alive
 
 Critical: The sender's router must stay alive to serve incoming connections. This is done by:
@@ -296,6 +307,24 @@ Do NOT replace this with a sleep loop or the router will drop.
 ## MSRV
 
 Minimum Supported Rust Version: **1.81** (defined in workspace Cargo.toml)
+
+## Testing
+
+```bash
+# Run all tests
+cargo test
+
+# Run specific test modules
+cargo test --test cli          # CLI integration tests
+cargo test --lib               # Library unit tests
+cargo test -p sendme-lib       # Library crate tests only
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run specific test
+cargo test test_name
+```
 
 ## Mobile Development
 
