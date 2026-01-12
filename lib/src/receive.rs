@@ -56,9 +56,40 @@ async fn receive_internal(
     }
 
     let endpoint = builder.bind().await?;
+
+    // Determine the base directory for temp files
+    // Use temp_dir from args if provided (required for Android/macOS sandbox),
+    // otherwise fall back to current directory
+    let base_dir = args.common.temp_dir.as_ref().cloned()
+        .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
+
+    tracing::info!("📁 Using base directory for temp storage: {:?}", base_dir);
+
     let dir_name = format!(".sendme-recv-{}", ticket.hash().to_hex());
-    let iroh_data_dir = std::env::current_dir()?.join(dir_name);
-    let db = FsStore::load(&iroh_data_dir).await?;
+    let iroh_data_dir = base_dir.join(&dir_name);
+
+    tracing::info!("📂 Creating/loading FsStore at: {:?}", iroh_data_dir);
+
+    // Verify parent directory exists and is writable
+    if !base_dir.exists() {
+        tracing::error!("❌ Base directory does not exist: {:?}", base_dir);
+        anyhow::bail!("Base directory does not exist: {:?}", base_dir);
+    }
+
+    // Test write permissions by creating the temp directory
+    std::fs::create_dir_all(&iroh_data_dir).map_err(|e| {
+        tracing::error!("❌ Failed to create temp directory {:?}: {}", iroh_data_dir, e);
+        anyhow::anyhow!("Failed to create temp directory {:?}: {}. Check write permissions.", iroh_data_dir, e)
+    })?;
+
+    tracing::info!("✅ Temp directory created/verified");
+
+    let db = FsStore::load(&iroh_data_dir).await.map_err(|e| {
+        tracing::error!("❌ Failed to load FsStore: {}", e);
+        anyhow::anyhow!("Failed to load FsStore: {}", e)
+    })?;
+
+    tracing::info!("✅ FsStore loaded successfully");
 
     let hash_and_format = ticket.hash_and_format();
     let local = db.remote().local(hash_and_format).await?;
@@ -217,7 +248,10 @@ async fn receive_internal(
         Some(col) => col,
         None => Collection::load(hash_and_format.hash, db.as_ref()).await?,
     };
-    export::export(&db, collection.clone(), progress_tx.clone()).await?;
+
+    tracing::info!("📤 Starting export to base_dir: {:?}", base_dir);
+    // Export to the base directory (temp_dir from args, or current directory)
+    export::export(&db, collection.clone(), progress_tx.clone(), Some(&base_dir)).await?;
 
     if let Some(ref tx) = progress_tx {
         let _ = tx

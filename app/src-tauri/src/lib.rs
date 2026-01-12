@@ -343,22 +343,14 @@ struct TransferState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Direct stderr output
-    eprintln!("========================================");
-    eprintln!("🚀 Sendme app starting...");
-    eprintln!("========================================");
-
     // Initialize logging for Android
     #[cfg(target_os = "android")]
     {
-        eprintln!("Initializing android_logger...");
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Debug)
                 .with_tag("sendme"),
         );
-        eprintln!("android_logger initialized!");
-        log::info!("🚀 Sendme Android app starting with logging enabled");
     }
 
     // Initialize tracing subscriber for non-Android platforms
@@ -367,11 +359,8 @@ pub fn run() {
         tracing_subscriber::fmt::init();
     }
 
-    eprintln!("Creating transfers state...");
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
     let nearby_discovery: NearbyDiscovery = Arc::new(RwLock::new(None));
-
-    eprintln!("Building Tauri app...");
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
@@ -651,100 +640,40 @@ async fn receive_file(
     transfers: tauri::State<'_, Transfers>,
     request: ReceiveFileRequest,
 ) -> Result<String, String> {
-    // Direct stderr output that bypasses logging system
-    eprintln!("════════════════════════════════════════");
-    eprintln!("🚀 RECEIVE_FILE STARTED");
-    eprintln!("════════════════════════════════════════");
-    eprintln!("Ticket length: {}", request.ticket.len());
-    eprintln!("Output dir: {:?}", request.output_dir);
-    eprintln!("Current dir: {:?}", std::env::current_dir());
-
-    log_info!("═══════════════════════════════════════════════════");
     log_info!("🚀 RECEIVE_FILE STARTED");
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("📋 Request details:");
-    log_info!("  - Ticket length: {} chars", request.ticket.len());
-    log_info!(
-        "  - Ticket prefix: {}...",
-        &request.ticket[..request.ticket.len().min(20)]
-    );
-    log_info!("  - Output dir: {:?}", request.output_dir);
-    log_info!("  - Current working dir: {:?}", std::env::current_dir());
+    log_info!("Ticket length: {} chars", request.ticket.len());
 
     let transfer_id = Uuid::new_v4().to_string();
-    eprintln!("Generated transfer_id: {}", transfer_id);
-    log_info!("📝 Generated transfer_id: {}", transfer_id);
+    log_info!("Transfer ID: {}", transfer_id);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     let (abort_tx, _abort_rx) = tokio::sync::oneshot::channel();
 
     // On Android, set_current_dir doesn't work with public directories due to sandboxing.
-    // Instead, we'll receive files to the app's data directory and document this limitation.
     #[cfg(not(target_os = "android"))]
     if let Some(ref output_dir) = request.output_dir {
-        log_info!(
-            "🖥️  Desktop: Attempting to change directory to: {}",
-            output_dir
-        );
         std::env::set_current_dir(output_dir).map_err(|e| {
-            let err_msg = format!(
+            format!(
                 "Failed to change to output directory '{}': {}",
                 output_dir, e
-            );
-            log_error!("❌ {}", err_msg);
-            err_msg
+            )
         })?;
-        log_info!("✅ Directory changed successfully");
     }
 
-    #[cfg(target_os = "android")]
-    {
-        log_info!("📱 Android platform detected");
-        // On Android, we cannot use set_current_dir with public directories.
-        // Files will be received to the app's current working directory (app data directory).
-        // TODO: Implement post-receive copy to Downloads using MediaStore API
-        if let Some(ref output_dir) = request.output_dir {
-            log_warn!(
-                "⚠️  Android: output_dir '{}' specified but will be ignored due to platform limitations.",
-                output_dir
-            );
-            log_warn!(
-                "    Files will be saved to app data directory: {:?}",
-                std::env::current_dir()
-            );
-            log_warn!("    TODO: Implement MediaStore API for proper Downloads folder support.");
-        } else {
-            log_info!(
-                "  No output_dir specified, using current dir: {:?}",
-                std::env::current_dir()
-            );
-        }
-    }
+    log_info!("Parsing ticket...");
+    let ticket = request
+        .ticket
+        .parse()
+        .map_err(|e| format!("Invalid ticket: {}", e))?;
+    log_info!("Ticket parsed successfully");
 
-    log_info!("🎫 Parsing ticket...");
-    eprintln!("Parsing ticket...");
-    let ticket = request.ticket.parse().map_err(|e| {
-        let err_msg = format!("Invalid ticket: {}", e);
-        eprintln!("❌ Ticket parse FAILED: {}", err_msg);
-        log_error!("❌ Ticket parse failed: {}", err_msg);
-        err_msg
-    })?;
-    eprintln!("✅ Ticket parsed successfully");
-    log_info!("✅ Ticket parsed successfully");
+    // Get temp directory
+    let temp_dir = app
+        .path()
+        .temp_dir()
+        .map_err(|e| format!("Failed to get temp directory: {}", e))?;
+    log_info!("Temp dir: {:?}", temp_dir);
 
-    // Get temp directory for macOS sandbox compatibility
-    log_info!("📁 Getting temp directory...");
-    eprintln!("Getting temp directory...");
-    let temp_dir = app.path().temp_dir().map_err(|e| {
-        let err_msg = format!("Failed to get temp directory: {}", e);
-        eprintln!("❌ Temp dir FAILED: {}", err_msg);
-        log_error!("❌ {}", err_msg);
-        err_msg
-    })?;
-    eprintln!("✅ Temp dir: {:?}", temp_dir);
-    log_info!("✅ Temp dir: {:?}", temp_dir);
-
-    log_info!("⚙️  Creating ReceiveArgs...");
     let args = ReceiveArgs {
         ticket,
         common: CommonConfig {
@@ -756,10 +685,8 @@ async fn receive_file(
             temp_dir: Some(temp_dir),
         },
     };
-    log_info!("✅ ReceiveArgs created");
 
     // Create transfer info
-    log_info!("📊 Creating transfer info...");
     let transfer_info = TransferInfo {
         id: transfer_id.clone(),
         transfer_type: "receive".to_string(),
@@ -878,26 +805,16 @@ async fn receive_file(
         update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
     });
 
-    log_info!("🌐 Calling sendme_lib::receive_with_progress...");
-    log_info!("   This may take a while as it connects to the sender...");
-    eprintln!("🌐 About to call receive_with_progress...");
-    eprintln!("   Ticket format: {:?}", args.ticket);
-    eprintln!("   Relay mode: {:?}", args.common.relay);
+    log_info!("Calling sendme_lib::receive_with_progress...");
 
     match sendme_lib::receive_with_progress(args, tx).await {
         Ok(result) => {
-            eprintln!("✅ RECEIVE COMPLETED!");
-            eprintln!("   Files: {}", result.total_files);
-            eprintln!("   Bytes: {}", result.stats.total_bytes_read());
-
-            log_info!("═══════════════════════════════════════════════════");
-            log_info!("✅ RECEIVE COMPLETED SUCCESSFULLY");
-            log_info!("═══════════════════════════════════════════════════");
-            log_info!("📊 Results:");
-            log_info!("  - Total files: {}", result.total_files);
-            log_info!("  - Total bytes: {}", result.stats.total_bytes_read());
-            log_info!("  - Transfer ID: {}", transfer_id);
-
+            log_info!("✅ RECEIVE COMPLETED");
+            log_info!(
+                "Files: {}, Bytes: {}",
+                result.total_files,
+                result.stats.total_bytes_read()
+            );
             update_transfer_status(transfers.inner(), &transfer_id, "completed").await;
             Ok(format!(
                 "{{\"transfer_id\": \"{}\", \"files\": {}, \"bytes\": {}}}",
@@ -907,15 +824,7 @@ async fn receive_file(
             ))
         }
         Err(e) => {
-            eprintln!("❌ RECEIVE FAILED!");
-            eprintln!("   Error: {}", e);
-
-            log_error!("═══════════════════════════════════════════════════");
-            log_error!("❌ RECEIVE FAILED");
-            log_error!("═══════════════════════════════════════════════════");
-            log_error!("Error: {}", e);
-            log_error!("Transfer ID: {}", transfer_id);
-
+            log_error!("❌ RECEIVE FAILED: {}", e);
             update_transfer_status(transfers.inner(), &transfer_id, &format!("error: {}", e)).await;
             Err(e.to_string())
         }
