@@ -250,8 +250,9 @@ async fn receive_internal(
     };
 
     tracing::info!("📤 Starting export to base_dir: {:?}", base_dir);
-    // Export to the base directory (temp_dir from args, or current directory)
-    export::export(&db, collection.clone(), progress_tx.clone(), Some(&base_dir)).await?;
+    // Use export_dir from args if provided, otherwise export to base_dir
+    let export_dir = args.export_dir.as_ref().unwrap_or(&base_dir);
+    export::export(&db, collection.clone(), progress_tx.clone(), Some(export_dir)).await?;
 
     if let Some(ref tx) = progress_tx {
         let _ = tx

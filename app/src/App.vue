@@ -13,6 +13,7 @@ import {
   clear_transfers,
   check_wifi_connection,
   get_default_download_folder,
+  open_received_file,
   type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
@@ -348,6 +349,27 @@ async function handleClearTransfers() {
   } catch (e) {
     console.error("Clear failed:", e);
     toast.error("Failed to clear history");
+  }
+}
+
+async function handleOpenFile(transfer: Transfer) {
+  // Only allow opening completed receive transfers
+  if (transfer.transfer_type !== "receive") {
+    toast.error("Can only open received files");
+    return;
+  }
+
+  if (!transfer.status.includes("complete")) {
+    toast.error("Can only open completed transfers");
+    return;
+  }
+
+  try {
+    await open_received_file(transfer.id);
+    toast.success("Opening file...");
+  } catch (e) {
+    console.error("Failed to open file:", e);
+    toast.error(`Failed to open file: ${e}`);
   }
 }
 
@@ -948,7 +970,17 @@ function getProgressValue(id: string) {
                 <div class="flex-1 min-w-0 space-y-1">
                   <div class="flex items-center justify-between">
                     <h4
-                      class="font-bold text-slate-900 dark:text-slate-100 truncate pr-4"
+                      class="font-bold truncate pr-4"
+                      :class="{
+                        'text-slate-900 dark:text-slate-100': true,
+                        'cursor-pointer hover:text-green-600 dark:hover:text-green-400 hover:underline':
+                          transfer.transfer_type === 'receive' &&
+                          transfer.status.includes('complete'),
+                      }"
+                      @click="handleOpenFile(transfer)"
+                      :title="transfer.transfer_type === 'receive' && transfer.status.includes('complete')
+                        ? 'Click to open file'
+                        : ''"
                     >
                       {{ getTransferDisplayName(transfer) }}
                     </h4>
