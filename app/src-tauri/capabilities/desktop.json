@@ -1,7 +1,13 @@
 {
   "identifier": "desktop-capability",
-  "platforms": ["macOS", "windows", "linux"],
-  "windows": ["main"],
+  "platforms": [
+    "macOS",
+    "windows",
+    "linux"
+  ],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "os:default",
@@ -10,7 +16,7 @@
     "clipboard-manager:default",
     "http:default",
     "dialog:default",
-    "fs:default"
+    "fs:default",
+    "opener:default"
   ]
 }
-

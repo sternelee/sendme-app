@@ -170,6 +170,9 @@ pub struct ReceiveArgs {
     pub ticket: BlobTicket,
     /// Common configuration.
     pub common: CommonConfig,
+    /// Optional export directory for final file location.
+    /// If not set, files will be exported to temp_dir.
+    pub export_dir: Option<PathBuf>,
 }
 
 /// Result from a send operation.

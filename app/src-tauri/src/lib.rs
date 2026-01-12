@@ -9,6 +9,10 @@ use tauri_plugin_fs::FsExt;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+// Android-specific module
+#[cfg(target_os = "android")]
+mod android;
+
 // Import tracing for non-Android platforms
 #[cfg(not(target_os = "android"))]
 use tracing;
@@ -362,7 +366,8 @@ pub fn run() {
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
     let nearby_discovery: NearbyDiscovery = Arc::new(RwLock::new(None));
 
-    let builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
@@ -397,7 +402,9 @@ pub fn run() {
             get_hostname,
             get_device_model,
             check_wifi_connection,
-            get_default_download_folder
+            get_default_download_folder,
+            open_received_file,
+            list_received_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -667,12 +674,34 @@ async fn receive_file(
         .map_err(|e| format!("Invalid ticket: {}", e))?;
     log_info!("Ticket parsed successfully");
 
-    // Get temp directory
+    // Get temp directory for blob storage
     let temp_dir = app
         .path()
         .temp_dir()
         .map_err(|e| format!("Failed to get temp directory: {}", e))?;
-    log_info!("Temp dir: {:?}", temp_dir);
+    log_info!("Temp dir (for blob storage): {:?}", temp_dir);
+
+    // On Android, use public Downloads directory for file export if no output_dir provided
+    #[cfg(target_os = "android")]
+    let export_dir = if let Some(ref output_dir) = request.output_dir {
+        log_info!("Using user-provided output_dir: {:?}", output_dir);
+        Some(std::path::PathBuf::from(output_dir))
+    } else {
+        log_info!("No output_dir provided, getting public Downloads directory...");
+        match get_default_download_folder_impl() {
+            Ok(dir) => {
+                log_info!("Using public Downloads directory: {:?}", dir);
+                Some(std::path::PathBuf::from(dir))
+            }
+            Err(e) => {
+                log_error!("Failed to get Downloads directory: {}, falling back to temp_dir", e);
+                None
+            }
+        }
+    };
+
+    #[cfg(not(target_os = "android"))]
+    let export_dir = request.output_dir.as_ref().map(|d| std::path::PathBuf::from(d));
 
     let args = ReceiveArgs {
         ticket,
@@ -684,6 +713,7 @@ async fn receive_file(
             magic_ipv6_addr: None,
             temp_dir: Some(temp_dir),
         },
+        export_dir,
     };
 
     // Create transfer info
@@ -1435,14 +1465,11 @@ fn check_wifi_connection() -> Result<bool, String> {
 
 /// Get the default download folder path for mobile devices
 ///
-/// On Android, returns the path to the public Downloads directory.
-/// On iOS, returns the Documents directory.
-/// On desktop platforms, returns an error.
-#[tauri::command]
+/// Internal implementation: Get the public Downloads directory on Android.
 #[cfg(target_os = "android")]
-fn get_default_download_folder() -> Result<String, String> {
+fn get_default_download_folder_impl() -> Result<String, String> {
     log_info!("═══════════════════════════════════════════════════");
-    log_info!("📁 GET_DEFAULT_DOWNLOAD_FOLDER (Android)");
+    log_info!("📁 GET_DEFAULT_DOWNLOAD_FOLDER_IMPL (Android)");
     log_info!("═══════════════════════════════════════════════════");
 
     let ctx = ndk_context::android_context();
@@ -1519,6 +1546,15 @@ fn get_default_download_folder() -> Result<String, String> {
     Ok(path)
 }
 
+/// On Android, returns the path to the public Downloads directory.
+/// On iOS, returns the Documents directory.
+/// On desktop platforms, returns an error.
+#[tauri::command]
+#[cfg(target_os = "android")]
+fn get_default_download_folder() -> Result<String, String> {
+    get_default_download_folder_impl()
+}
+
 #[tauri::command]
 #[cfg(target_os = "ios")]
 fn get_default_download_folder(app: AppHandle) -> Result<String, String> {
@@ -1546,4 +1582,183 @@ fn get_default_download_folder() -> Result<String, String> {
     log_info!("═══════════════════════════════════════════════════");
     log_warn!("⚠️  This function is only available on mobile platforms");
     Err("This function is only available on mobile platforms".to_string())
+}
+
+/// Open a received file using the platform's default application
+///
+/// On Android: Uses FileProvider + Intent to open the file
+/// On iOS: Uses UIDocumentInteractionController or similar
+/// On Desktop: Uses opener plugin to open the file directly
+#[tauri::command]
+async fn open_received_file(
+    app: AppHandle,
+    transfers: tauri::State<'_, Transfers>,
+    transfer_id: String,
+    filename: Option<String>,
+) -> Result<(), String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📂 OPEN_RECEIVED_FILE");
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("Transfer ID: {}", transfer_id);
+    log_info!("Filename: {:?}", filename);
+
+    // Get transfer info
+    let transfers_guard = transfers.read().await;
+    let transfer = transfers_guard
+        .get(&transfer_id)
+        .ok_or_else(|| format!("Transfer not found: {}", transfer_id))?;
+
+    if transfer.info.transfer_type != "receive" {
+        return Err("Can only open received files".to_string());
+    }
+
+    if !transfer.info.status.contains("complete") {
+        return Err("Transfer not complete yet".to_string());
+    }
+
+    // On Android, use JNI to open the file
+    #[cfg(target_os = "android")]
+    {
+        log_info!("📱 Android platform detected, using JNI");
+
+        // Get public Downloads directory where files are stored
+        let downloads_dir = get_default_download_folder_impl().map_err(|e| {
+            format!("Failed to get Downloads directory: {}", e)
+        })?;
+
+        log_info!("Downloads directory: {:?}", downloads_dir);
+
+        // Find the file to open
+        let file_to_open = if let Some(ref fname) = filename {
+            // User specified a filename
+            let file_path = std::path::PathBuf::from(&downloads_dir).join(fname);
+            if !file_path.exists() {
+                return Err(format!("File not found: {}", fname));
+            }
+            file_path
+        } else {
+            // No filename specified, find the first file in Downloads directory
+            let files = android::find_received_files(&downloads_dir);
+            if files.is_empty() {
+                return Err("No files found in Downloads directory".to_string());
+            }
+            std::path::PathBuf::from(&files[0])
+        };
+
+        let file_path_str = file_to_open.to_str().ok_or("Invalid file path")?;
+        let file_name = file_to_open
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+
+        log_info!("Opening file: {:?}", file_path_str);
+        log_info!("Filename: {}", file_name);
+
+        // Use JNI to open the file
+        android::open_file_with_intent(file_path_str, file_name).map_err(|e| {
+            format!("Failed to open file: {:?}", e)
+        })?;
+
+        log_info!("✅ File opened successfully");
+        Ok(())
+    }
+
+    // On desktop, use opener plugin
+    #[cfg(not(target_os = "android"))]
+    {
+        log_info!("🖥️  Desktop platform detected, using opener plugin");
+
+        // Get temp directory
+        let temp_dir = app.path().temp_dir().map_err(|e| {
+            format!("Failed to get temp directory: {}", e)
+        })?;
+
+        // Find the file to open
+        let file_to_open = if let Some(ref fname) = filename {
+            let file_path = temp_dir.join(fname);
+            if !file_path.exists() {
+                return Err(format!("File not found: {}", fname));
+            }
+            file_path
+        } else {
+            // Find first file in directory
+            let entries = std::fs::read_dir(&temp_dir).map_err(|e| {
+                format!("Failed to read temp directory: {}", e)
+            })?;
+
+            let first_file = entries
+                .filter_map(Result::ok)
+                .map(|e| e.path())
+                .find(|p| {
+                    p.is_file()
+                        && !p.file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .starts_with('.')
+                })
+                .ok_or("No files found in cache directory".to_string())?;
+
+            first_file
+        };
+
+        let file_path_str = file_to_open.to_str().ok_or("Invalid file path")?;
+        log_info!("Opening file: {:?}", file_path_str);
+
+        // Use opener plugin - openPath returns a Result that we map
+        tauri_plugin_opener::open_path(&file_to_open, None::<&str>)
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+
+        log_info!("✅ File opened successfully");
+        Ok(())
+    }
+}
+
+/// List received files in the cache directory
+#[tauri::command]
+async fn list_received_files(
+    app: AppHandle,
+) -> Result<Vec<String>, String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📂 LIST_RECEIVED_FILES");
+    log_info!("═══════════════════════════════════════════════════");
+
+    #[cfg(target_os = "android")]
+    {
+        // Use public Downloads directory on Android
+        let downloads_dir = get_default_download_folder_impl()?;
+        log_info!("Downloads directory: {:?}", downloads_dir);
+        let files = android::find_received_files(&downloads_dir);
+        log_info!("Found {} files", files.len());
+        Ok(files)
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        // Use temp directory on other platforms
+        let temp_dir = app.path().temp_dir().map_err(|e| {
+            format!("Failed to get temp directory: {}", e)
+        })?;
+
+        log_info!("Temp directory: {:?}", temp_dir);
+
+        let entries = std::fs::read_dir(&temp_dir).map_err(|e| {
+            format!("Failed to read temp directory: {}", e)
+        })?;
+
+        let files: Vec<String> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                p.is_file()
+                    && !p.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .starts_with('.')
+            })
+            .filter_map(|p| p.to_str().map(String::from))
+            .collect();
+
+        log_info!("Found {} files", files.len());
+        Ok(files)
+    }
 }

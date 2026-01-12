@@ -1,7 +1,12 @@
 {
   "identifier": "mobile-capability",
-  "platforms": ["android", "iOS"],
-  "windows": ["main"],
+  "platforms": [
+    "android",
+    "iOS"
+  ],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "os:default",
@@ -12,6 +17,7 @@
     "dialog:default",
     "fs:default",
     "sharesheet:default",
-    "barcode-scanner:default"
+    "barcode-scanner:default",
+    "opener:default"
   ]
 }

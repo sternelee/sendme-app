@@ -133,3 +133,28 @@ export async function check_wifi_connection(): Promise<boolean> {
 export async function get_default_download_folder(): Promise<string> {
   return await invoke("get_default_download_folder");
 }
+
+/**
+ * Open a received file using the platform's default application
+ *
+ * On Android: Uses FileProvider + Intent to open the file
+ * On Desktop: Uses the opener plugin to open the file directly
+ *
+ * @param transferId - The ID of the completed transfer
+ * @param filename - Optional filename to open (for multi-file transfers)
+ */
+export async function open_received_file(
+  transferId: string,
+  filename?: string
+): Promise<void> {
+  return await invoke("open_received_file", { transferId, filename });
+}
+
+/**
+ * List all received files in the cache directory
+ *
+ * Returns an array of file paths for files that have been received.
+ */
+export async function list_received_files(): Promise<string[]> {
+  return await invoke("list_received_files");
+}

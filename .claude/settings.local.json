@@ -6,7 +6,15 @@
       "Skill(commit)",
       "Bash(git commit:*)",
       "Bash(bash:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(cargo check:*)",
+      "Bash(chmod:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(cargo tree:*)",
+      "WebSearch",
+      "Bash(pnpm tauri android build:*)",
+      "Bash(pnpm run tauri:*)"
     ]
   }
 }

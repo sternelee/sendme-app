@@ -135,6 +135,7 @@ impl TryFrom<ReceiveArgsCli> for ReceiveArgs {
         Ok(Self {
             ticket,
             common: args.common.into(),
+            export_dir: None, // CLI uses current directory, no separate export dir
         })
     }
 }
