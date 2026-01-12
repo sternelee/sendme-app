@@ -1,18 +1,43 @@
 //! File export functionality.
 
 use iroh_blobs::{format::collection::Collection, store::fs::FsStore};
+use std::path::Path;
 
 use n0_future::StreamExt;
 
 use crate::{get_export_path, progress::ProgressSenderTx};
 
-/// Export a collection to the current directory.
+/// Export a collection to a directory.
+///
+/// If `export_dir` is None, uses the current directory.
 pub async fn export(
     db: &FsStore,
     collection: Collection,
     progress_tx: Option<ProgressSenderTx>,
+    export_dir: Option<&Path>,
 ) -> anyhow::Result<()> {
-    let root = std::env::current_dir()?;
+    // Use provided export_dir or fall back to current directory
+    let root = export_dir
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
+
+    tracing::info!("📤 Exporting collection to: {:?}", root);
+
+    // Verify directory is writable
+    if !root.exists() {
+        tracing::error!("❌ Export directory does not exist: {:?}", root);
+        anyhow::bail!("Export directory does not exist: {:?}", root);
+    }
+
+    // Test write permissions
+    let test_file = root.join(".write_test_export");
+    std::fs::write(&test_file, b"test").map_err(|e| {
+        tracing::error!("❌ Export directory not writable {:?}: {}", root, e);
+        anyhow::anyhow!("Export directory not writable {:?}: {}", root, e)
+    })?;
+    std::fs::remove_file(&test_file).ok();
+
+    tracing::info!("✅ Export directory writable: {:?}", root);
 
     if let Some(ref tx) = progress_tx {
         let _ = tx
