@@ -158,3 +158,15 @@ export async function open_received_file(
 export async function list_received_files(): Promise<string[]> {
   return await invoke("list_received_files");
 }
+
+/**
+ * Scan a barcode/QR code using the device camera
+ *
+ * Opens the camera scanner and returns the scanned text content.
+ * Only available on mobile platforms (Android/iOS).
+ *
+ * @returns The scanned text content (typically a sendme ticket)
+ */
+export async function scan_barcode(): Promise<string> {
+  return await invoke("scan_barcode");
+}

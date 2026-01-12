@@ -5,6 +5,7 @@ import { useLocalStorage } from "@vueuse/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { platform } from "@tauri-apps/plugin-os";
+import QRCode from "qrcode";
 import {
   send_file,
   receive_file,
@@ -14,6 +15,7 @@ import {
   check_wifi_connection,
   get_default_download_folder,
   open_received_file,
+  scan_barcode,
   type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
@@ -49,6 +51,7 @@ import {
   Trash2,
   Wifi,
   ChevronDown,
+  Scan,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { shareText } from "./lib/sharesheet";
@@ -83,6 +86,7 @@ const nearbyDevicesRef = ref<InstanceType<typeof NearbyDevices> | null>(null);
 const sendPath = ref("");
 const sendTicketType = ref("relay_and_addresses");
 const sendTicket = ref("");
+const sendTicketQrCode = ref("");
 const isSending = ref(false);
 const selectedNearbyDevice = ref<NearbyDevice | null>(null);
 
@@ -238,6 +242,7 @@ async function handleSend() {
 
   isSending.value = true;
   sendTicket.value = "";
+  sendTicketQrCode.value = "";
 
   try {
     const result = await send_file({
@@ -245,6 +250,11 @@ async function handleSend() {
       ticket_type: sendTicketType.value,
     });
     sendTicket.value = result;
+    // Generate QR code for the ticket
+    sendTicketQrCode.value = await QRCode.toDataURL(result, {
+      errorCorrectionLevel: "H",
+      width: 300,
+    });
     await loadTransfers();
     toast.success("File shared successfully!");
   } catch (e) {
@@ -327,6 +337,17 @@ async function handleCancelReceive() {
   if (currentReceivingId.value) {
     await handleCancel(currentReceivingId.value);
     currentReceivingId.value = null;
+  }
+}
+
+async function handleScanBarcode() {
+  try {
+    const result = await scan_barcode();
+    receiveTicket.value = result;
+    toast.success("QR code scanned successfully");
+  } catch (e) {
+    console.error("Scan failed:", e);
+    toast.error(`Scan failed: ${e}`);
   }
 }
 
@@ -795,6 +816,19 @@ function getProgressValue(id: string) {
                         @click="shareText(sendTicket)"
                       />
                     </div>
+
+                    <!-- QR Code Display -->
+                    <div
+                      v-if="sendTicketQrCode"
+                      class="flex justify-center p-4 bg-white rounded-xl"
+                    >
+                      <img
+                        :src="sendTicketQrCode"
+                        alt="Ticket QR Code"
+                        class="w-48 h-48 object-contain"
+                      />
+                    </div>
+
                     <div
                       class="p-4 bg-black/5 dark:bg-white/5 rounded-xl break-all text-sm text-black font-mono leading-relaxed border border-white/5"
                     >
@@ -822,17 +856,29 @@ function getProgressValue(id: string) {
                     class="text-sm font-semibold opacity-70 ml-1"
                     >Universal Ticket</Label
                   >
-                  <div class="relative">
-                    <Input
-                      id="receive-ticket"
-                      v-model="receiveTicket"
-                      placeholder="Paste your buddy's ticket here..."
+                  <div class="flex gap-2">
+                    <div class="relative flex-1">
+                      <Input
+                        id="receive-ticket"
+                        v-model="receiveTicket"
+                        placeholder="Paste ticket or scan QR code..."
+                        :disabled="isReceiving"
+                        class="h-14 rounded-2xl pl-12 glass shadow-none border-white/10 focus:ring-primary/40 focus:border-primary/40"
+                      />
+                      <Share2
+                        class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-40"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      @click="handleScanBarcode"
                       :disabled="isReceiving"
-                      class="h-14 rounded-2xl pl-12 glass shadow-none border-white/10 focus:ring-primary/40 focus:border-primary/40"
-                    />
-                    <Share2
-                      class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-40"
-                    />
+                      variant="secondary"
+                      class="h-14 w-14 rounded-2xl p-0 flex-shrink-0"
+                      title="Scan QR Code"
+                    >
+                      <Scan class="h-5 w-5" />
+                    </Button>
                   </div>
                 </div>
 

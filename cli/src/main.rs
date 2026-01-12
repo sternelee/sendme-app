@@ -17,6 +17,7 @@ use indicatif::{
 use tokio::sync::mpsc;
 
 use sendme_lib::{progress::*, types::*};
+use fast_qr::QRBuilder;
 
 // Clipboard support (optional)
 #[cfg(feature = "clipboard")]
@@ -322,6 +323,9 @@ async fn send_single_file(
 
     println!("To get this data, use:");
     println!("  sendme receive {}", result.ticket);
+
+    // Generate and display QR code for the ticket
+    print_qr_code(&result.ticket.to_string());
 
     #[cfg(feature = "clipboard")]
     if clipboard {
@@ -808,4 +812,23 @@ fn add_to_clipboard(ticket: &sendme_lib::BlobTicket) {
         CopyToClipboard::to_clipboard_from(format!("sendme receive {ticket}"))
     )
     .unwrap_or_else(|e| eprintln!("Failed to copy to clipboard: {e}"));
+}
+
+/// Print a QR code for the given data
+fn print_qr_code(data: &str) {
+    println!("\n{}", style("QR Code:").bold().dim());
+
+    match QRBuilder::new(data)
+        .ecl(fast_qr::ECL::H) // High error correction for better scanning
+        .build()
+    {
+        Ok(qr) => {
+            // Convert to string and print
+            let str_qr = qr.to_str();
+            println!("{}", str_qr);
+        }
+        Err(e) => {
+            eprintln!("Failed to generate QR code: {}", e);
+        }
+    }
 }

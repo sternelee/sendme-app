@@ -404,7 +404,8 @@ pub fn run() {
             check_wifi_connection,
             get_default_download_folder,
             open_received_file,
-            list_received_files
+            list_received_files,
+            scan_barcode
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1761,4 +1762,55 @@ async fn list_received_files(
         log_info!("Found {} files", files.len());
         Ok(files)
     }
+}
+
+/// Scan a barcode/QR code using the device camera
+///
+/// This function uses the tauri-plugin-barcode-scanner to open the camera
+/// and scan a QR code or barcode. Returns the scanned text content.
+///
+/// Only available on mobile platforms (Android/iOS).
+#[tauri::command]
+#[cfg(mobile)]
+async fn scan_barcode() -> Result<String, String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📷 SCAN_BARCODE");
+    log_info!("═══════════════════════════════════════════════════");
+
+    use tauri_plugin_barcode_scanner::{scan, BarcodeFormat};
+
+    log_info!("Opening camera scanner...");
+
+    // Scan for QR codes and common barcode formats
+    let formats = vec![
+        BarcodeFormat::QrCode,
+        BarcodeFormat::Code128,
+        BarcodeFormat::Code39,
+        BarcodeFormat::Ean13,
+        BarcodeFormat::Ean8,
+        BarcodeFormat::UpcA,
+        BarcodeFormat::UpcE,
+    ];
+
+    match scan(formats).await {
+        Ok(result) => {
+            log_info!("✅ Scan successful: {}", result);
+            Ok(result)
+        }
+        Err(e) => {
+            let err_msg = format!("Scan failed: {:?}", e);
+            log_error!("❌ {}", err_msg);
+            Err(err_msg)
+        }
+    }
+}
+
+/// Scan a barcode/QR code (desktop stub)
+///
+/// On desktop platforms, this function returns an error since barcode
+/// scanning is only supported on mobile platforms.
+#[tauri::command]
+#[cfg(not(mobile))]
+async fn scan_barcode() -> Result<String, String> {
+    Err("Barcode scanning is only available on mobile platforms (Android/iOS)".to_string())
 }
