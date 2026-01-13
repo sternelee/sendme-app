@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 export interface SendFileRequest {
   path: string;
   ticket_type: string;
+  /** Optional filename from file picker. Used for display and preserving original filename. */
+  filename?: string;
 }
 
 export interface ReceiveFileRequest {
@@ -169,4 +171,67 @@ export async function list_received_files(): Promise<string[]> {
  */
 export async function scan_barcode(): Promise<string> {
   return await invoke("scan_barcode");
+}
+
+/**
+ * File information returned by the mobile file picker
+ */
+export interface FileInfo {
+  uri: string;
+  path: string;
+  name: string;
+  size: number;
+  mime_type: string;
+}
+
+/**
+ * Directory information returned by the mobile directory picker
+ */
+export interface DirectoryInfo {
+  uri: string;
+  path: string;
+  name: string;
+}
+
+/**
+ * Pick a file using the native mobile file picker
+ *
+ * Opens the platform's native file picker to select one or more files.
+ * Returns information about the selected files including URI, path, name, size, and MIME type.
+ *
+ * Only available on mobile platforms (Android/iOS).
+ *
+ * @param options - Optional picker options
+ * @param options.allowedTypes - List of allowed MIME types (e.g., ["image/*", "application/pdf"])
+ * @param options.allowMultiple - Allow multiple file selection (default: false)
+ * @returns Array of selected file information
+ */
+export async function pick_file(options?: {
+  allowedTypes?: string[];
+  allowMultiple?: boolean;
+}): Promise<FileInfo[]> {
+  return await invoke("pick_file", {
+    allowedTypes: options?.allowedTypes,
+    allowMultiple: options?.allowMultiple,
+  });
+}
+
+/**
+ * Pick a directory using the native mobile directory picker
+ *
+ * Opens the platform's native directory picker to select a directory.
+ * Returns information about the selected directory including URI, path, and name.
+ *
+ * Only available on mobile platforms (Android/iOS).
+ *
+ * @param options - Optional picker options
+ * @param options.startDirectory - Optional start directory URI
+ * @returns Selected directory information
+ */
+export async function pick_directory(options?: {
+  startDirectory?: string;
+}): Promise<DirectoryInfo> {
+  return await invoke("pick_directory", {
+    startDirectory: options?.startDirectory,
+  });
 }

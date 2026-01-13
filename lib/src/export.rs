@@ -52,11 +52,16 @@ pub async fn export(
 
     for (_i, (name, hash)) in collection.iter().enumerate() {
         let target = get_export_path(&root, name)?;
+
+        // If file already exists, remove it to allow overwriting
         if target.exists() {
-            anyhow::bail!(
-                "target {} already exists. Export stopped.",
-                target.display()
-            );
+            std::fs::remove_file(&target).map_err(|e| {
+                anyhow::anyhow!(
+                    "failed to remove existing target {}: {}",
+                    target.display(),
+                    e
+                )
+            })?;
         }
 
         if let Some(ref tx) = progress_tx {

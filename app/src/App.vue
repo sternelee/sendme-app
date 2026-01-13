@@ -13,9 +13,9 @@ import {
   get_transfers,
   clear_transfers,
   check_wifi_connection,
-  get_default_download_folder,
   open_received_file,
   scan_barcode,
+  pick_directory,
   type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
@@ -496,12 +496,14 @@ async function selectOutputDirectory() {
     const currentPlatform = platform();
     const isMobile = currentPlatform === "android" || currentPlatform === "ios";
 
+    console.log("isMobile=", isMobile);
+
     if (isMobile) {
-      // On mobile, use the default download folder
-      const defaultFolder = await get_default_download_folder();
-      receiveOutputDir.value = defaultFolder;
-      toast.success("Using default Downloads folder", {
-        description: defaultFolder,
+      // On mobile, use the pick_directory command
+      const result = await pick_directory();
+      receiveOutputDir.value = result.uri;
+      toast.success("Folder selected", {
+        description: result.name || result.uri,
       });
     } else {
       // On desktop, use the dialog picker
@@ -1024,9 +1026,12 @@ function getProgressValue(id: string) {
                           transfer.status.includes('complete'),
                       }"
                       @click="handleOpenFile(transfer)"
-                      :title="transfer.transfer_type === 'receive' && transfer.status.includes('complete')
-                        ? 'Click to open file'
-                        : ''"
+                      :title="
+                        transfer.transfer_type === 'receive' &&
+                        transfer.status.includes('complete')
+                          ? 'Click to open file'
+                          : ''
+                      "
                     >
                       {{ getTransferDisplayName(transfer) }}
                     </h4>

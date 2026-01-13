@@ -13,7 +13,6 @@ pub mod receive;
 pub mod send;
 pub mod types;
 
-pub use import::get_export_path;
 pub use nearby::NearbyDevice;
 pub use progress::*;
 pub use types::*;
@@ -23,6 +22,7 @@ pub use iroh::{RelayUrl, SecretKey};
 pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
 
 // Public API
+pub use import::{get_export_path, import_from_bytes};
 pub use receive::{receive, receive_with_progress};
 pub use send::{send, send_with_progress};
 

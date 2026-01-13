@@ -1,0 +1,19 @@
+<lint-module
+    format="1"
+    dir="/Users/sternelee/www/github/iroh-sendme/tauri-plugin-mobile-file-picker/android"
+    name=":tauri-plugin-mobile-file-picker"
+    type="LIBRARY"
+    maven="android:tauri-plugin-mobile-file-picker:unspecified"
+    agpVersion="8.11.0"
+    buildFolder="build"
+    bootClassPath="/Users/sternelee/Library/Android/sdk/platforms/android-36/android.jar:/Users/sternelee/Library/Android/sdk/build-tools/35.0.0/core-lambda-stubs.jar"
+    javaSourceLevel="1.8"
+    compileTarget="android-36"
+    neverShrinking="true">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>

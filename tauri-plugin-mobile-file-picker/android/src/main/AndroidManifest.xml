@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest package="com.mobile.file.picker">
+    <!-- No additional permissions needed - file picker uses system intents -->
+</manifest>

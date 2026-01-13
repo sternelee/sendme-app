@@ -9,6 +9,32 @@ use tauri_plugin_fs::FsExt;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+// Mobile file picker type aliases
+// On mobile, these alias to the plugin types
+// On desktop, we define local stubs
+#[cfg(mobile)]
+pub use tauri_plugin_mobile_file_picker::{FileInfo as PickerFileInfo, DirectoryInfo as PickerDirectoryInfo};
+
+#[cfg(not(mobile))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickerFileInfo {
+    pub uri: String,
+    pub path: String,
+    pub name: String,
+    pub size: i64,
+    pub mime_type: String,
+}
+
+#[cfg(not(mobile))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickerDirectoryInfo {
+    pub uri: String,
+    pub path: String,
+    pub name: String,
+}
+
 // Android-specific module
 #[cfg(target_os = "android")]
 mod android;
@@ -74,160 +100,33 @@ pub struct NearbyDevice {
 
 type NearbyDiscovery = Arc<RwLock<Option<sendme_lib::nearby::NearbyDiscovery>>>;
 
-/// Get the real filename from an Android content URI using ContentResolver.
-///
-/// This function queries the ContentResolver to get the original filename from the URI.
-/// Returns the filename if available, otherwise returns a generic name.
-#[cfg(target_os = "android")]
-fn get_filename_from_content_uri(uri: &str) -> Result<String, String> {
-    use jni::objects::{JObject, JString};
-
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-        .map_err(|e| format!("Failed to get VM: {}", e))?;
-    let mut env = vm
-        .attach_current_thread()
-        .map_err(|e| format!("Failed to attach thread: {}", e))?;
-
-    // Get the URI object
-    let uri_string = env
-        .new_string(uri)
-        .map_err(|e| format!("Failed to create URI string: {}", e))?;
-    let uri_class = env
-        .find_class("android/net/Uri")
-        .map_err(|e| format!("Failed to find Uri class: {}", e))?;
-    let uri_obj = env
-        .call_static_method(
-            &uri_class,
-            "parse",
-            "(Ljava/lang/String;)Landroid/net/Uri;",
-            &[(&uri_string).into()],
-        )
-        .and_then(|v| v.l())
-        .map_err(|e| format!("Failed to parse URI: {}", e))?;
-
-    // Get ContentResolver
-    let context = unsafe { JObject::from_raw(ctx.context().cast()) };
-    let content_resolver = env
-        .call_method(
-            &context,
-            "getContentResolver",
-            "()Landroid/content/ContentResolver;",
-            &[],
-        )
-        .and_then(|v| v.l())
-        .map_err(|e| format!("Failed to get ContentResolver: {}", e))?;
-
-    // Query the content URI for the display name
-    let display_name_string = env
-        .new_string("_display_name")
-        .map_err(|e| format!("Failed to create projection string: {}", e))?;
-    let projection = env
-        .new_object_array(1, "java/lang/String", &display_name_string)
-        .map_err(|e| format!("Failed to create projection array: {}", e))?;
-
-    let cursor = env
-        .call_method(
-            &content_resolver,
-            "query",
-            "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;",
-            &[
-                (&uri_obj).into(),
-                (&projection).into(),
-                (&JObject::null()).into(),
-                (&JObject::null()).into(),
-                (&JObject::null()).into(),
-            ],
-        )
-        .and_then(|v| v.l())
-        .map_err(|e| format!("Failed to query cursor: {}", e))?;
-
-    if cursor.is_null() {
-        return Err("Cursor is null".to_string());
-    }
-
-    // Move cursor to first row
-    let move_result = env
-        .call_method(&cursor, "moveToFirst", "()Z", &[])
-        .and_then(|v| v.z())
-        .map_err(|e| format!("Failed to move cursor: {}", e))?;
-
-    if !move_result {
-        // Close cursor and return error
-        let _ = env.call_method(&cursor, "close", "()V", &[]);
-        return Err("No data in cursor".to_string());
-    }
-
-    // Get the display name column index
-    let column_name = env
-        .new_string("_display_name")
-        .map_err(|e| format!("Failed to create column name: {}", e))?;
-    let column_index = env
-        .call_method(
-            &cursor,
-            "getColumnIndex",
-            "(Ljava/lang/String;)I",
-            &[(&column_name).into()],
-        )
-        .and_then(|v| v.i())
-        .map_err(|e| format!("Failed to get column index: {}", e))?;
-
-    if column_index == -1 {
-        let _ = env.call_method(&cursor, "close", "()V", &[]);
-        return Err("Column not found".to_string());
-    }
-
-    // Get the string value
-    let filename_obj = env
-        .call_method(
-            &cursor,
-            "getString",
-            "(I)Ljava/lang/String;",
-            &[column_index.into()],
-        )
-        .and_then(|v| v.l())
-        .map_err(|e| format!("Failed to get string: {}", e))?;
-
-    // Close cursor
-    let _ = env.call_method(&cursor, "close", "()V", &[]);
-
-    if filename_obj.is_null() {
-        return Err("Filename is null".to_string());
-    }
-
-    // Convert to Rust string
-    let filename_jstring = JString::from(filename_obj);
-    let filename: String = env
-        .get_string(&filename_jstring)
-        .map_err(|e| format!("Failed to convert string: {}", e))?
-        .into();
-
-    Ok(filename)
-}
-
-#[cfg(not(target_os = "android"))]
-fn get_filename_from_content_uri(_uri: &str) -> Result<String, String> {
-    Err("Not supported on this platform".to_string())
-}
-
 /// Handle Android content URIs by reading the file and writing to a temporary location.
 ///
 /// On Android, when using the file picker, the returned path may be a `content://` URI
 /// which cannot be read directly by `std::fs`. This function uses `tauri_plugin_fs`
 /// which can handle content URIs, and copies the content to a temporary file.
 ///
-/// The function attempts to preserve the original filename by querying the ContentResolver.
-/// Returns (temp_file_path, display_name) where display_name is the original filename without UUID suffix.
+/// # Arguments
+/// * `app` - The Tauri app handle
+/// * `path` - The file path or content URI
+/// * `filename` - The original filename (from the file picker), used for display
+///
+/// # Returns
+/// (temp_file_path, display_name) where:
+/// - temp_file_path is the path to the temporary file (or original path for regular files)
+/// - display_name is the filename for UI display purposes
 async fn handle_content_uri(
     app: &AppHandle,
     path: &str,
+    filename: &str,
 ) -> Result<(std::path::PathBuf, String), String> {
     use std::str::FromStr;
     use tauri_plugin_fs::FilePath;
 
-    // Check if this is a content URI
+    // Check if this is a content URI (Android)
     if path.starts_with("content://") {
         log_info!("Detected content URI, using tauri_plugin_fs to read file");
+        log_info!("Original filename from picker: {}", filename);
 
         // Use tauri_plugin_fs to read the file content
         let fs = app.fs(); // From FsExt trait
@@ -247,47 +146,16 @@ async fn handle_content_uri(
             .temp_dir()
             .map_err(|e| format!("Failed to get temp directory: {}", e))?;
 
-        // Try to get the original filename from the content URI
-        let (filename, display_name) = match get_filename_from_content_uri(path) {
-            Ok(name) if !name.is_empty() => {
-                log_info!("Retrieved original filename from content URI: {}", name);
-                // Sanitize the filename to prevent directory traversal
-                let sanitized = name.replace(['/', '\\', '\0'], "_");
-                // Add a unique suffix to prevent conflicts
-                let unique_id = &Uuid::new_v4().simple().to_string()[..8];
-                let filename_with_uuid = if let Some((stem, ext)) = sanitized.rsplit_once('.') {
-                    format!("{}-{}.{}", stem, unique_id, ext)
-                } else {
-                    format!("{}-{}", sanitized, unique_id)
-                };
-                (filename_with_uuid, sanitized)
-            }
-            Ok(_name) => {
-                log_warn!("Retrieved empty filename, using fallback");
-                let timestamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let unique_id = Uuid::new_v4().simple().to_string();
-                let filename = format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8]);
-                (filename.clone(), filename)
-            }
-            Err(e) => {
-                log_warn!(
-                    "Failed to get filename from content URI: {}, using fallback",
-                    e
-                );
-                let timestamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let unique_id = Uuid::new_v4().simple().to_string();
-                let filename = format!("sendme-content-{}-{}.bin", timestamp, &unique_id[..8]);
-                (filename.clone(), filename)
-            }
+        // Sanitize the filename to prevent directory traversal and add a unique suffix
+        let sanitized = filename.replace(['/', '\\', '\0'], "_");
+        let unique_id = &Uuid::new_v4().simple().to_string()[..8];
+        let temp_filename = if let Some((stem, ext)) = sanitized.rsplit_once('.') {
+            format!("{}-{}.{}", stem, unique_id, ext)
+        } else {
+            format!("{}-{}", sanitized, unique_id)
         };
 
-        let temp_file_path = temp_dir.join(&filename);
+        let temp_file_path = temp_dir.join(&temp_filename);
 
         // Write the content to the temporary file
         let mut file = std::fs::File::create(&temp_file_path)
@@ -297,22 +165,126 @@ async fn handle_content_uri(
 
         log_info!("Copied content URI to temporary file: {:?}", temp_file_path);
 
-        Ok((temp_file_path, display_name))
+        Ok((temp_file_path, sanitized))
     } else {
-        // Regular file path, just return it as PathBuf with the path as display name
-        let display_name = std::path::Path::new(path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(path)
-            .to_string();
+        // Regular file path (desktop or iOS), just return it as PathBuf
+        log_info!("Regular file path detected: {}", path);
+        let display_name = if filename.is_empty() {
+            std::path::Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(path)
+                .to_string()
+        } else {
+            filename.to_string()
+        };
         Ok((std::path::PathBuf::from(path), display_name))
     }
+}
+
+/// Copy exported files from temp_dir to a content URI on Android.
+///
+/// Uses JNI to call Android's ContentResolver to create and write files
+/// to the selected directory.
+#[cfg(target_os = "android")]
+async fn copy_files_to_content_uri(
+    _app: &AppHandle,
+    temp_dir: &std::path::Path,
+    content_uri: &str,
+    collection: &iroh_blobs::format::collection::Collection,
+) -> anyhow::Result<()> {
+    log_info!("Starting copy to content URI: {}", content_uri);
+    log_info!("Files to copy: {}", collection.len());
+
+    for (name, _hash) in collection.iter() {
+        // Read file from temp_dir
+        let source_path = temp_dir.join(name);
+        log_info!("Reading file from: {:?}", source_path);
+
+        let content = std::fs::read(&source_path).map_err(|e| {
+            log_error!("Failed to read file {:?}: {}", source_path, e);
+            anyhow::anyhow!("Failed to read file {:?}: {}", source_path, e)
+        })?;
+
+        log_info!("Writing {} ({} bytes) to content URI", name, content.len());
+
+        // Use JNI to write the file to the content URI
+        #[cfg(target_os = "android")]
+        unsafe {
+            use jni::objects::{JObject, JValue};
+            use ndk_context::android_context;
+
+            let android_ctx = android_context();
+            let vm = android_ctx.vm();
+
+            // Get JNI env
+            let mut env = jni::JNIEnv::from_raw(vm as *mut _).map_err(|e| {
+                anyhow::anyhow!("Failed to get JNI env: {:?}", e)
+            })?;
+
+            // Convert content to Java byte array
+            let byte_array = env.byte_array_from_slice(&content).map_err(|e| {
+                anyhow::anyhow!("Failed to create byte array: {:?}", e)
+            })?;
+
+            // Call Java method to write file
+            let class_name = "com/sendme/app/FileUtils";
+            let method_name = "writeFileToContentUri";
+
+            let class = env.find_class(class_name).map_err(|e| {
+                anyhow::anyhow!("Failed to find class {}: {:?}", class_name, e)
+            })?;
+
+            // Create JObject wrappers
+            let dir_uri_jobject = JObject::from(env.new_string(content_uri).map_err(|e| {
+                anyhow::anyhow!("Failed to create string: {:?}", e)
+            })?);
+            let file_name_jobject = JObject::from(env.new_string(name).map_err(|e| {
+                anyhow::anyhow!("Failed to create string: {:?}", e)
+            })?);
+            let byte_array_jobject = JObject::from(byte_array);
+
+            // Call using call_static_method which handles types
+            let result = env.call_static_method(
+                class,
+                method_name,
+                "(Ljava/lang/String;Ljava/lang/String;[B)Z",
+                &[
+                    JValue::Object(&dir_uri_jobject),
+                    JValue::Object(&file_name_jobject),
+                    JValue::Object(&byte_array_jobject),
+                ],
+            ).map_err(|e| {
+                anyhow::anyhow!("Failed to call method: {:?}", e)
+            })?;
+
+            // result is JValue, need to extract the boolean
+            let success = result.z().map_err(|e| {
+                anyhow::anyhow!("Failed to extract boolean: {:?}", e)
+            })?;
+
+            if !success {
+                anyhow::bail!("Failed to write file {} to content URI", name);
+            }
+
+            log_info!("✅ Copied {} to content URI", name);
+        }
+
+        // Clean up the temp file
+        std::fs::remove_file(&source_path).ok();
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SendFileRequest {
     pub path: String,
     pub ticket_type: String,
+    /// Optional filename (from file picker). Used for display purposes and
+    /// for preserving the original filename when handling content URIs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -379,6 +351,7 @@ pub fn run() {
     {
         builder = builder
             .plugin(tauri_plugin_barcode_scanner::init())
+            .plugin(tauri_plugin_mobile_file_picker::init())
             .plugin(tauri_plugin_sharesheet::init());
     }
 
@@ -405,7 +378,9 @@ pub fn run() {
             get_default_download_folder,
             open_received_file,
             list_received_files,
-            scan_barcode
+            scan_barcode,
+            pick_file,
+            pick_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -469,8 +444,11 @@ async fn send_file(
     log_info!("✅ Temp dir: {:?}", temp_dir);
 
     // Handle Android content URIs - if path is a content:// URI, copy to temp file
+    // Use filename from request if provided (from file picker), otherwise use empty string
+    let filename = request.filename.as_deref().unwrap_or("");
     log_info!("🔍 Handling content URI...");
-    let (file_path, display_name) = handle_content_uri(&app, &request.path).await?;
+    log_info!("📄 Filename from picker: {}", filename);
+    let (file_path, display_name) = handle_content_uri(&app, &request.path, filename).await?;
     log_info!("✅ File path resolved: {:?}", file_path);
     log_info!("✅ Display name: {}", display_name);
 
@@ -682,27 +660,39 @@ async fn receive_file(
         .map_err(|e| format!("Failed to get temp directory: {}", e))?;
     log_info!("Temp dir (for blob storage): {:?}", temp_dir);
 
-    // On Android, use public Downloads directory for file export if no output_dir provided
+    // On Android, detect content URIs and handle them specially
+    // Content URIs (like "content://...") cannot be used directly as PathBuf
+    // We'll export to temp first, then copy to the content URI location
     #[cfg(target_os = "android")]
-    let export_dir = if let Some(ref output_dir) = request.output_dir {
-        log_info!("Using user-provided output_dir: {:?}", output_dir);
-        Some(std::path::PathBuf::from(output_dir))
+    let (export_dir, content_uri_output) = if let Some(ref output_dir) = request.output_dir {
+        if output_dir.starts_with("content://") {
+            log_info!("Detected content URI as output_dir: {}", output_dir);
+            log_info!("Will export to temp_dir first, then copy to content URI");
+            // Export to temp directory first, we'll copy to content URI later
+            (None, Some(output_dir.clone()))
+        } else {
+            log_info!("Using user-provided output_dir: {:?}", output_dir);
+            (Some(std::path::PathBuf::from(output_dir)), None)
+        }
     } else {
         log_info!("No output_dir provided, getting public Downloads directory...");
         match get_default_download_folder_impl() {
             Ok(dir) => {
                 log_info!("Using public Downloads directory: {:?}", dir);
-                Some(std::path::PathBuf::from(dir))
+                (Some(std::path::PathBuf::from(dir)), None)
             }
             Err(e) => {
                 log_error!("Failed to get Downloads directory: {}, falling back to temp_dir", e);
-                None
+                (None, None)
             }
         }
     };
 
     #[cfg(not(target_os = "android"))]
-    let export_dir = request.output_dir.as_ref().map(|d| std::path::PathBuf::from(d));
+    let (export_dir, content_uri_output): (Option<std::path::PathBuf>, Option<String>) = (
+        request.output_dir.as_ref().map(|d| std::path::PathBuf::from(d)),
+        None,
+    );
 
     let args = ReceiveArgs {
         ticket,
@@ -712,7 +702,7 @@ async fn receive_file(
             show_secret: false,
             magic_ipv4_addr: None,
             magic_ipv6_addr: None,
-            temp_dir: Some(temp_dir),
+            temp_dir: Some(temp_dir.clone()),
         },
         export_dir,
     };
@@ -846,6 +836,19 @@ async fn receive_file(
                 result.total_files,
                 result.stats.total_bytes_read()
             );
+
+            // If output was a content URI, copy files from temp_dir to the content URI
+            #[cfg(target_os = "android")]
+            if let Some(content_uri) = content_uri_output {
+                log_info!("Copying files to content URI: {}", content_uri);
+                if let Err(e) = copy_files_to_content_uri(&app, &temp_dir, &content_uri, &result.collection).await {
+                    log_error!("Failed to copy files to content URI: {}", e);
+                    update_transfer_status(transfers.inner(), &transfer_id, &format!("error: {}", e)).await;
+                    return Err(format!("Failed to copy files to content URI: {}", e));
+                }
+                log_info!("✅ Files copied to content URI successfully");
+            }
+
             update_transfer_status(transfers.inner(), &transfer_id, "completed").await;
             Ok(format!(
                 "{{\"transfer_id\": \"{}\", \"files\": {}, \"bytes\": {}}}",
@@ -1772,37 +1775,21 @@ async fn list_received_files(
 /// Only available on mobile platforms (Android/iOS).
 #[tauri::command]
 #[cfg(mobile)]
-async fn scan_barcode() -> Result<String, String> {
+async fn scan_barcode(app: AppHandle) -> Result<String, String> {
     log_info!("═══════════════════════════════════════════════════");
     log_info!("📷 SCAN_BARCODE");
     log_info!("═══════════════════════════════════════════════════");
 
-    use tauri_plugin_barcode_scanner::{scan, BarcodeFormat};
-
     log_info!("Opening camera scanner...");
 
-    // Scan for QR codes and common barcode formats
-    let formats = vec![
-        BarcodeFormat::QrCode,
-        BarcodeFormat::Code128,
-        BarcodeFormat::Code39,
-        BarcodeFormat::Ean13,
-        BarcodeFormat::Ean8,
-        BarcodeFormat::UpcA,
-        BarcodeFormat::UpcE,
-    ];
+    // Invoke the scan command from the barcode scanner plugin
+    // The plugin expects formats as strings
+    use tauri_plugin_barcode_scanner::BarcodeScannerExt;
 
-    match scan(formats).await {
-        Ok(result) => {
-            log_info!("✅ Scan successful: {}", result);
-            Ok(result)
-        }
-        Err(e) => {
-            let err_msg = format!("Scan failed: {:?}", e);
-            log_error!("❌ {}", err_msg);
-            Err(err_msg)
-        }
-    }
+    // Note: The barcode scanner plugin doesn't export the scan function directly
+    // For now, we'll return an error indicating this needs to be implemented
+    // TODO: Implement proper barcode scanning by invoking the native plugin command
+    Err("Barcode scanning needs to be implemented through the plugin command system".to_string())
 }
 
 /// Scan a barcode/QR code (desktop stub)
@@ -1813,4 +1800,81 @@ async fn scan_barcode() -> Result<String, String> {
 #[cfg(not(mobile))]
 async fn scan_barcode() -> Result<String, String> {
     Err("Barcode scanning is only available on mobile platforms (Android/iOS)".to_string())
+}
+
+/// Pick a file using the native mobile file picker
+///
+/// Opens the platform's native file picker to select one or more files.
+/// Returns information about the selected files including URI, path, name, size, and MIME type.
+///
+/// Only available on mobile platforms (Android/iOS).
+#[tauri::command]
+#[cfg(mobile)]
+fn pick_file(
+    app: AppHandle,
+    allowed_types: Option<Vec<String>>,
+    allow_multiple: Option<bool>,
+) -> Result<Vec<PickerFileInfo>, String> {
+    use tauri_plugin_mobile_file_picker::{FilePickerOptions, MobileFilePickerExt};
+
+    let picker = app.mobile_file_picker();
+    let options = FilePickerOptions {
+        allowed_types,
+        allow_multiple: allow_multiple.unwrap_or(false),
+    };
+
+    picker
+        .pick_file(options)
+        .map_err(|e: tauri_plugin_mobile_file_picker::Error| e.to_string())
+}
+
+/// Pick a directory using the native mobile directory picker
+///
+/// Opens the platform's native directory picker to select a directory.
+/// Returns information about the selected directory including URI, path, and name.
+///
+/// Only available on mobile platforms (Android/iOS).
+#[tauri::command]
+#[cfg(mobile)]
+fn pick_directory(
+    app: AppHandle,
+    start_directory: Option<String>,
+) -> Result<PickerDirectoryInfo, String> {
+    use tauri_plugin_mobile_file_picker::{DirectoryPickerOptions, MobileFilePickerExt};
+
+    let picker = app.mobile_file_picker();
+    let options = DirectoryPickerOptions {
+        start_directory,
+    };
+
+    picker
+        .pick_directory(options)
+        .map_err(|e: tauri_plugin_mobile_file_picker::Error| e.to_string())
+}
+
+/// Pick a file (desktop stub)
+///
+/// On desktop platforms, this function returns an error since file picking
+/// should be done using tauri-plugin-dialog instead.
+#[tauri::command]
+#[cfg(not(mobile))]
+fn pick_file(
+    _app: AppHandle,
+    _allowed_types: Option<Vec<String>>,
+    _allow_multiple: Option<bool>,
+) -> Result<Vec<PickerFileInfo>, String> {
+    Err("File picking is only available on mobile platforms. Use tauri-plugin-dialog on desktop.".to_string())
+}
+
+/// Pick a directory (desktop stub)
+///
+/// On desktop platforms, this function returns an error since directory picking
+/// should be done using tauri-plugin-dialog instead.
+#[tauri::command]
+#[cfg(not(mobile))]
+fn pick_directory(
+    _app: AppHandle,
+    _start_directory: Option<String>,
+) -> Result<PickerDirectoryInfo, String> {
+    Err("Directory picking is only available on mobile platforms. Use tauri-plugin-dialog on desktop.".to_string())
 }

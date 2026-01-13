@@ -1,0 +1,19 @@
+[default]
+description = "Default permissions for the mobile-file-picker plugin"
+permissions = [
+  "allow-pick-file",
+  "allow-pick-directory",
+  "allow-ping",
+]
+
+[allow-pick-file]
+description = "Allows picking a file using the native file picker"
+commands = ["pick_file"]
+
+[allow-pick-directory]
+description = "Allows picking a directory using the native directory picker"
+commands = ["pick_directory"]
+
+[allow-ping]
+description = "Allows testing the plugin connection"
+commands = ["ping"]

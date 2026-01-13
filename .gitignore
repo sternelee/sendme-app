@@ -15,3 +15,6 @@ browser/public/wasm/*.d.ts
 
 # android sign file
 keystore.properties
+
+.tauri
+android/build

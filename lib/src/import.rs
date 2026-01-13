@@ -215,3 +215,68 @@ pub fn get_export_path(root: &std::path::Path, name: &str) -> anyhow::Result<std
     }
     Ok(path)
 }
+
+/// Import data from bytes (for mobile platforms where file paths are not accessible)
+///
+/// This is used on mobile platforms where we get file content from URIs
+/// rather than direct file system paths.
+///
+/// # Arguments
+/// * `name` - The name to give the file in the collection
+/// * `data` - The file content as bytes
+/// * `db` - The database to store the blobs in
+/// * `progress_tx` - Optional progress sender
+///
+/// # Returns
+/// * `(hash, size, collection)` - The hash of the collection, total size, and the collection itself
+pub async fn import_from_bytes(
+    name: String,
+    data: Vec<u8>,
+    db: &FsStore,
+    progress_tx: Option<ProgressSenderTx>,
+) -> anyhow::Result<(iroh_blobs::Hash, u64, Collection)> {
+    let size = data.len() as u64;
+
+    if let Some(ref tx) = progress_tx {
+        let _ = tx
+            .send(crate::progress::ProgressEvent::Import(
+                name.clone(),
+                crate::progress::ImportProgress::FileStarted {
+                    name: name.clone(),
+                    size,
+                },
+            ))
+            .await;
+    }
+
+    // Import the bytes directly into the store
+    let temp_tag = db.add_bytes(data).await?;
+
+    if let Some(ref tx) = progress_tx {
+        let _ = tx
+            .send(crate::progress::ProgressEvent::Import(
+                name.clone(),
+                crate::progress::ImportProgress::FileCompleted {
+                    name: name.clone(),
+                },
+            ))
+            .await;
+    }
+
+    // Create a collection from the (name, hash) tuple
+    // Collection implements FromIterator<(Name, Hash)>
+    let collection: Collection = std::iter::once((name, temp_tag.hash)).collect();
+    let collection_tag = collection.clone().store(db).await?;
+    let hash = collection_tag.hash();
+
+    if let Some(ref tx) = progress_tx {
+        let _ = tx
+            .send(crate::progress::ProgressEvent::Import(
+                "".to_string(),
+                crate::progress::ImportProgress::Completed { total_size: size },
+            ))
+            .await;
+    }
+
+    Ok((hash, size, collection))
+}
