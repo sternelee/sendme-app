@@ -6,6 +6,8 @@ This file provides guidance for AI coding agents working in this repository.
 
 Sendme is a Rust CLI tool for P2P file transfer using the [iroh](https://crates.io/crates/iroh) networking library. This fork adds a Tauri desktop app with Vue 3 + shadcn/ui frontend. The project has a Cargo workspace with: `lib/` (core library), `cli/` (CLI binary), `app/src-tauri/` (Tauri backend), and `browser/` (WASM, excluded from workspace).
 
+**Package Manager:** Use **pnpm** for all JavaScript/TypeScript operations (NOT npm or yarn).
+
 ## Build, Lint, and Test Commands
 
 ### Rust (All Workspace Members)
@@ -33,10 +35,11 @@ cargo clippy --locked --workspace --all-targets --all-features
 cargo test --locked --workspace --all-features
 
 # Run specific test by name
-cargo test --test cli
-cargo test send_recv_file
+cargo test --test cli               # Run integration test file
+cargo test send_recv_file           # Run specific test function
+cargo test send_recv_dir            # Another test function example
 cargo test --lib                    # Run library unit tests only
-cargo test -p sendme-lib           # Run tests for library crate only
+cargo test -p sendme-lib            # Run tests for library crate only
 
 # Check dependencies are correct
 cargo check --workspace --all-features --bins

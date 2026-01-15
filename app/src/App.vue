@@ -669,7 +669,7 @@ function getProgressValue(id: string) {
           >
             <div
               v-if="isNearbyExpanded"
-              class="px-4 sm:px-6 pb-6 overflow-hidden"
+              class="px-4 sm:px-6 pb-1 overflow-hidden"
             >
               <NearbyDevices
                 ref="nearbyDevicesRef"
