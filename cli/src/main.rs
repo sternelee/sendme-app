@@ -16,8 +16,8 @@ use indicatif::{
 };
 use tokio::sync::mpsc;
 
-use sendme_lib::{progress::*, types::*};
 use fast_qr::QRBuilder;
+use sendme_lib::{progress::*, types::*};
 
 // Clipboard support (optional)
 #[cfg(feature = "clipboard")]

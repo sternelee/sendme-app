@@ -18,3 +18,7 @@ keystore.properties
 
 .tauri
 android/build
+
+# Log files
+*.log
+app_logs.txt

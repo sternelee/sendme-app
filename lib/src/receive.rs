@@ -60,7 +60,11 @@ async fn receive_internal(
     // Determine the base directory for temp files
     // Use temp_dir from args if provided (required for Android/macOS sandbox),
     // otherwise fall back to current directory
-    let base_dir = args.common.temp_dir.as_ref().cloned()
+    let base_dir = args
+        .common
+        .temp_dir
+        .as_ref()
+        .cloned()
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
     tracing::info!("📁 Using base directory for temp storage: {:?}", base_dir);
@@ -78,8 +82,16 @@ async fn receive_internal(
 
     // Test write permissions by creating the temp directory
     std::fs::create_dir_all(&iroh_data_dir).map_err(|e| {
-        tracing::error!("❌ Failed to create temp directory {:?}: {}", iroh_data_dir, e);
-        anyhow::anyhow!("Failed to create temp directory {:?}: {}. Check write permissions.", iroh_data_dir, e)
+        tracing::error!(
+            "❌ Failed to create temp directory {:?}: {}",
+            iroh_data_dir,
+            e
+        );
+        anyhow::anyhow!(
+            "Failed to create temp directory {:?}: {}. Check write permissions.",
+            iroh_data_dir,
+            e
+        )
     })?;
 
     tracing::info!("✅ Temp directory created/verified");
@@ -252,7 +264,13 @@ async fn receive_internal(
     tracing::info!("📤 Starting export to base_dir: {:?}", base_dir);
     // Use export_dir from args if provided, otherwise export to base_dir
     let export_dir = args.export_dir.as_ref().unwrap_or(&base_dir);
-    export::export(&db, collection.clone(), progress_tx.clone(), Some(export_dir)).await?;
+    export::export(
+        &db,
+        collection.clone(),
+        progress_tx.clone(),
+        Some(export_dir),
+    )
+    .await?;
 
     if let Some(ref tx) = progress_tx {
         let _ = tx

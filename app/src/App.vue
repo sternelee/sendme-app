@@ -16,6 +16,8 @@ import {
   open_received_file,
   scan_barcode,
   pick_directory,
+  start_nearby_ticket_server,
+  send_ticket_to_device,
   type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
@@ -30,6 +32,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Toaster } from "@/components/ui/sonner";
 import NearbyDevices from "@/components/NearbyDevices.vue";
+import TicketReceiveDialog from "@/components/TicketReceiveDialog.vue";
 import {
   Loader2,
   FolderOpen,
@@ -100,6 +103,10 @@ const progressData = ref<Record<string, ProgressData>>({});
 const metadataCache = ref<Record<string, any>>({});
 const unlisten = ref<(() => void) | null>(null);
 const currentReceivingId = ref<string | null>(null);
+
+// Ticket receiving state
+const currentTicketRequest = ref<any | null>(null);
+const isTicketDialogOpen = ref(false);
 
 // Computed properties for receive progress
 const receiveProgress = computed(() => {
@@ -213,6 +220,33 @@ onMounted(async () => {
     }
   });
 
+  // Listen for incoming ticket requests from nearby devices
+  const ticketUnlisten = await listen("nearby-ticket-received", (event) => {
+    const ticketRequest = event.payload as any;
+    console.log("Received nearby ticket request:", ticketRequest);
+
+    // Show the ticket request dialog
+    currentTicketRequest.value = ticketRequest;
+    isTicketDialogOpen.value = true;
+
+    // Also show a toast notification
+    toast.info(`Incoming transfer from ${ticketRequest.sender_device?.display_name || "nearby device"}`, {
+      description: `${ticketRequest.transfer_info?.file_count || 0} files (${formatFileSize(ticketRequest.transfer_info?.total_size || 0)})`,
+      duration: 10000, // Show for 10 seconds
+    });
+  });
+
+  // Store the ticket event unlistener for cleanup
+  if (unlisten.value) {
+    const originalUnlisten = unlisten.value;
+    unlisten.value = () => {
+      originalUnlisten();
+      ticketUnlisten();
+    };
+  } else {
+    unlisten.value = ticketUnlisten;
+  }
+
   // Check WiFi status periodically
   setInterval(async () => {
     await checkWifiStatus();
@@ -273,6 +307,50 @@ async function handleSelectNearbyDevice(device: NearbyDevice) {
   // Collapse nearby section
   isNearbyExpanded.value = false;
   toast.success(`Selected device: ${device.display_name}`);
+}
+
+async function handleSendToNearbyDevice(device: NearbyDevice, files: string[]) {
+  if (files.length === 0) {
+    toast.error("No files selected");
+    return;
+  }
+
+  // Check if device is reachable
+  if (!device.reachable) {
+    toast.error("Device is not reachable. Please wait for connection to be established.");
+    return;
+  }
+
+  try {
+    // Start nearby ticket server if not already started
+    await start_nearby_ticket_server();
+    toast.info("Preparing to send files to nearby device...");
+
+    // Create ticket for the files
+    // For now, we'll send the first file. In a full implementation, we'd handle multiple files
+    const filePath = files[0];
+    sendPath.value = filePath;
+
+    // Generate ticket using the existing send logic but capture the ticket
+    const ticket = await send_file({
+      path: filePath,
+      ticket_type: "addresses", // Use local-only addresses for nearby transfers
+    });
+
+    if (ticket) {
+      // Send the ticket to the nearby device
+      await send_ticket_to_device(device, ticket);
+      toast.success(`Files sent to ${device.display_name}! They should see a transfer request.`);
+    } else {
+      toast.error("Failed to generate ticket for nearby transfer");
+    }
+  } catch (e) {
+    console.error("Nearby send failed:", e);
+    toast.error(`Failed to send to nearby device: ${e}`);
+  } finally {
+    // Clear the send path since this was just for ticket generation
+    sendPath.value = "";
+  }
 }
 
 async function checkWifiStatus() {
@@ -338,6 +416,36 @@ async function handleCancelReceive() {
     await handleCancel(currentReceivingId.value);
     currentReceivingId.value = null;
   }
+}
+
+async function handleAcceptNearbyTicket(ticket: string) {
+  try {
+    await receive_file({
+      ticket: ticket,
+      output_dir: receiveOutputDir.value || undefined,
+    });
+    // currentReceivingId will be set by progress event listener
+    await loadTransfers();
+    toast.success("Transfer accepted and started");
+  } catch (e) {
+    console.error("Failed to accept nearby ticket:", e);
+    toast.error(`Failed to accept transfer: ${e}`);
+  } finally {
+    // Close the dialog
+    handleCloseTicketDialog();
+  }
+}
+
+async function handleRejectNearbyTicket(requestId: string) {
+  // For now, just close the dialog and log rejection
+  console.log("Rejected nearby ticket request:", requestId);
+  toast.info("Transfer request declined");
+  handleCloseTicketDialog();
+}
+
+function handleCloseTicketDialog() {
+  currentTicketRequest.value = null;
+  isTicketDialogOpen.value = false;
 }
 
 async function handleScanBarcode() {
@@ -579,6 +687,15 @@ function getProgressValue(id: string) {
 
 <template>
   <Toaster />
+
+  <!-- Ticket Receive Dialog -->
+  <TicketReceiveDialog
+    :open="isTicketDialogOpen"
+    :request="currentTicketRequest"
+    @accept="handleAcceptNearbyTicket"
+    @reject="handleRejectNearbyTicket"
+    @close="handleCloseTicketDialog"
+  />
   <div
     class="fixed inset-0 pointer-events-none overflow-hidden blur-[120px] opacity-20 dark:opacity-40"
   >
@@ -674,6 +791,7 @@ function getProgressValue(id: string) {
               <NearbyDevices
                 ref="nearbyDevicesRef"
                 @select-device="handleSelectNearbyDevice"
+                @send-to-device="handleSendToNearbyDevice"
               />
             </div>
           </transition>

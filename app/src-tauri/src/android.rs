@@ -10,7 +10,8 @@ pub fn open_file_with_intent(file_path: &str, _filename: &str) -> Result<(), Str
     let ctx = android_context();
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
         .map_err(|e| format!("Failed to get JavaVM: {}", e))?;
-    let mut env = vm.attach_current_thread()
+    let mut env = vm
+        .attach_current_thread()
         .map_err(|e| format!("Failed to attach to JVM: {}", e))?;
 
     // Verify file exists
@@ -23,18 +24,22 @@ pub fn open_file_with_intent(file_path: &str, _filename: &str) -> Result<(), Str
     let activity = unsafe { jni::objects::JObject::from_raw(activity_raw) };
 
     // Call MainActivity.openFile(String)
-    let file_path_jstring = env.new_string(file_path)
+    let file_path_jstring = env
+        .new_string(file_path)
         .map_err(|e| format!("Failed to create file path string: {}", e))?;
 
-    let result = env.call_method(
-        &activity,
-        "openFile",
-        "(Ljava/lang/String;)Z",
-        &[jni::objects::JValue::Object(&file_path_jstring)],
-    ).map_err(|e| format!("Failed to call openFile method: {}", e))?;
+    let result = env
+        .call_method(
+            &activity,
+            "openFile",
+            "(Ljava/lang/String;)Z",
+            &[jni::objects::JValue::Object(&file_path_jstring)],
+        )
+        .map_err(|e| format!("Failed to call openFile method: {}", e))?;
 
     // Check the result (Z = boolean)
-    let success = result.z()
+    let success = result
+        .z()
         .map_err(|e| format!("Failed to get boolean result: {}", e))?;
 
     if !success {

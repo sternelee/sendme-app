@@ -34,6 +34,7 @@ export interface NearbyDevice {
   ip_addresses: string[];
   last_seen: number;
   available: boolean;
+  reachable?: boolean;
 }
 
 /**
@@ -99,6 +100,38 @@ export async function get_nearby_devices(): Promise<NearbyDevice[]> {
  */
 export async function stop_nearby_discovery(): Promise<void> {
   return await invoke("stop_nearby_discovery");
+}
+
+/**
+ * Start the nearby ticket server for receiving tickets from other devices
+ *
+ * Returns the port number the server is listening on.
+ */
+export async function start_nearby_ticket_server(): Promise<number> {
+  return await invoke("start_nearby_ticket_server");
+}
+
+/**
+ * Send a ticket to a nearby device
+ *
+ * @param device - The nearby device to send the ticket to
+ * @param ticketData - The ticket data to send
+ */
+export async function send_ticket_to_device(
+  device: NearbyDevice,
+  ticketData: string
+): Promise<void> {
+  return await invoke("send_ticket_to_device", { device, ticketData });
+}
+
+/**
+ * Receive a ticket from a nearby device (blocking call)
+ *
+ * In production, tickets would be received asynchronously via events.
+ * This is mainly for testing purposes.
+ */
+export async function receive_ticket_from_device(): Promise<string> {
+  return await invoke("receive_ticket_from_device");
 }
 
 /**
