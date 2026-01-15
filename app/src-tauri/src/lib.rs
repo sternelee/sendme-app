@@ -13,7 +13,9 @@ use uuid::Uuid;
 // On mobile, these alias to the plugin types
 // On desktop, we define local stubs
 #[cfg(mobile)]
-pub use tauri_plugin_mobile_file_picker::{FileInfo as PickerFileInfo, DirectoryInfo as PickerDirectoryInfo};
+pub use tauri_plugin_mobile_file_picker::{
+    DirectoryInfo as PickerDirectoryInfo, FileInfo as PickerFileInfo,
+};
 
 #[cfg(not(mobile))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +98,7 @@ pub struct NearbyDevice {
     pub ip_addresses: Vec<String>,
     pub last_seen: i64,
     pub available: bool,
+    pub reachable: bool,
 }
 
 type NearbyDiscovery = Arc<RwLock<Option<sendme_lib::nearby::NearbyDiscovery>>>;
@@ -218,50 +221,51 @@ async fn copy_files_to_content_uri(
             let vm = android_ctx.vm();
 
             // Get JNI env
-            let mut env = jni::JNIEnv::from_raw(vm as *mut _).map_err(|e| {
-                anyhow::anyhow!("Failed to get JNI env: {:?}", e)
-            })?;
+            let mut env = jni::JNIEnv::from_raw(vm as *mut _)
+                .map_err(|e| anyhow::anyhow!("Failed to get JNI env: {:?}", e))?;
 
             // Convert content to Java byte array
-            let byte_array = env.byte_array_from_slice(&content).map_err(|e| {
-                anyhow::anyhow!("Failed to create byte array: {:?}", e)
-            })?;
+            let byte_array = env
+                .byte_array_from_slice(&content)
+                .map_err(|e| anyhow::anyhow!("Failed to create byte array: {:?}", e))?;
 
             // Call Java method to write file
             let class_name = "com/sendme/app/FileUtils";
             let method_name = "writeFileToContentUri";
 
-            let class = env.find_class(class_name).map_err(|e| {
-                anyhow::anyhow!("Failed to find class {}: {:?}", class_name, e)
-            })?;
+            let class = env
+                .find_class(class_name)
+                .map_err(|e| anyhow::anyhow!("Failed to find class {}: {:?}", class_name, e))?;
 
             // Create JObject wrappers
-            let dir_uri_jobject = JObject::from(env.new_string(content_uri).map_err(|e| {
-                anyhow::anyhow!("Failed to create string: {:?}", e)
-            })?);
-            let file_name_jobject = JObject::from(env.new_string(name).map_err(|e| {
-                anyhow::anyhow!("Failed to create string: {:?}", e)
-            })?);
+            let dir_uri_jobject = JObject::from(
+                env.new_string(content_uri)
+                    .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?,
+            );
+            let file_name_jobject = JObject::from(
+                env.new_string(name)
+                    .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?,
+            );
             let byte_array_jobject = JObject::from(byte_array);
 
             // Call using call_static_method which handles types
-            let result = env.call_static_method(
-                class,
-                method_name,
-                "(Ljava/lang/String;Ljava/lang/String;[B)Z",
-                &[
-                    JValue::Object(&dir_uri_jobject),
-                    JValue::Object(&file_name_jobject),
-                    JValue::Object(&byte_array_jobject),
-                ],
-            ).map_err(|e| {
-                anyhow::anyhow!("Failed to call method: {:?}", e)
-            })?;
+            let result = env
+                .call_static_method(
+                    class,
+                    method_name,
+                    "(Ljava/lang/String;Ljava/lang/String;[B)Z",
+                    &[
+                        JValue::Object(&dir_uri_jobject),
+                        JValue::Object(&file_name_jobject),
+                        JValue::Object(&byte_array_jobject),
+                    ],
+                )
+                .map_err(|e| anyhow::anyhow!("Failed to call method: {:?}", e))?;
 
             // result is JValue, need to extract the boolean
-            let success = result.z().map_err(|e| {
-                anyhow::anyhow!("Failed to extract boolean: {:?}", e)
-            })?;
+            let success = result
+                .z()
+                .map_err(|e| anyhow::anyhow!("Failed to extract boolean: {:?}", e))?;
 
             if !success {
                 anyhow::bail!("Failed to write file {} to content URI", name);
@@ -372,6 +376,9 @@ pub fn run() {
             start_nearby_discovery,
             get_nearby_devices,
             stop_nearby_discovery,
+            start_nearby_ticket_server,
+            send_ticket_to_device,
+            receive_ticket_from_device,
             get_hostname,
             get_device_model,
             check_wifi_connection,
@@ -682,15 +689,21 @@ async fn receive_file(
                 (Some(std::path::PathBuf::from(dir)), None)
             }
             Err(e) => {
-                log_error!("Failed to get Downloads directory: {}, falling back to temp_dir", e);
+                log_error!(
+                    "Failed to get Downloads directory: {}, falling back to temp_dir",
+                    e
+                );
                 (None, None)
             }
         }
     };
 
     #[cfg(not(target_os = "android"))]
-    let (export_dir, content_uri_output): (Option<std::path::PathBuf>, Option<String>) = (
-        request.output_dir.as_ref().map(|d| std::path::PathBuf::from(d)),
+    let (export_dir, _content_uri_output): (Option<std::path::PathBuf>, Option<String>) = (
+        request
+            .output_dir
+            .as_ref()
+            .map(|d| std::path::PathBuf::from(d)),
         None,
     );
 
@@ -841,9 +854,17 @@ async fn receive_file(
             #[cfg(target_os = "android")]
             if let Some(content_uri) = content_uri_output {
                 log_info!("Copying files to content URI: {}", content_uri);
-                if let Err(e) = copy_files_to_content_uri(&app, &temp_dir, &content_uri, &result.collection).await {
+                if let Err(e) =
+                    copy_files_to_content_uri(&app, &temp_dir, &content_uri, &result.collection)
+                        .await
+                {
                     log_error!("Failed to copy files to content URI: {}", e);
-                    update_transfer_status(transfers.inner(), &transfer_id, &format!("error: {}", e)).await;
+                    update_transfer_status(
+                        transfers.inner(),
+                        &transfer_id,
+                        &format!("error: {}", e),
+                    )
+                    .await;
                     return Err(format!("Failed to copy files to content URI: {}", e));
                 }
                 log_info!("✅ Files copied to content URI successfully");
@@ -1072,7 +1093,9 @@ async fn start_nearby_discovery(
 async fn get_nearby_devices(
     nearby: tauri::State<'_, NearbyDiscovery>,
 ) -> Result<Vec<NearbyDevice>, String> {
-    log_info!("📋 GET_NEARBY_DEVICES called");
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📋 GET_NEARBY_DEVICES");
+    log_info!("═══════════════════════════════════════════════════");
 
     let mut nearby_guard = nearby.write().await;
 
@@ -1084,11 +1107,23 @@ async fn get_nearby_devices(
     log_info!("🔄 Polling for device updates...");
     let _ = discovery.poll().await;
 
-    let devices = discovery.recent_devices(std::time::Duration::from_secs(600)); // 10 minutes
+    let devices = discovery.devices();
     log_info!("✅ Found {} recent devices", devices.len());
 
+    // Log detailed information about each device
+    for (i, device) in devices.iter().enumerate() {
+        log_info!("📱 Device #{}: {}", i + 1, device.display_name);
+        log_info!("  - Node ID: {}", device.node_id);
+        log_info!("  - Available: {}", device.available);
+        log_info!("  - Reachable: {}", device.reachable);
+        log_info!("  - Last seen: {}", device.last_seen);
+        log_info!("  - Addresses: {:?}", device.addresses);
+        log_info!("  - IP Addresses: {:?}", device.ip_addresses);
+        log_info!("  - Name: {:?}", device.name);
+    }
+
     // Convert to frontend format with friendly display names
-    let result = devices
+    let result: Vec<NearbyDevice> = devices
         .into_iter()
         .map(|d| {
             // Extract IP addresses from the debug-formatted transport addresses
@@ -1119,17 +1154,19 @@ async fn get_nearby_devices(
             };
 
             NearbyDevice {
-                node_id: d.node_id,
-                name: d.name,
+                node_id: d.node_id.clone(),
+                name: d.name.clone(),
                 display_name,
-                addresses: d.addresses,
+                addresses: d.addresses.clone(),
                 ip_addresses,
                 last_seen: d.last_seen,
                 available: d.available,
+                reachable: d.reachable,
             }
         })
         .collect();
 
+    log_info!("📤 Returning {} devices to frontend", result.len());
     Ok(result)
 }
 
@@ -1152,6 +1189,212 @@ async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyDiscovery>) -> Res
     log_info!("✅ Nearby discovery stopped");
 
     Ok(())
+}
+
+/// Listen for incoming nearby tickets and emit events
+async fn listen_for_nearby_tickets(
+    app: AppHandle,
+    port: u16,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+    log_info!("🎧 Listening for nearby tickets on port {}", port);
+
+    loop {
+        let (socket, addr) = match listener.accept().await {
+            Ok(conn) => conn,
+            Err(e) => {
+                log_error!("❌ Failed to accept connection: {}", e);
+                continue;
+            }
+        };
+
+        log_info!("📡 Incoming connection from {}", addr);
+
+        // Spawn a task to handle this connection
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            if let Err(e) = handle_nearby_ticket_connection(app_clone, socket, addr).await {
+                log_error!("❌ Failed to handle ticket connection from {}: {}", addr, e);
+            }
+        });
+    }
+}
+
+/// Handle a single nearby ticket connection
+async fn handle_nearby_ticket_connection(
+    app: AppHandle,
+    mut socket: tokio::net::TcpStream,
+    addr: std::net::SocketAddr,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use tokio::io::AsyncReadExt;
+
+    // Read length
+    let mut len_buf = [0u8; 4];
+    socket.read_exact(&mut len_buf).await?;
+    let total_len = u32::from_be_bytes(len_buf) as usize;
+
+    // Read protocol header
+    let mut header_buf = [0u8; 6]; // "TICKET" is 6 bytes
+    socket.read_exact(&mut header_buf).await?;
+    let header = std::str::from_utf8(&header_buf)?;
+
+    if header != "TICKET" {
+        log_warn!("⚠️  Invalid protocol header from {}: {}", addr, header);
+        return Ok(()); // Not a ticket message, just ignore
+    }
+
+    // Read ticket data
+    let ticket_len = total_len - header.len();
+    let mut ticket_buf = vec![0u8; ticket_len];
+    socket.read_exact(&mut ticket_buf).await?;
+
+    let ticket = String::from_utf8(ticket_buf)?;
+    log_info!(
+        "🎫 Received ticket from {}: {}...",
+        addr,
+        &ticket[..std::cmp::min(50, ticket.len())]
+    );
+
+    // Try to parse the ticket to extract metadata
+    // This is a simplified approach - in a real implementation you'd parse the ticket properly
+    let transfer_info = extract_ticket_metadata(&ticket);
+
+    // Emit event to frontend
+    let ticket_request = serde_json::json!({
+        "id": format!("ticket_{}", chrono::Utc::now().timestamp_millis()),
+        "sender_device": {
+            "name": addr.ip().to_string(),
+            "display_name": format!("Device at {}", addr.ip()),
+            "platform": "unknown"
+        },
+        "transfer_info": transfer_info,
+        "ticket": ticket
+    });
+
+    let _ = app.emit("nearby-ticket-received", ticket_request);
+
+    Ok(())
+}
+
+/// Extract basic metadata from a ticket (simplified implementation)
+fn extract_ticket_metadata(_ticket: &str) -> serde_json::Value {
+    // This is a very simplified approach. In a real implementation,
+    // you'd properly parse the iroh ticket format to extract file information.
+    // For now, we'll return some placeholder data.
+
+    serde_json::json!({
+        "file_count": 1,  // Assume single file for now
+        "total_size": 0,  // Unknown size
+        "names": ["Unknown file"]  // Placeholder name
+    })
+}
+
+/// Start the nearby ticket server for receiving tickets from other devices
+#[tauri::command]
+async fn start_nearby_ticket_server(
+    app: AppHandle,
+    nearby: tauri::State<'_, NearbyDiscovery>,
+) -> Result<u16, String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("🎫 START_NEARBY_TICKET_SERVER");
+    log_info!("═══════════════════════════════════════════════════");
+
+    let mut nearby_guard = nearby.write().await;
+
+    let discovery = nearby_guard
+        .as_mut()
+        .ok_or("Nearby discovery not running. Start discovery first.")?;
+
+    // Start the ticket server
+    let port = discovery.start_ticket_server().await.map_err(|e| {
+        let err_msg = format!("Failed to start ticket server: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
+
+    log_info!("✅ Nearby ticket server started on port {}", port);
+
+    // Spawn a task to listen for incoming tickets
+    let app_clone = app.clone();
+    tokio::spawn(async move {
+        if let Err(e) = listen_for_nearby_tickets(app_clone, port).await {
+            log_error!("❌ Ticket listener failed: {}", e);
+        }
+    });
+
+    Ok(port)
+}
+
+/// Send a ticket to a nearby device
+#[tauri::command]
+async fn send_ticket_to_device(
+    nearby: tauri::State<'_, NearbyDiscovery>,
+    device: NearbyDevice,
+    ticket_data: String,
+) -> Result<(), String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📤 SEND_TICKET_TO_DEVICE");
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("Device: {}", device.display_name);
+    log_info!("Ticket length: {} chars", ticket_data.len());
+
+    let nearby_guard = nearby.read().await;
+
+    let discovery = nearby_guard
+        .as_ref()
+        .ok_or("Nearby discovery not running")?;
+
+    // Find the device in the discovery by node_id
+    let lib_device = discovery
+        .devices()
+        .iter()
+        .find(|d| d.node_id == device.node_id)
+        .ok_or_else(|| format!("Device {} not found in discovery", device.node_id))?;
+
+    discovery
+        .send_ticket(lib_device, &ticket_data)
+        .await
+        .map_err(|e| {
+            let err_msg = format!("Failed to send ticket: {}", e);
+            log_error!("❌ {}", err_msg);
+            err_msg
+        })?;
+
+    log_info!("✅ Ticket sent successfully to {}", device.display_name);
+
+    Ok(())
+}
+
+/// Receive a ticket from a nearby device (blocking call for testing)
+/// In production, this would be handled asynchronously with events
+#[tauri::command]
+async fn receive_ticket_from_device(
+    nearby: tauri::State<'_, NearbyDiscovery>,
+) -> Result<String, String> {
+    log_info!("═══════════════════════════════════════════════════");
+    log_info!("📥 RECEIVE_TICKET_FROM_DEVICE");
+    log_info!("═══════════════════════════════════════════════════");
+
+    let nearby_guard = nearby.read().await;
+
+    let discovery = nearby_guard
+        .as_ref()
+        .ok_or("Nearby discovery not running")?;
+
+    let ticket = discovery.receive_ticket().await.map_err(|e| {
+        let err_msg = format!("Failed to receive ticket: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
+
+    log_info!(
+        "✅ Received ticket: {}...",
+        &ticket[..std::cmp::min(50, ticket.len())]
+    );
+
+    Ok(ticket)
 }
 
 /// Get the local hostname
@@ -1626,9 +1869,8 @@ async fn open_received_file(
         log_info!("📱 Android platform detected, using JNI");
 
         // Get public Downloads directory where files are stored
-        let downloads_dir = get_default_download_folder_impl().map_err(|e| {
-            format!("Failed to get Downloads directory: {}", e)
-        })?;
+        let downloads_dir = get_default_download_folder_impl()
+            .map_err(|e| format!("Failed to get Downloads directory: {}", e))?;
 
         log_info!("Downloads directory: {:?}", downloads_dir);
 
@@ -1659,9 +1901,8 @@ async fn open_received_file(
         log_info!("Filename: {}", file_name);
 
         // Use JNI to open the file
-        android::open_file_with_intent(file_path_str, file_name).map_err(|e| {
-            format!("Failed to open file: {:?}", e)
-        })?;
+        android::open_file_with_intent(file_path_str, file_name)
+            .map_err(|e| format!("Failed to open file: {:?}", e))?;
 
         log_info!("✅ File opened successfully");
         Ok(())
@@ -1673,9 +1914,10 @@ async fn open_received_file(
         log_info!("🖥️  Desktop platform detected, using opener plugin");
 
         // Get temp directory
-        let temp_dir = app.path().temp_dir().map_err(|e| {
-            format!("Failed to get temp directory: {}", e)
-        })?;
+        let temp_dir = app
+            .path()
+            .temp_dir()
+            .map_err(|e| format!("Failed to get temp directory: {}", e))?;
 
         // Find the file to open
         let file_to_open = if let Some(ref fname) = filename {
@@ -1686,16 +1928,16 @@ async fn open_received_file(
             file_path
         } else {
             // Find first file in directory
-            let entries = std::fs::read_dir(&temp_dir).map_err(|e| {
-                format!("Failed to read temp directory: {}", e)
-            })?;
+            let entries = std::fs::read_dir(&temp_dir)
+                .map_err(|e| format!("Failed to read temp directory: {}", e))?;
 
             let first_file = entries
                 .filter_map(Result::ok)
                 .map(|e| e.path())
                 .find(|p| {
                     p.is_file()
-                        && !p.file_name()
+                        && !p
+                            .file_name()
                             .unwrap_or_default()
                             .to_string_lossy()
                             .starts_with('.')
@@ -1719,9 +1961,7 @@ async fn open_received_file(
 
 /// List received files in the cache directory
 #[tauri::command]
-async fn list_received_files(
-    app: AppHandle,
-) -> Result<Vec<String>, String> {
+async fn list_received_files(app: AppHandle) -> Result<Vec<String>, String> {
     log_info!("═══════════════════════════════════════════════════");
     log_info!("📂 LIST_RECEIVED_FILES");
     log_info!("═══════════════════════════════════════════════════");
@@ -1739,22 +1979,23 @@ async fn list_received_files(
     #[cfg(not(target_os = "android"))]
     {
         // Use temp directory on other platforms
-        let temp_dir = app.path().temp_dir().map_err(|e| {
-            format!("Failed to get temp directory: {}", e)
-        })?;
+        let temp_dir = app
+            .path()
+            .temp_dir()
+            .map_err(|e| format!("Failed to get temp directory: {}", e))?;
 
         log_info!("Temp directory: {:?}", temp_dir);
 
-        let entries = std::fs::read_dir(&temp_dir).map_err(|e| {
-            format!("Failed to read temp directory: {}", e)
-        })?;
+        let entries = std::fs::read_dir(&temp_dir)
+            .map_err(|e| format!("Failed to read temp directory: {}", e))?;
 
         let files: Vec<String> = entries
             .filter_map(Result::ok)
             .map(|e| e.path())
             .filter(|p| {
                 p.is_file()
-                    && !p.file_name()
+                    && !p
+                        .file_name()
                         .unwrap_or_default()
                         .to_string_lossy()
                         .starts_with('.')
@@ -1843,9 +2084,7 @@ fn pick_directory(
     use tauri_plugin_mobile_file_picker::{DirectoryPickerOptions, MobileFilePickerExt};
 
     let picker = app.mobile_file_picker();
-    let options = DirectoryPickerOptions {
-        start_directory,
-    };
+    let options = DirectoryPickerOptions { start_directory };
 
     picker
         .pick_directory(options)
@@ -1863,7 +2102,10 @@ fn pick_file(
     _allowed_types: Option<Vec<String>>,
     _allow_multiple: Option<bool>,
 ) -> Result<Vec<PickerFileInfo>, String> {
-    Err("File picking is only available on mobile platforms. Use tauri-plugin-dialog on desktop.".to_string())
+    Err(
+        "File picking is only available on mobile platforms. Use tauri-plugin-dialog on desktop."
+            .to_string(),
+    )
 }
 
 /// Pick a directory (desktop stub)

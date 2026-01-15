@@ -17,6 +17,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 log = "0.4"
 uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"

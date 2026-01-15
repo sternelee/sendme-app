@@ -256,9 +256,7 @@ pub async fn import_from_bytes(
         let _ = tx
             .send(crate::progress::ProgressEvent::Import(
                 name.clone(),
-                crate::progress::ImportProgress::FileCompleted {
-                    name: name.clone(),
-                },
+                crate::progress::ImportProgress::FileCompleted { name: name.clone() },
             ))
             .await;
     }

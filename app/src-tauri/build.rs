@@ -18,7 +18,11 @@ fn main() {
                         let dest_file = android_gen_dir.join(file_name);
 
                         if source_file.extension().map_or(false, |e| e == "kt") {
-                            println!("cargo:warning=Copying {} to {}", file_name.display(), dest_file.display());
+                            println!(
+                                "cargo:warning=Copying {} to {}",
+                                file_name.display(),
+                                dest_file.display()
+                            );
                             std::fs::copy(&source_file, &dest_file).ok();
                         }
                     }
