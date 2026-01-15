@@ -188,7 +188,7 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
 
             fileInfo.put("uri", uri.toString())
             fileInfo.put("path", path ?: uri.toString())
-            fileInfo.put("name", name ?: uri.lastPathSegment ?: "Unknown")
+            fileInfo.put("name", name ?: getFilenameFromUri(uri))
             fileInfo.put("size", size)
             fileInfo.put("mime_type", mimeType)
 
@@ -198,7 +198,7 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
             JSObject().apply {
                 put("uri", uri.toString())
                 put("path", uri.toString())
-                put("name", uri.lastPathSegment ?: "Unknown")
+                put("name", getFilenameFromUri(uri))
                 put("size", 0L)
                 put("mime_type", "application/octet-stream")
             }
@@ -228,22 +228,51 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         }
     }
 
-    private fun getPathFromUri(uri: Uri): String? {
-        // Try to get real file path
-        val projection = arrayOf(android.provider.OpenableColumns.DISPLAY_NAME)
-        activity.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
-            val columnIndex = cursor.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME)
-            if (cursor.moveToFirst()) {
-                val name = cursor.getString(columnIndex)
-                // Check if it's a file:// URI
-                if (uri.scheme == "file") {
-                    return uri.path
+    private fun getFilenameFromUri(uri: Uri): String {
+        // Try to get filename from various sources
+        uri.lastPathSegment?.let { segment ->
+            // For content URIs like content://.../document/image:1000000001
+            // Extract the part after the colon
+            if (segment.contains(":")) {
+                val filenamePart = segment.substringAfter(":")
+                // If it looks like a filename (contains extension), use it
+                if (filenamePart.contains(".")) {
+                    return filenamePart
                 }
-                // For content URIs, we can't reliably get the file path
-                // Return null to indicate the URI should be used instead
+                // Otherwise, create a filename with extension based on MIME type
+                val mimeType = activity.contentResolver.getType(uri) ?: "application/octet-stream"
+                val extension = when (mimeType) {
+                    "image/jpeg" -> ".jpg"
+                    "image/png" -> ".png"
+                    "image/gif" -> ".gif"
+                    "image/webp" -> ".webp"
+                    "video/mp4" -> ".mp4"
+                    "video/avi" -> ".avi"
+                    "audio/mp3" -> ".mp3"
+                    "audio/wav" -> ".wav"
+                    "text/plain" -> ".txt"
+                    "application/pdf" -> ".pdf"
+                    else -> {
+                        // Try to guess extension from MIME type
+                        when {
+                            mimeType.startsWith("image/") -> ".jpg"
+                            mimeType.startsWith("video/") -> ".mp4"
+                            mimeType.startsWith("audio/") -> ".mp3"
+                            mimeType.startsWith("text/") -> ".txt"
+                            else -> ""
+                        }
+                    }
+                }
+                return "file_$filenamePart$extension"
             }
+            // If it contains a dot, it's probably a filename
+            if (segment.contains(".")) {
+                return segment
+            }
+            // For numeric IDs, create a filename
+            return "file_$segment"
         }
-        return null
+        return "Unknown"
     }
 }
 
