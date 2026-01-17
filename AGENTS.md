@@ -4,11 +4,16 @@ This file provides guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-Sendme is a Rust CLI tool for P2P file transfer using the [iroh](https://crates.io/crates/iroh) networking library. This fork adds a Tauri desktop app with Vue 3 + shadcn/ui frontend. The project has a Cargo workspace with: `lib/` (core library), `cli/` (CLI binary), `app/src-tauri/` (Tauri backend), and `browser/` (WASM, excluded from workspace).
+Sendme is a Rust CLI + Tauri desktop app for P2P file transfer using the [iroh](https://crates.io/crates/iroh) networking library. The Cargo workspace includes:
+- `lib/` - Core library with send/receive/nearby functionality
+- `cli/` - CLI binary
+- `app/src-tauri/` - Tauri backend
+- `tauri-plugin-mobile-file-picker/` - Mobile file picker plugin
+- `browser/` - WASM build (excluded from workspace, build separately)
 
 ## Build, Lint, and Test Commands
 
-### Rust (All Workspace Members)
+### Rust Commands
 
 ```bash
 # Build all workspace members
@@ -20,35 +25,30 @@ cargo build -p sendme-lib
 cargo build -p sendme
 cargo build -p app
 
-# Format code (REQUIRED before committing)
+# Format (REQUIRED before committing)
 cargo fmt --all
+cargo fmt --all -- --check  # Check only
 
-# Check formatting without modifying
-cargo fmt --all -- --check
-
-# Lint with Clippy (REQUIRED, warnings treated as errors in CI)
+# Lint (warnings are errors in CI)
 cargo clippy --locked --workspace --all-targets --all-features
 
-# Run all tests
-cargo test --locked --workspace --all-features
+# Run tests
+cargo test --locked --workspace --all-features                    # All tests
+cargo test --lib                    # Library unit tests only
+cargo test -p sendme-lib           # Tests for library crate only
+cargo test send_recv_file          # Run specific test by name
 
-# Run specific test by name
-cargo test --test cli
-cargo test send_recv_file
-cargo test --lib                    # Run library unit tests only
-cargo test -p sendme-lib           # Run tests for library crate only
-
-# Check dependencies are correct
+# Check dependencies
 cargo check --workspace --all-features --bins
 ```
 
-### Tauri Desktop App
+### Tauri App Commands
 
 ```bash
 cd app
 pnpm install                       # Install dependencies
-pnpm run tauri dev                 # Start dev server with hot reload
-pnpm run build                     # Build frontend (TypeScript check + Vite)
+pnpm run tauri dev                 # Dev server with hot reload
+pnpm run build                     # Build frontend (TypeScript + Vite)
 pnpm run tauri build               # Build complete desktop app
 
 # Mobile builds
@@ -56,27 +56,20 @@ pnpm run tauri android build
 pnpm run tauri ios build
 ```
 
-### Browser WASM (Excluded from Workspace)
+### Browser WASM Build (Separate)
 
 ```bash
-# IMPORTANT: Build separately from workspace root or browser directory
 cd browser
 export CC=/opt/homebrew/opt/llvm/bin/clang  # macOS: Use LLVM Clang
 cargo build --target=wasm32-unknown-unknown
-pnpm run build                     # Full WASM build with wasm-bindgen
+pnpm run build
 ```
 
 ## Code Style Guidelines
 
-### Rust Code Style
+### Rust
 
-#### Imports
-
-Group imports in this order, separated by blank lines:
-1. Standard library (grouped with `{ }`)
-2. External crates (one per line)
-3. Local crate modules
-
+**Imports** (ordered groups, blank lines between):
 ```rust
 use std::{
     collections::BTreeMap,
@@ -92,147 +85,67 @@ use tokio::select;
 use crate::{progress::*, types::*};
 ```
 
-#### Naming Conventions
+**Naming Conventions:**
+- Types: `PascalCase` (`SendResult`, `NearbyDevice`)
+- Functions: `snake_case` (`send_with_progress`)
+- Constants: `SCREAMING_SNAKE_CASE` (`MSRV`, `ALPN`)
+- Modules: `snake_case` (`send`, `receive`)
+- Type aliases: `PascalCase` for types, snake_case suffix for semantics
 
-- **Types**: PascalCase (`SendResult`, `NearbyDevice`, `ProgressEvent`)
-- **Functions**: snake_case (`send_with_progress`, `get_or_create_secret`)
-- **Constants**: SCREAMING_SNAKE_CASE (`MSRV`, `ALPN`)
-- **Modules**: snake_case (`send`, `receive`, `progress`)
-- **Type aliases**: PascalCase for types, snake_case suffix for semantics
-  ```rust
-  pub type ProgressSenderTx = tokio::sync::mpsc::Sender<ProgressEvent>;
-  type Transfers = Arc<RwLock<HashMap<String, TransferState>>>;
-  ```
-
-#### Documentation
-
+**Documentation:**
 ```rust
-//! Module-level documentation with description.
-//!
-//! Additional context and usage notes.
+//! Module-level documentation.
 
-/// Brief description of what function does.
-///
-/// Additional details if needed. Returns X, does Y.
+/// Brief description. Returns X, does Y.
 pub fn my_function() -> Result<T> { ... }
 ```
 
-#### Error Handling
-
-Use `anyhow::Result<T>` throughout. Common patterns:
-
+**Error Handling:**
 ```rust
-// Early return with custom error
-anyhow::bail!("can not share from the current directory");
-
-// Assertion with error message
-anyhow::ensure!(condition, "path components must not contain /");
-
-// Add context to errors
-.context("invalid hex in secret")?
-
-// For Tauri commands, convert to String errors
-.map_err(|e| format!("Failed to read file: {}", e))?
+anyhow::bail!("custom error message");
+anyhow::ensure!(condition, "error message");
+.context("additional context")?
+.map_err(|e| format!("Failed: {}", e))?  // For Tauri commands
 ```
 
-#### Async Patterns
-
-- Use `tokio::sync::mpsc::channel(32)` for progress event streaming
-- Use `tokio::sync::oneshot::channel()` for abort signals
-- Use `tokio::sync::RwLock` for shared state (NOT `std::sync::RwLock`)
-- Use `tokio::select!` for concurrent operations
+**Async Patterns:**
+- `tokio::sync::mpsc::channel(32)` for progress events
+- `tokio::sync::oneshot::channel()` for abort signals
+- `tokio::sync::RwLock` for shared state (NOT `std::sync::RwLock`)
 - **CRITICAL**: Keep routers alive with `std::future::pending::<()>().await`
-  ```rust
-  tokio::spawn(async move {
-      let _router = router;
-      std::future::pending::<()>().await;  // Runs forever
-  });
-  ```
 
-### TypeScript/Vue Code Style
-
-#### Imports
+### TypeScript/Vue
 
 ```typescript
-// External packages first
+// External packages first, then local imports
 import { invoke } from "@tauri-apps/api/core";
 import { ref, computed } from "vue";
-
-// Local imports
 import { send_file, type SendFileRequest } from "@/lib/commands";
+
+// Explicit types for refs
+const devices = ref<NearbyDevice[]>([]);
+
+// Vue components: <script setup lang="ts">
+// Explicit type annotations on refs/reactive state
+// Type event emits: defineEmits<{ close: [] }>()
 ```
 
-#### Type Annotations
+## Important Details
 
-- Use explicit types for refs: `const devices = ref<NearbyDevice[]>([])`
-- Export interfaces for data structures
-- Use JSDoc comments for exported functions
-- Explicit return types on async functions
-
-```typescript
-export interface TransferInfo {
-  id: string;
-  transfer_type: "send" | "receive";
-  status: string;
-}
-
-/**
- * Send a file or directory and return the ticket
- */
-export async function send_file(request: SendFileRequest): Promise<string> {
-  return await invoke("send_file", { request });
-}
-```
-
-#### Vue Components
-
-- Use `<script setup lang="ts">` (Composition API)
-- Explicit type annotations on refs and reactive state
-- Use computed properties for derived state
-- Type event emits: `defineEmits<{ close: [] }>()`
-
-## Important Implementation Details
-
-### Path Handling
-
-- All temp directories use `.sendme-*` prefix
-- Use `canonicalized_path_to_string()` for platform-agnostic conversion
-- Validate path components to prevent directory traversal
-
-### Nearby Device Discovery
-
-- **WiFi Required**: Nearby discovery uses mDNS and only works when devices are connected to the same WiFi network
-- Uses `iroh::discovery::mdns::MdnsDiscovery` for local network discovery
-- Creates endpoint with `RelayMode::Disabled` for local-only transfers
-- Broadcasts hostname for device identification
-
-### Browser WASM Build
-
-- **Workspace exclusion**: Browser crate has own `[workspace]` section
-- **macOS**: Use LLVM Clang, NOT Apple Clang (`export CC=/opt/homebrew/opt/llvm/bin/clang`)
-- **No tokio::time::sleep**: Use `web_sys::window().set_timeout()` instead
-- Uses `MemStore` for in-memory storage, `Endpoint::builder().bind()` for key generation
-
-### CI Requirements
-
-- MSRV: **1.81** (Minimum Supported Rust Version)
-- `RUSTFLAGS: -Dwarnings` (all warnings are errors)
-- Must pass: `cargo fmt --check`, `cargo clippy`, `cargo test`
-- Tests run on: Ubuntu, macOS, Windows (GNU & MSVC) with stable, beta, nightly
-
-## Package Manager
-
-Use **pnpm** for all JavaScript/TypeScript operations (NOT npm or yarn).
+- **MSRV**: 1.81 (Minimum Supported Rust Version)
+- **CI**: `RUSTFLAGS: -Dwarnings` (all warnings are errors)
+- **Package Manager**: Use **pnpm** for all JS/TS operations
+- **Path Handling**: All temp directories use `.sendme-*` prefix
+- **Nearby Discovery**: Uses mDNS, requires same WiFi network
 
 ## Common Pitfalls
 
-1. **Don't use `cd && command`**: The router keep-alive pattern is critical for send functionality
-2. **Don't replace `std::future::pending()`**: This is intentional, not a sleep loop
-3. **Browser crate isolation**: Never add browser to workspace members
-4. **TypeScript strict mode**: All code must pass `vue-tsc --noEmit`
-5. **Path validation**: Always validate user-provided paths for security
-6. **Tauri error handling**: Convert Rust errors to String with descriptive messages
+1. **Router keep-alive**: Don't remove `std::future::pending()` - it's critical for send functionality
+2. **Browser WASM**: Never add browser crate to workspace members
+3. **TypeScript strict**: All code must pass `vue-tsc --noEmit`
+4. **Path validation**: Always validate user paths for security
+5. **Tauri errors**: Convert Rust errors to String with descriptive messages
 
 ## File References
 
-When discussing code, reference specific locations using `path:line` format (e.g., `lib/src/send.rs:265`).
+Use `path:line` format (e.g., `lib/src/send.rs:265`).

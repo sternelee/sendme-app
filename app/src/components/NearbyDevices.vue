@@ -156,7 +156,6 @@ async function startDiscovery() {
   try {
     isScanning.value = true;
     localNodeId.value = await start_nearby_discovery();
-    toast.success("Nearby discovery started");
 
     // Refresh devices every 3 seconds
     refreshInterval.value = window.setInterval(async () => {
