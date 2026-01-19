@@ -1,9 +1,12 @@
 package com.mobile.file.picker
 
 import android.app.Activity
-import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
+import android.util.Base64
 import android.util.Log
 import androidx.activity.result.ActivityResult
 import app.tauri.annotation.ActivityCallback
@@ -12,29 +15,46 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
+import java.util.UUID
 
 private const val TAG = "MobileFilePicker"
 
 @TauriPlugin
 class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) {
     private var currentInvoke: Invoke? = null
+    private var currentOptions: FilePickerArgs? = null
+    private var currentDirectoryOptions: DirectoryPickerArgs? = null
+
+    // Store picked URIs for later operations (like reading content or writing)
+    private val pickedUris = mutableMapOf<String, Uri>()
 
     @Command
     fun pickFile(invoke: Invoke) {
         currentInvoke = invoke
-
         val args = invoke.parseArgs(FilePickerArgs::class.java)
+        currentOptions = args
+
         val allowMultiple = args.allowMultiple ?: false
         val mimeTypes = args.allowedTypes
+        val mode = args.mode ?: "import"
 
-        val intent = if (mimeTypes != null && mimeTypes.isNotEmpty()) {
+        // Use ACTION_OPEN_DOCUMENT for "open" mode (provides persistent access)
+        // Use ACTION_GET_CONTENT for "import" mode (simpler, one-time access)
+        val intent = if (mode == "open" || mimeTypes != null && mimeTypes.isNotEmpty()) {
             Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                type = mimeTypes[0]
-                if (mimeTypes.size > 1) {
+                type = if (mimeTypes != null && mimeTypes.isNotEmpty()) mimeTypes[0] else "*/*"
+                if (mimeTypes != null && mimeTypes.size > 1) {
                     putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
                 }
                 putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
+                // Add flag for virtual file support if requested
+                if (args.allowVirtualFiles == true) {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
             }
         } else {
             Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -50,12 +70,181 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
     @Command
     fun pick_directory(invoke: Invoke) {
         currentInvoke = invoke
+        val args = invoke.parseArgs(DirectoryPickerArgs::class.java)
+        currentDirectoryOptions = args
 
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+            // Request persistent access if needed
+            if (args.requestLongTermAccess == true) {
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                )
+            }
         }
 
         startActivityForResult(invoke, intent, "handleDirectoryPickResult")
+    }
+
+    @Command
+    fun readContent(invoke: Invoke) {
+        val args = invoke.parseArgs(ReadContentArgs::class.java)
+        val uriString = args.uri ?: run {
+            invoke.reject("URI is required")
+            return
+        }
+
+        try {
+            val uri = Uri.parse(uriString)
+            val contentResolver = activity.contentResolver
+            val convertType = args.convertVirtualAsType
+
+            // Check for virtual file
+            val isVirtual = isVirtualFile(uri)
+            val inputStream: InputStream? = if (isVirtual && convertType != null) {
+                // Open virtual file with type conversion
+                getInputStreamForVirtualFile(uri, convertType)
+            } else {
+                contentResolver.openInputStream(uri)
+            }
+
+            inputStream?.use { stream ->
+                val bytes = stream.readBytes()
+                val base64Data = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+
+                invoke.resolve(JSObject().apply {
+                    put("data", base64Data)
+                    put("mimeType", mimeType)
+                    put("size", bytes.size.toLong())
+                })
+            } ?: invoke.reject("Failed to open input stream for URI: $uriString")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading content", e)
+            invoke.reject("Error reading content: ${e.message}")
+        }
+    }
+
+    @Command
+    fun copyToLocal(invoke: Invoke) {
+        val args = invoke.parseArgs(CopyToLocalArgs::class.java)
+        val uriString = args.uri ?: run {
+            invoke.reject("URI is required")
+            return
+        }
+
+        try {
+            val uri = Uri.parse(uriString)
+            val contentResolver = activity.contentResolver
+            val convertType = args.convertVirtualAsType
+
+            // Determine destination directory
+            val destDir = when (args.destination ?: "cache") {
+                "documents" -> activity.filesDir
+                else -> activity.cacheDir
+            }
+
+            // Create a unique subdirectory to avoid conflicts
+            val uniqueDir = File(destDir, ".sendme-${UUID.randomUUID()}")
+            uniqueDir.mkdirs()
+
+            // Get filename
+            val filename = args.filename ?: getDisplayName(uri) ?: "file_${System.currentTimeMillis()}"
+            val destFile = File(uniqueDir, filename)
+
+            // Check for virtual file
+            val isVirtual = isVirtualFile(uri)
+            val inputStream: InputStream? = if (isVirtual && convertType != null) {
+                getInputStreamForVirtualFile(uri, convertType)
+            } else {
+                contentResolver.openInputStream(uri)
+            }
+
+            inputStream?.use { input ->
+                FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: run {
+                invoke.reject("Failed to open input stream for URI: $uriString")
+                return
+            }
+
+            val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+
+            invoke.resolve(JSObject().apply {
+                put("path", destFile.absolutePath)
+                put("name", filename)
+                put("size", destFile.length())
+                put("mimeType", mimeType)
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Error copying to local", e)
+            invoke.reject("Error copying to local: ${e.message}")
+        }
+    }
+
+    @Command
+    fun writeContent(invoke: Invoke) {
+        val args = invoke.parseArgs(WriteContentArgs::class.java)
+        val uriString = args.uri ?: run {
+            invoke.reject("URI is required")
+            return
+        }
+        val data = args.data ?: run {
+            invoke.reject("Data is required")
+            return
+        }
+
+        try {
+            val uri = Uri.parse(uriString)
+            val contentResolver = activity.contentResolver
+            val bytes = Base64.decode(data, Base64.DEFAULT)
+
+            contentResolver.openOutputStream(uri)?.use { output ->
+                output.write(bytes)
+            } ?: run {
+                invoke.reject("Failed to open output stream for URI: $uriString")
+                return
+            }
+
+            invoke.resolve(JSObject().apply {
+                put("success", true)
+                put("bytesWritten", bytes.size.toLong())
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Error writing content", e)
+            invoke.reject("Error writing content: ${e.message}")
+        }
+    }
+
+    @Command
+    fun releaseLongTermAccess(invoke: Invoke) {
+        val args = invoke.parseArgs(ReleaseAccessArgs::class.java)
+        val uris = args.uris ?: run {
+            invoke.reject("URIs array is required")
+            return
+        }
+
+        var releasedCount = 0
+        for (uriString in uris) {
+            try {
+                val uri = Uri.parse(uriString)
+                activity.contentResolver.releasePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                pickedUris.remove(uriString)
+                releasedCount++
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to release permission for $uriString: ${e.message}")
+            }
+        }
+
+        invoke.resolve(JSObject().apply {
+            put("releasedCount", releasedCount)
+        })
     }
 
     @Command
@@ -74,22 +263,31 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         if (result.resultCode != Activity.RESULT_OK || data == null) {
             invoke.reject("User cancelled")
             currentInvoke = null
+            currentOptions = null
             return
         }
 
         try {
+            val requestLongTermAccess = currentOptions?.requestLongTermAccess ?: false
+
             data.clipData?.let { clipData ->
-                // Multiple files - use resolveObject for arrays
+                // Multiple files
                 val filesList = mutableListOf<JSObject>()
                 for (i in 0 until clipData.itemCount) {
                     val uri = clipData.getItemAt(i).uri
-                    filesList.add(getFileInfo(uri))
+                    if (requestLongTermAccess) {
+                        takePersistablePermission(uri)
+                    }
+                    filesList.add(getFileInfo(uri, requestLongTermAccess))
                 }
                 invoke.resolveObject(filesList)
             } ?: run {
-                // Single file - use resolve with JSObject
+                // Single file
                 data.data?.let { uri ->
-                    invoke.resolve(getFileInfo(uri))
+                    if (requestLongTermAccess) {
+                        takePersistablePermission(uri)
+                    }
+                    invoke.resolve(getFileInfo(uri, requestLongTermAccess))
                 } ?: invoke.reject("No file selected")
             }
         } catch (e: Exception) {
@@ -98,6 +296,7 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         }
 
         currentInvoke = null
+        currentOptions = null
     }
 
     @ActivityCallback
@@ -107,23 +306,31 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         if (result.resultCode != Activity.RESULT_OK || data == null) {
             invoke.reject("User cancelled")
             currentInvoke = null
+            currentDirectoryOptions = null
             return
         }
 
         try {
             val uri = data.data
             if (uri != null) {
-                // Extract directory name from tree URI
-                // Tree URIs look like: content://com.android.externalstorage.documents/tree/primary%3ADownload%2Fsendme
-                // We need to extract "sendme" from the path
+                val requestLongTermAccess = currentDirectoryOptions?.requestLongTermAccess ?: false
+
+                if (requestLongTermAccess) {
+                    takePersistablePermission(uri)
+                }
+
                 val directoryName = extractDirectoryNameFromTreeUri(uri)
+                val bookmark = if (requestLongTermAccess) {
+                    Base64.encodeToString(uri.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                } else null
 
                 val fileInfo = JSObject().apply {
                     put("uri", uri.toString())
                     put("path", uri.path ?: "")
                     put("name", directoryName)
-                    put("size", 0L)
-                    put("mime_type", "inode/directory")
+                    if (bookmark != null) {
+                        put("bookmark", bookmark)
+                    }
                 }
                 invoke.resolve(fileInfo)
             } else {
@@ -135,37 +342,95 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         }
 
         currentInvoke = null
+        currentDirectoryOptions = null
+    }
+
+    private fun takePersistablePermission(uri: Uri) {
+        try {
+            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            activity.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            pickedUris[uri.toString()] = uri
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to take persistable permission: ${e.message}")
+        }
+    }
+
+    private fun isVirtualFile(uri: Uri): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return false
+        }
+
+        if (!DocumentsContract.isDocumentUri(activity, uri)) {
+            return false
+        }
+
+        try {
+            val cursor = activity.contentResolver.query(
+                uri,
+                arrayOf(DocumentsContract.Document.COLUMN_FLAGS),
+                null, null, null
+            )
+
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val flags = it.getInt(0)
+                    return (flags and DocumentsContract.Document.FLAG_VIRTUAL_DOCUMENT) != 0
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error checking virtual file: ${e.message}")
+        }
+
+        return false
+    }
+
+    private fun getConvertibleMimeTypes(uri: Uri): List<String>? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return null
+        }
+
+        try {
+            val streamTypes = activity.contentResolver.getStreamTypes(uri, "*/*")
+            return streamTypes?.toList()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error getting convertible types: ${e.message}")
+        }
+
+        return null
+    }
+
+    private fun getInputStreamForVirtualFile(uri: Uri, mimeType: String): InputStream? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return null
+        }
+
+        return try {
+            activity.contentResolver
+                .openTypedAssetFileDescriptor(uri, mimeType, null)
+                ?.createInputStream()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening virtual file: ${e.message}")
+            null
+        }
     }
 
     private fun extractDirectoryNameFromTreeUri(uri: Uri): String {
-        // For tree URIs, extract the last path segment as the directory name
-        // Example: content://.../tree/primary%3ADownload%2Fsendme -> sendme
         val path = uri.path ?: return "Directory"
-
-        // Remove /tree/ prefix if present
         val treePath = path.substringAfter("/tree/")
-
-        // Split by / and get the last segment
         val segments = treePath.split("/")
-
-        // Get the last segment and decode URL encoding
         val lastSegment = segments.lastOrNull() ?: return "Directory"
-
-        // Decode URL encoding (e.g., %2F -> /, %3A -> :)
         val decoded = java.net.URLDecoder.decode(lastSegment, "UTF-8")
-
-        // Extract the actual directory name (after the last /)
         val nameParts = decoded.split("/")
         return nameParts.lastOrNull() ?: "Directory"
     }
 
-    private fun getFileInfo(uri: Uri): JSObject {
+    private fun getFileInfo(uri: Uri, includeLongTermAccess: Boolean = false): JSObject {
         val contentResolver = activity.contentResolver
         val cursor = contentResolver.query(uri, null, null, null, null)
 
         return try {
-            val nameIndex = cursor?.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME) ?: -1
-            val sizeIndex = cursor?.getColumnIndexOrThrow(android.provider.OpenableColumns.SIZE) ?: -1
+            val nameIndex = cursor?.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME) ?: -1
+            val sizeIndex = cursor?.getColumnIndexOrThrow(OpenableColumns.SIZE) ?: -1
 
             val fileInfo = JSObject()
             var name: String? = null
@@ -180,17 +445,32 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
                 }
             }
 
-            // Try to get MIME type
             val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-
-            // Get file path if available
             val path = getPathFromUri(uri)
+            val isVirtual = isVirtualFile(uri)
 
             fileInfo.put("uri", uri.toString())
             fileInfo.put("path", path ?: uri.toString())
             fileInfo.put("name", name ?: getFilenameFromUri(uri))
             fileInfo.put("size", size)
-            fileInfo.put("mime_type", mimeType)
+            fileInfo.put("mimeType", mimeType)
+            fileInfo.put("isVirtual", isVirtual)
+
+            if (isVirtual) {
+                val convertibleTypes = getConvertibleMimeTypes(uri)
+                if (convertibleTypes != null) {
+                    val typesArray = org.json.JSONArray(convertibleTypes)
+                    fileInfo.put("convertibleToMimeTypes", typesArray)
+                }
+            }
+
+            if (includeLongTermAccess) {
+                val bookmark = Base64.encodeToString(uri.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                fileInfo.put("bookmark", bookmark)
+            }
+
+            // Store URI for later operations
+            pickedUris[uri.toString()] = uri
 
             fileInfo
         } catch (e: Exception) {
@@ -200,7 +480,8 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
                 put("path", uri.toString())
                 put("name", getFilenameFromUri(uri))
                 put("size", 0L)
-                put("mime_type", "application/octet-stream")
+                put("mimeType", "application/octet-stream")
+                put("isVirtual", false)
             }
         } finally {
             cursor?.close()
@@ -212,7 +493,7 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         val cursor = contentResolver.query(uri, null, null, null, null)
 
         return try {
-            val nameIndex = cursor?.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME) ?: -1
+            val nameIndex = cursor?.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME) ?: -1
             cursor?.use {
                 if (it.moveToFirst() && nameIndex >= 0) {
                     it.getString(nameIndex)
@@ -229,74 +510,61 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
     }
 
     private fun getFilenameFromUri(uri: Uri): String {
-        // Try to get filename from various sources
         uri.lastPathSegment?.let { segment ->
-            // For content URIs like content://.../document/image:1000000001
-            // Extract the part after the colon
             if (segment.contains(":")) {
                 val filenamePart = segment.substringAfter(":")
-                // If it looks like a filename (contains extension), use it
                 if (filenamePart.contains(".")) {
                     return filenamePart
                 }
-                // Otherwise, create a filename with extension based on MIME type
                 val mimeType = activity.contentResolver.getType(uri) ?: "application/octet-stream"
-                val extension = when (mimeType) {
-                    "image/jpeg" -> ".jpg"
-                    "image/png" -> ".png"
-                    "image/gif" -> ".gif"
-                    "image/webp" -> ".webp"
-                    "video/mp4" -> ".mp4"
-                    "video/avi" -> ".avi"
-                    "audio/mp3" -> ".mp3"
-                    "audio/wav" -> ".wav"
-                    "text/plain" -> ".txt"
-                    "application/pdf" -> ".pdf"
-                    else -> {
-                        // Try to guess extension from MIME type
-                        when {
-                            mimeType.startsWith("image/") -> ".jpg"
-                            mimeType.startsWith("video/") -> ".mp4"
-                            mimeType.startsWith("audio/") -> ".mp3"
-                            mimeType.startsWith("text/") -> ".txt"
-                            else -> ""
-                        }
-                    }
-                }
+                val extension = getExtensionFromMimeType(mimeType)
                 return "file_$filenamePart$extension"
             }
-            // If it contains a dot, it's probably a filename
             if (segment.contains(".")) {
                 return segment
             }
-            // For numeric IDs, create a filename
             return "file_$segment"
         }
         return "Unknown"
     }
 
-    /**
-     * Try to get a file path from a content URI.
-     * This attempts various methods to resolve the URI to a file path.
-     * Returns null if no path can be determined.
-     */
+    private fun getExtensionFromMimeType(mimeType: String): String {
+        return when (mimeType) {
+            "image/jpeg" -> ".jpg"
+            "image/png" -> ".png"
+            "image/gif" -> ".gif"
+            "image/webp" -> ".webp"
+            "video/mp4" -> ".mp4"
+            "video/avi" -> ".avi"
+            "audio/mpeg", "audio/mp3" -> ".mp3"
+            "audio/wav" -> ".wav"
+            "text/plain" -> ".txt"
+            "application/pdf" -> ".pdf"
+            "application/vnd.google-apps.document" -> ".gdoc"
+            "application/vnd.google-apps.spreadsheet" -> ".gsheet"
+            "application/vnd.google-apps.presentation" -> ".gslides"
+            else -> when {
+                mimeType.startsWith("image/") -> ".jpg"
+                mimeType.startsWith("video/") -> ".mp4"
+                mimeType.startsWith("audio/") -> ".mp3"
+                mimeType.startsWith("text/") -> ".txt"
+                else -> ""
+            }
+        }
+    }
+
     private fun getPathFromUri(uri: Uri): String? {
-        // For file:// URIs, just return the path
         if (uri.scheme == "file") {
             return uri.path
         }
 
-        // For content:// URIs, try to resolve using DocumentsContract
         if (uri.scheme == "content") {
             try {
-                // Check if this is a document URI
-                if (android.provider.DocumentsContract.isDocumentUri(activity, uri)) {
-                    val docId = android.provider.DocumentsContract.getDocumentId(uri)
+                if (DocumentsContract.isDocumentUri(activity, uri)) {
+                    val docId = DocumentsContract.getDocumentId(uri)
 
-                    // Handle different authority types
                     when (uri.authority) {
                         "com.android.externalstorage.documents" -> {
-                            // External storage document
                             val split = docId.split(":")
                             val type = split[0]
                             val relativePath = if (split.size > 1) split[1] else ""
@@ -304,17 +572,13 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
                             if ("primary".equals(type, ignoreCase = true)) {
                                 return "${android.os.Environment.getExternalStorageDirectory()}/$relativePath"
                             }
-                            // For non-primary volumes, we can't easily get the path
                         }
                         "com.android.providers.downloads.documents" -> {
-                            // Downloads document
                             if (docId.startsWith("raw:")) {
                                 return docId.substringAfter("raw:")
                             }
-                            // For numeric IDs, we can't easily resolve the path
                         }
                         "com.android.providers.media.documents" -> {
-                            // Media document
                             val split = docId.split(":")
                             val type = split[0]
                             val id = if (split.size > 1) split[1] else null
@@ -337,7 +601,6 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
                     }
                 }
 
-                // Try to get path from _data column (works for some content providers)
                 return getDataColumn(uri, null, null)
             } catch (e: Exception) {
                 Log.w(TAG, "Could not resolve path from URI: ${e.message}")
@@ -347,9 +610,6 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         return null
     }
 
-    /**
-     * Get the value of the data column for this URI.
-     */
     private fun getDataColumn(uri: Uri, selection: String?, selectionArgs: Array<String>?): String? {
         val column = "_data"
         val projection = arrayOf(column)
@@ -373,6 +633,36 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
 class FilePickerArgs {
     var allowMultiple: Boolean? = null
     var allowedTypes: Array<String>? = null
+    var mode: String? = null  // "import" or "open"
+    var requestLongTermAccess: Boolean? = null
+    var allowVirtualFiles: Boolean? = null
+}
+
+class DirectoryPickerArgs {
+    var startDirectory: String? = null
+    var requestLongTermAccess: Boolean? = null
+}
+
+class ReadContentArgs {
+    var uri: String? = null
+    var convertVirtualAsType: String? = null
+}
+
+class CopyToLocalArgs {
+    var uri: String? = null
+    var destination: String? = null  // "cache" or "documents"
+    var filename: String? = null
+    var convertVirtualAsType: String? = null
+}
+
+class WriteContentArgs {
+    var uri: String? = null
+    var data: String? = null
+    var mimeType: String? = null
+}
+
+class ReleaseAccessArgs {
+    var uris: Array<String>? = null
 }
 
 class PingArgs {

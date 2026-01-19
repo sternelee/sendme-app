@@ -1555,6 +1555,8 @@ fn pick_file(
     let options = FilePickerOptions {
         allowed_types,
         allow_multiple: allow_multiple.unwrap_or(false),
+        mode: Default::default(),
+        request_long_term_access: false,
     };
 
     picker
@@ -1577,7 +1579,10 @@ fn pick_directory(
     use tauri_plugin_mobile_file_picker::{DirectoryPickerOptions, MobileFilePickerExt};
 
     let picker = app.mobile_file_picker();
-    let options = DirectoryPickerOptions { start_directory };
+    let options = DirectoryPickerOptions {
+        start_directory,
+        request_long_term_access: false,
+    };
 
     picker
         .pick_directory(options)

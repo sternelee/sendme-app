@@ -28,7 +28,7 @@ impl<R: Runtime> MobileFilePicker<R> {
     /// Pick a file using the native file picker
     pub fn pick_file(&self, options: FilePickerOptions) -> crate::Result<Vec<FileInfo>> {
         self.0
-            .run_mobile_plugin("pick_file", options)
+            .run_mobile_plugin("pickFile", options)
             .map_err(Into::into)
     }
 
@@ -37,6 +37,48 @@ impl<R: Runtime> MobileFilePicker<R> {
         self.0
             .run_mobile_plugin("pick_directory", options)
             .map_err(Into::into)
+    }
+
+    /// Read content from a URI (supports content:// URIs on Android)
+    pub fn read_content(&self, options: ReadContentOptions) -> crate::Result<ReadContentResponse> {
+        self.0
+            .run_mobile_plugin("readContent", options)
+            .map_err(Into::into)
+    }
+
+    /// Copy a file from a URI to local storage
+    pub fn copy_to_local(&self, options: CopyToLocalOptions) -> crate::Result<CopyToLocalResponse> {
+        self.0
+            .run_mobile_plugin("copyToLocal", options)
+            .map_err(Into::into)
+    }
+
+    /// Write content to a URI
+    pub fn write_content(&self, options: WriteContentOptions) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin("writeContent", options)
+            .map_err(Into::into)
+    }
+
+    /// Release long-term access permissions
+    /// On Android: releases persistable URI permissions
+    /// On iOS: releases security-scoped access
+    pub fn release_access(
+        &self,
+        options: ReleaseAccessOptions,
+    ) -> crate::Result<ReleaseAccessResponse> {
+        #[cfg(target_os = "android")]
+        {
+            self.0
+                .run_mobile_plugin("releaseLongTermAccess", options)
+                .map_err(Into::into)
+        }
+        #[cfg(target_os = "ios")]
+        {
+            self.0
+                .run_mobile_plugin("releaseSecureAccess", options)
+                .map_err(Into::into)
+        }
     }
 
     /// Legacy ping method for testing

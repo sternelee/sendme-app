@@ -5,9 +5,9 @@ This file provides guidance for AI coding agents working in this repository.
 ## Project Overview
 
 Sendme is a Rust CLI + Tauri desktop app for P2P file transfer using the [iroh](https://crates.io/crates/iroh) networking library. The Cargo workspace includes:
-- `lib/` - Core library with send/receive/nearby functionality
-- `cli/` - CLI binary
-- `app/src-tauri/` - Tauri backend
+- `lib/` - Core library (`sendme-lib`) with send/receive/nearby functionality
+- `cli/` - CLI binary (`sendme`) with ratatui TUI
+- `app/src-tauri/` - Tauri backend for desktop/mobile
 - `tauri-plugin-mobile-file-picker/` - Mobile file picker plugin
 - `browser/` - WASM build (excluded from workspace, build separately)
 
@@ -23,32 +23,43 @@ cargo build
 cargo build --release
 
 # Build specific packages
-cargo build -p sendme-lib
-cargo build -p sendme
-cargo build -p app
+cargo build -p sendme-lib      # Library only
+cargo build -p sendme          # CLI only (binary name: sendme)
+cargo build -p app             # Tauri backend only
 
 # Format (REQUIRED before committing)
 cargo fmt --all
-cargo fmt --all -- --check  # Check only
+cargo fmt --all -- --check     # Check only
 
-# Lint (warnings are errors in CI)
+# Lint (warnings are errors in CI: RUSTFLAGS=-Dwarnings)
 cargo clippy --locked --workspace --all-targets --all-features
-
-# Run tests
-cargo test --locked --workspace --all-features                    # All tests
-cargo test --lib                    # Library unit tests only
-cargo test -p sendme-lib           # Tests for library crate only
-cargo test send_recv_file          # Run specific test by name
-
-# Run specific test by name
-cargo test --test cli               # Run integration test file
-cargo test send_recv_file           # Run specific test function
-cargo test send_recv_dir            # Another test function example
-cargo test --lib                    # Run library unit tests only
-cargo test -p sendme-lib            # Run tests for library crate only
 
 # Check dependencies are correct
 cargo check --workspace --all-features --bins
+```
+
+### Running Tests
+
+```bash
+# All workspace tests
+cargo test --locked --workspace --all-features
+
+# Run specific test by name
+cargo test send_recv_file                    # Single test function
+cargo test send_recv_dir                     # Another test function
+
+# Test specific package
+cargo test -p sendme-lib                     # Library tests only
+cargo test -p cli                            # CLI tests only
+
+# Run integration tests only
+cargo test --test cli                        # tests/cli.rs
+
+# Run library unit tests only
+cargo test --lib -p sendme-lib
+
+# Verbose output for debugging
+cargo test send_recv_file -- --nocapture
 ```
 
 ### Tauri App Commands
@@ -56,8 +67,9 @@ cargo check --workspace --all-features --bins
 ```bash
 cd app
 pnpm install                       # Install dependencies
-pnpm run tauri dev                 # Dev server with hot reload
-pnpm run build                     # Build frontend (TypeScript + Vite)
+pnpm run dev                       # Vite dev server
+pnpm run tauri dev                 # Dev with hot reload
+pnpm run build                     # Build frontend (vue-tsc --noEmit && vite build)
 pnpm run tauri build               # Build complete desktop app
 
 # Mobile builds
@@ -65,7 +77,7 @@ pnpm run tauri android build
 pnpm run tauri ios build
 ```
 
-### Browser WASM Build (Separate)
+### Browser WASM Build (Separate - NOT in workspace)
 
 ```bash
 cd browser
@@ -76,54 +88,63 @@ pnpm run build
 
 ## Code Style Guidelines
 
-### Rust
+### Rust Import Order
 
-**Imports** (ordered groups, blank lines between):
+Use ordered groups with blank lines between:
 ```rust
+// 1. Standard library
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
     time::Instant,
 };
 
+// 2. External crates (alphabetical)
 use anyhow::Context;
 use iroh::{Endpoint, RelayMode};
 use iroh_blobs::{BlobFormat, BlobsProtocol};
 use tokio::select;
 
+// 3. Local crate imports
 use crate::{progress::*, types::*};
 ```
 
-**Naming Conventions:**
-- Types: `PascalCase` (`SendResult`, `NearbyDevice`)
-- Functions: `snake_case` (`send_with_progress`)
-- Constants: `SCREAMING_SNAKE_CASE` (`MSRV`, `ALPN`)
-- Modules: `snake_case` (`send`, `receive`)
-- Type aliases: `PascalCase` for types, snake_case suffix for semantics
+### Rust Naming Conventions
 
-**Documentation:**
+- Types/Structs/Enums: `PascalCase` (`SendResult`, `NearbyDevice`, `AddrInfoOptions`)
+- Functions/Methods: `snake_case` (`send_with_progress`, `get_or_create_secret`)
+- Constants: `SCREAMING_SNAKE_CASE` (`MSRV`, `ALPN`, `TICK_RATE_MS`)
+- Modules: `snake_case` (`send`, `receive`, `progress`)
+
+### Rust Error Handling
+
 ```rust
-//! Module-level documentation.
-
-/// Brief description. Returns X, does Y.
-pub fn my_function() -> Result<T> { ... }
-```
-
-**Error Handling:**
-```rust
+// Use anyhow for application errors
 anyhow::bail!("custom error message");
 anyhow::ensure!(condition, "error message");
 .context("additional context")?
-.map_err(|e| format!("Failed: {}", e))?  // For Tauri commands
+
+// For Tauri commands: convert to String for frontend
+.map_err(|e| format!("Failed to send: {}", e))?
 ```
 
-**Async Patterns:**
-- `tokio::sync::mpsc::channel(32)` for progress events
-- `tokio::sync::oneshot::channel()` for abort signals
-- `tokio::sync::RwLock` for shared state (NOT `std::sync::RwLock`)
-- **CRITICAL**: Keep routers alive with `std::future::pending::<()>().await`
+### Rust Async Patterns
 
-### TypeScript/Vue
+```rust
+// Progress channels
+tokio::sync::mpsc::channel::<ProgressEvent>(32)
+
+// Abort signals
+tokio::sync::oneshot::channel::<()>()
+
+// Shared state - use tokio RwLock, NOT std::sync::RwLock
+tokio::sync::RwLock<HashMap<String, State>>
+
+// CRITICAL: Keep routers alive in async contexts
+std::future::pending::<()>().await
+```
+
+### TypeScript/Vue Style
 
 ```typescript
 // External packages first, then local imports
@@ -133,28 +154,48 @@ import { send_file, type SendFileRequest } from "@/lib/commands";
 
 // Explicit types for refs
 const devices = ref<NearbyDevice[]>([]);
+const isLoading = ref<boolean>(false);
 
-// Vue components: <script setup lang="ts">
-// Explicit type annotations on refs/reactive state
-// Type event emits: defineEmits<{ close: [] }>()
+// Vue components use <script setup lang="ts">
+// Type event emits: defineEmits<{ close: [], update: [value: string] }>()
 ```
 
 ## Important Details
 
 - **MSRV**: 1.81 (Minimum Supported Rust Version)
-- **CI**: `RUSTFLAGS: -Dwarnings` (all warnings are errors)
-- **Package Manager**: Use **pnpm** for all JS/TS operations
+- **CI Environment**: `RUSTFLAGS: -Dwarnings` (all warnings are errors)
+- **CI Environment**: `IROH_FORCE_STAGING_RELAYS: 1` (use staging relays in tests)
+- **TypeScript**: Strict mode enabled, all code must pass `vue-tsc --noEmit`
 - **Path Handling**: All temp directories use `.sendme-*` prefix
 - **Nearby Discovery**: Uses mDNS, requires same WiFi network
 
 ## Common Pitfalls
 
-1. **Router keep-alive**: Don't remove `std::future::pending()` - it's critical for send functionality
-2. **Browser WASM**: Never add browser crate to workspace members
-3. **TypeScript strict**: All code must pass `vue-tsc --noEmit`
-4. **Path validation**: Always validate user paths for security
-5. **Tauri errors**: Convert Rust errors to String with descriptive messages
+1. **Router keep-alive**: Never remove `std::future::pending()` - critical for send functionality
+2. **Browser WASM**: Never add browser crate to workspace members (conflicts with native builds)
+3. **Tauri errors**: Convert Rust errors to String with descriptive messages for frontend
+4. **Path validation**: Always validate user paths (see `canonicalized_path_to_string`)
+5. **Android content URIs**: Handle `content://` URIs specially in Tauri (see `app/src-tauri/src/lib.rs`)
+6. **Tokio RwLock**: Use `tokio::sync::RwLock` for shared async state, not `std::sync::RwLock`
 
 ## File References
 
-Use `path:line` format (e.g., `lib/src/send.rs:265`).
+Use `path:line` format for code references (e.g., `lib/src/send.rs:42`).
+
+## Project Structure
+
+```
+├── lib/src/           # Core library
+│   ├── lib.rs         # Public API exports
+│   ├── send.rs        # Send functionality
+│   ├── receive.rs     # Receive functionality
+│   ├── types.rs       # Core types (SendArgs, ReceiveArgs, etc.)
+│   └── progress.rs    # Progress reporting
+├── cli/src/           # CLI with TUI
+│   ├── main.rs        # Entry point
+│   └── tui/           # Ratatui TUI components
+├── app/               # Tauri desktop/mobile app
+│   ├── src/           # Vue frontend
+│   └── src-tauri/     # Rust backend
+└── tests/cli.rs       # Integration tests
+```
