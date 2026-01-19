@@ -26,15 +26,18 @@ export interface ProgressUpdate {
   data: any;
 }
 
+export type DeviceType = "desktop" | "mobile" | "web" | "headless" | "server";
+
 export interface NearbyDevice {
-  node_id: string;
-  name: string | null;
-  display_name: string;
-  addresses: string[];
-  ip_addresses: string[];
+  fingerprint: string;
+  alias: string;
+  device_model: string | null;
+  device_type: DeviceType;
+  version: string;
+  ip: string;
+  port: number;
   last_seen: number;
   available: boolean;
-  reachable?: boolean;
 }
 
 /**
@@ -119,7 +122,7 @@ export async function start_nearby_ticket_server(): Promise<number> {
  */
 export async function send_ticket_to_device(
   device: NearbyDevice,
-  ticketData: string
+  ticketData: string,
 ): Promise<void> {
   return await invoke("send_ticket_to_device", { device, ticketData });
 }
@@ -180,7 +183,7 @@ export async function get_default_download_folder(): Promise<string> {
  */
 export async function open_received_file(
   transferId: string,
-  filename?: string
+  filename?: string,
 ): Promise<void> {
   return await invoke("open_received_file", { transferId, filename });
 }

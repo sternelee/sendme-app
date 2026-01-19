@@ -285,6 +285,12 @@ pub struct App {
     /// Index of currently selected transfer.
     pub selected_transfer_index: Option<usize>,
 
+    // Nearby tab state
+    /// Index of currently selected nearby device.
+    pub selected_nearby_device_index: Option<usize>,
+    /// Message for nearby tab.
+    pub nearby_message: String,
+
     /// Application running flag.
     pub running: bool,
 }
@@ -307,6 +313,8 @@ impl App {
             receive_message: String::new(),
             transfers_tab_state: TransfersTabState::List,
             selected_transfer_index: None,
+            selected_nearby_device_index: None,
+            nearby_message: String::new(),
             running: true,
         }
     }
@@ -359,7 +367,9 @@ impl App {
             Tab::Send => self.handle_send_tab_key(key),
             Tab::Receive => self.handle_receive_tab_key(key),
             Tab::Transfers => self.handle_transfers_tab_key(key),
-            Tab::Nearby => self.handle_nearby_tab_key(key),
+            Tab::Nearby => {
+                let _ = self.handle_nearby_tab_key(key);
+            }
         }
     }
 
@@ -490,12 +500,54 @@ impl App {
     }
 
     /// Handle key events in the nearby tab.
-    fn handle_nearby_tab_key(&mut self, key: crossterm::event::KeyEvent) {
+    /// Returns true if Enter was pressed on a selected device (to trigger send).
+    pub fn handle_nearby_tab_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         match key.code {
             crossterm::event::KeyCode::Char('s') => {
                 self.nearby_enabled = !self.nearby_enabled;
+                false
             }
-            _ => {}
+            crossterm::event::KeyCode::Up => {
+                if self.nearby_devices.is_empty() {
+                    self.selected_nearby_device_index = None;
+                } else {
+                    let new_idx = match self.selected_nearby_device_index {
+                        None => Some(self.nearby_devices.len().saturating_sub(1)),
+                        Some(0) => Some(self.nearby_devices.len().saturating_sub(1)),
+                        Some(idx) => Some(idx - 1),
+                    };
+                    self.selected_nearby_device_index = new_idx;
+                }
+                false
+            }
+            crossterm::event::KeyCode::Down => {
+                if self.nearby_devices.is_empty() {
+                    self.selected_nearby_device_index = None;
+                } else {
+                    let new_idx = match self.selected_nearby_device_index {
+                        None => Some(0),
+                        Some(idx) if idx >= self.nearby_devices.len().saturating_sub(1) => Some(0),
+                        Some(idx) => Some(idx + 1),
+                    };
+                    self.selected_nearby_device_index = new_idx;
+                }
+                false
+            }
+            crossterm::event::KeyCode::Enter => {
+                // Return true if we have a selected device and a ticket to send
+                if self.selected_nearby_device_index.is_some() && self.send_success_ticket.is_some()
+                {
+                    true
+                } else {
+                    if self.send_success_ticket.is_none() {
+                        self.nearby_message = "No ticket available. Send a file first.".to_string();
+                    } else if self.selected_nearby_device_index.is_none() {
+                        self.nearby_message = "Select a device first (Up/Down).".to_string();
+                    }
+                    false
+                }
+            }
+            _ => false,
         }
     }
 
@@ -507,6 +559,22 @@ impl App {
     /// Update nearby devices list.
     pub fn update_nearby_devices(&mut self, devices: Vec<NearbyDevice>) {
         self.nearby_devices = devices;
+        // Reset selection if it's out of bounds
+        if let Some(idx) = self.selected_nearby_device_index {
+            if idx >= self.nearby_devices.len() {
+                self.selected_nearby_device_index = if self.nearby_devices.is_empty() {
+                    None
+                } else {
+                    Some(self.nearby_devices.len() - 1)
+                };
+            }
+        }
+    }
+
+    /// Get the currently selected nearby device (if any).
+    pub fn get_selected_nearby_device(&self) -> Option<&NearbyDevice> {
+        self.selected_nearby_device_index
+            .and_then(|idx| self.nearby_devices.get(idx))
     }
 
     /// Clean up finished transfers.

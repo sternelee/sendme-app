@@ -32,12 +32,12 @@ const emit = defineEmits<{
 
 interface Props {
   selectedFiles?: string[];
-  mode?: 'discovery' | 'selection';
+  mode?: "discovery" | "selection";
 }
 
 const props = withDefaults(defineProps<Props>(), {
   selectedFiles: () => [],
-  mode: 'discovery',
+  mode: "discovery",
 });
 
 // State
@@ -167,35 +167,35 @@ async function loadSystemInfo() {
   }
 }
 
-  async function startDiscovery() {
+async function startDiscovery() {
+  try {
+    isScanning.value = true;
+    localNodeId.value = await start_nearby_discovery();
+
+    // Auto-start the ticket server for receiving tickets
     try {
-      isScanning.value = true;
-      localNodeId.value = await start_nearby_discovery();
-
-      // Auto-start the ticket server for receiving tickets
-      try {
-        const port = await start_nearby_ticket_server();
-        console.log(`Nearby ticket server started on port ${port}`);
-      } catch (e) {
-        console.error("Failed to start nearby ticket server:", e);
-        // Don't fail discovery if server start fails, just log it
-      }
-
-      toast.success("Nearby discovery started");
-
-      // Refresh devices every 3 seconds
-      refreshInterval.value = window.setInterval(async () => {
-        await refreshDevices();
-      }, 3000);
-
-      // Initial refresh
-      await refreshDevices();
+      const port = await start_nearby_ticket_server();
+      console.log(`Nearby ticket server started on port ${port}`);
     } catch (e) {
-      console.error("Failed to start discovery:", e);
-      toast.error(`Failed to start discovery: ${e}`);
-      isScanning.value = false;
+      console.error("Failed to start nearby ticket server:", e);
+      // Don't fail discovery if server start fails, just log it
     }
+
+    toast.success("Nearby discovery started");
+
+    // Refresh devices every 3 seconds
+    refreshInterval.value = window.setInterval(async () => {
+      await refreshDevices();
+    }, 3000);
+
+    // Initial refresh
+    await refreshDevices();
+  } catch (e) {
+    console.error("Failed to start discovery:", e);
+    toast.error(`Failed to start discovery: ${e}`);
+    isScanning.value = false;
   }
+}
 
 async function stopDiscovery() {
   try {
@@ -213,7 +213,10 @@ async function stopDiscovery() {
 async function refreshDevices() {
   try {
     devices.value = await get_nearby_devices();
-    console.log(`🔍 Device discovery: found ${devices.value.length} devices`, devices.value);
+    console.log(
+      `🔍 Device discovery: found ${devices.value.length} devices`,
+      devices.value,
+    );
   } catch (e) {
     console.error("Failed to get nearby devices:", e);
   }
@@ -231,7 +234,11 @@ async function manualDiscoveryTrigger() {
 }
 
 function handleSelectDevice(device: NearbyDevice) {
-  if (props.mode === 'selection' && props.selectedFiles && props.selectedFiles.length > 0) {
+  if (
+    props.mode === "selection" &&
+    props.selectedFiles &&
+    props.selectedFiles.length > 0
+  ) {
     emit("sendToDevice", device, props.selectedFiles);
   } else {
     emit("selectDevice", device);
@@ -254,13 +261,17 @@ interface DevicePlatform {
 }
 
 function detectDevicePlatform(device: NearbyDevice): DevicePlatform {
-  const name = (device.display_name || device.name || "").toLowerCase();
+  const name = (device.alias || "").toLowerCase();
+  const deviceType = (device.device_type || "").toLowerCase();
+  const deviceModel = (device.device_model || "").toLowerCase();
 
   // Check for iPhone/iPad patterns
   if (
+    deviceType === "mobile" ||
     name.includes("iphone") ||
     name.includes("ipad") ||
-    name.includes("ipod")
+    name.includes("ipod") ||
+    deviceModel.includes("ios")
   ) {
     return {
       icon: Smartphone,
@@ -271,6 +282,7 @@ function detectDevicePlatform(device: NearbyDevice): DevicePlatform {
 
   // Check for Mac patterns
   if (
+    deviceModel.includes("macos") ||
     name.includes("macbook") ||
     name.includes("imac") ||
     name.includes("mac mini") ||
@@ -287,6 +299,7 @@ function detectDevicePlatform(device: NearbyDevice): DevicePlatform {
 
   // Check for Android patterns
   if (
+    deviceModel.includes("android") ||
     name.includes("android") ||
     name.includes("pixel") ||
     name.includes("samsung") ||
@@ -306,6 +319,7 @@ function detectDevicePlatform(device: NearbyDevice): DevicePlatform {
 
   // Check for Windows patterns
   if (
+    deviceModel.includes("windows") ||
     name.includes("windows") ||
     name.includes("desktop-") ||
     name.includes("pc-") ||
@@ -321,6 +335,7 @@ function detectDevicePlatform(device: NearbyDevice): DevicePlatform {
 
   // Check for Linux patterns
   if (
+    deviceModel.includes("linux") ||
     name.includes("linux") ||
     name.includes("ubuntu") ||
     name.includes("debian") ||
@@ -331,6 +346,15 @@ function detectDevicePlatform(device: NearbyDevice): DevicePlatform {
       icon: Laptop,
       label: "Linux",
       colorClass: "text-orange-600 dark:text-orange-500",
+    };
+  }
+
+  // Check device_type for desktop
+  if (deviceType === "desktop") {
+    return {
+      icon: Laptop,
+      label: "Desktop",
+      colorClass: "text-slate-600 dark:text-slate-400",
     };
   }
 
@@ -352,34 +376,44 @@ defineExpose({
 
 <template>
   <div class="space-y-3">
-     <!-- Empty State -->
-     <div v-if="availableDevices.length === 0" class="text-center py-3">
-       <div
-         class="w-10 h-10 bg-slate-500/5 rounded-full flex items-center justify-center mx-auto mb-1.5"
-       >
-         <WifiOff class="w-4 h-4 opacity-20" />
-       </div>
-       <p class="text-xs text-slate-500 font-medium">
-         {{ isScanning ? "Scanning for devices..." : mode === 'selection' ? "No devices available" : "No devices found" }}
-       </p>
-       <p class="text-[10px] text-slate-500/60 mt-0.5">
-         {{ mode === 'selection' ? "Make sure both devices are on the same WiFi and nearby discovery is enabled" : "Make sure both devices are on the same WiFi" }}
-       </p>
-       <p
-         v-if="!isWifiConnected"
-         class="text-[10px] text-amber-600 dark:text-amber-500 mt-1 font-medium"
-       >
-         WiFi not detected
-       </p>
-       <!-- Manual Discovery Button for Debugging -->
-       <button
-         v-if="isScanning"
-         @click="manualDiscoveryTrigger"
-         class="mt-2 px-2 py-1 text-[9px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
-       >
-         Manual Discovery
-       </button>
-     </div>
+    <!-- Empty State -->
+    <div v-if="availableDevices.length === 0" class="text-center py-3">
+      <div
+        class="w-10 h-10 bg-slate-500/5 rounded-full flex items-center justify-center mx-auto mb-1.5"
+      >
+        <WifiOff class="w-4 h-4 opacity-20" />
+      </div>
+      <p class="text-xs text-slate-500 font-medium">
+        {{
+          isScanning
+            ? "Scanning for devices..."
+            : mode === "selection"
+              ? "No devices available"
+              : "No devices found"
+        }}
+      </p>
+      <p class="text-[10px] text-slate-500/60 mt-0.5">
+        {{
+          mode === "selection"
+            ? "Make sure both devices are on the same WiFi and nearby discovery is enabled"
+            : "Make sure both devices are on the same WiFi"
+        }}
+      </p>
+      <p
+        v-if="!isWifiConnected"
+        class="text-[10px] text-amber-600 dark:text-amber-500 mt-1 font-medium"
+      >
+        WiFi not detected
+      </p>
+      <!-- Manual Discovery Button for Debugging -->
+      <button
+        v-if="isScanning"
+        @click="manualDiscoveryTrigger"
+        class="mt-2 px-2 py-1 text-[9px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+      >
+        Manual Discovery
+      </button>
+    </div>
 
     <!-- Horizontal Device List -->
     <div
@@ -388,7 +422,7 @@ defineExpose({
     >
       <div
         v-for="device in availableDevices"
-        :key="device.node_id"
+        :key="device.fingerprint"
         class="flex-shrink-0 w-32 p-3 glass-card rounded-xl hover:scale-105 hover:shadow-lg transition-all duration-200 cursor-pointer group"
         @click="handleSelectDevice(device)"
       >
@@ -405,33 +439,33 @@ defineExpose({
           <div class="w-full">
             <h4
               class="font-bold text-xs text-slate-900 dark:text-slate-100 truncate"
-              :title="device.display_name"
+              :title="device.alias"
             >
-              {{ device.display_name }}
+              {{ device.alias }}
             </h4>
             <p class="text-[10px] text-slate-500 font-medium mt-0.5">
-              {{ mode === 'selection' ? 'Tap to send' : formatLastSeen(device.last_seen) }}
+              {{
+                mode === "selection"
+                  ? "Tap to send"
+                  : formatLastSeen(device.last_seen)
+              }}
             </p>
           </div>
 
           <div
-            v-if="device.ip_addresses.length > 0"
+            v-if="device.ip"
             class="flex items-center gap-1 text-[10px] text-primary font-mono"
           >
             <Wifi class="w-2.5 h-2.5 opacity-50" />
-            <span class="truncate max-w-[80px]">{{
-              device.ip_addresses[0]
-            }}</span>
+            <span class="truncate max-w-[80px]">{{ device.ip }}</span>
           </div>
 
-          <!-- Show connection status for selection mode -->
+          <!-- Show device type/model info -->
           <div
-            v-if="mode === 'selection' && device.reachable !== undefined"
-            class="flex items-center gap-1 text-[9px] font-medium"
-            :class="device.reachable ? 'text-green-600 dark:text-green-500' : 'text-amber-600 dark:text-amber-500'"
+            v-if="device.device_model"
+            class="flex items-center gap-1 text-[9px] font-medium text-slate-500"
           >
-            <div class="w-1.5 h-1.5 rounded-full" :class="device.reachable ? 'bg-green-500' : 'bg-amber-500'"></div>
-            {{ device.reachable ? 'Ready' : 'Checking...' }}
+            {{ device.device_model }}
           </div>
         </div>
       </div>
@@ -450,11 +484,13 @@ defineExpose({
         <component
           :is="
             detectDevicePlatform({
-              display_name: deviceModel || localHostname || '',
-              name: null,
-              node_id: localNodeId,
-              addresses: [],
-              ip_addresses: [],
+              alias: deviceModel || localHostname || '',
+              fingerprint: localNodeId,
+              device_model: deviceModel || '',
+              device_type: 'desktop',
+              version: '1.0',
+              ip: '',
+              port: 0,
               last_seen: 0,
               available: true,
             }).icon
@@ -462,11 +498,13 @@ defineExpose({
           class="w-3.5 h-3.5 opacity-60"
           :class="
             detectDevicePlatform({
-              display_name: deviceModel || localHostname || '',
-              name: null,
-              node_id: localNodeId,
-              addresses: [],
-              ip_addresses: [],
+              alias: deviceModel || localHostname || '',
+              fingerprint: localNodeId,
+              device_model: deviceModel || '',
+              device_type: 'desktop',
+              version: '1.0',
+              ip: '',
+              port: 0,
               last_seen: 0,
               available: true,
             }).colorClass

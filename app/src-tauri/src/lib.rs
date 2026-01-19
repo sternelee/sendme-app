@@ -88,20 +88,10 @@ macro_rules! log_warn {
     };
 }
 
-// Nearby discovery types
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NearbyDevice {
-    pub node_id: String,
-    pub name: Option<String>,
-    pub display_name: String,
-    pub addresses: Vec<String>,
-    pub ip_addresses: Vec<String>,
-    pub last_seen: i64,
-    pub available: bool,
-    pub reachable: bool,
-}
+// Nearby discovery types - re-export from library
+pub use sendme_lib::nearby::{DeviceType, NearbyDevice, NearbyEvent};
 
-type NearbyDiscovery = Arc<RwLock<Option<sendme_lib::nearby::NearbyDiscovery>>>;
+type NearbyDiscoveryState = Arc<RwLock<Option<sendme_lib::nearby::NearbyDiscovery>>>;
 
 /// Handle Android content URIs by reading the file and writing to a temporary location.
 ///
@@ -340,8 +330,9 @@ pub fn run() {
     }
 
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
-    let nearby_discovery: NearbyDiscovery = Arc::new(RwLock::new(None));
+    let nearby_discovery: NearbyDiscoveryState = Arc::new(RwLock::new(None));
 
+    #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
@@ -376,9 +367,9 @@ pub fn run() {
             start_nearby_discovery,
             get_nearby_devices,
             stop_nearby_discovery,
-            start_nearby_ticket_server,
             send_ticket_to_device,
-            receive_ticket_from_device,
+            poll_nearby_events,
+            refresh_nearby_devices,
             get_hostname,
             get_device_model,
             check_wifi_connection,
@@ -1039,7 +1030,8 @@ async fn clear_transfers(transfers: tauri::State<'_, Transfers>) -> Result<(), S
 /// Start nearby device discovery
 #[tauri::command]
 async fn start_nearby_discovery(
-    nearby: tauri::State<'_, NearbyDiscovery>,
+    app: AppHandle,
+    nearby: tauri::State<'_, NearbyDiscoveryState>,
 ) -> Result<String, String> {
     log_info!("═══════════════════════════════════════════════════");
     log_info!("🔍 START_NEARBY_DISCOVERY");
@@ -1068,7 +1060,7 @@ async fn start_nearby_discovery(
 
     // Create new discovery instance with the device name
     log_info!("🔭 Creating NearbyDiscovery instance...");
-    let discovery = sendme_lib::nearby::NearbyDiscovery::new_with_hostname(device_name)
+    let mut discovery = sendme_lib::nearby::NearbyDiscovery::new(device_name)
         .await
         .map_err(|e| {
             let err_msg = format!("Failed to create NearbyDiscovery: {}", e);
@@ -1076,269 +1068,194 @@ async fn start_nearby_discovery(
             err_msg
         })?;
 
-    let node_id = discovery.node_id().to_string();
-    log_info!("✅ NearbyDiscovery created successfully");
-    log_info!("🆔 Local node ID: {}", node_id);
+    // Start the discovery service (multicast + HTTP server)
+    let port = discovery.start().await.map_err(|e| {
+        let err_msg = format!("Failed to start NearbyDiscovery: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
+
+    let fingerprint = discovery.fingerprint().await;
+    log_info!("✅ NearbyDiscovery started successfully");
+    log_info!("🆔 Device fingerprint: {}", fingerprint);
+    log_info!("🔌 HTTP server port: {}", port);
+
+    // Spawn event listener for frontend notifications
+    let _app_clone = app.clone();
+    tokio::spawn(async move {
+        log_info!("🎧 Nearby event listener started");
+        // Event listener will be handled by poll_nearby_events command
+    });
 
     // Store discovery instance
     *nearby_guard = Some(discovery);
 
     log_info!("✅ Nearby discovery started successfully");
 
-    Ok(node_id)
+    Ok(fingerprint)
 }
 
 /// Get list of nearby devices
 #[tauri::command]
 async fn get_nearby_devices(
-    nearby: tauri::State<'_, NearbyDiscovery>,
+    nearby: tauri::State<'_, NearbyDiscoveryState>,
 ) -> Result<Vec<NearbyDevice>, String> {
     log_info!("═══════════════════════════════════════════════════");
     log_info!("📋 GET_NEARBY_DEVICES");
     log_info!("═══════════════════════════════════════════════════");
 
-    let mut nearby_guard = nearby.write().await;
+    let nearby_guard = nearby.read().await;
 
     let discovery = nearby_guard
-        .as_mut()
+        .as_ref()
         .ok_or("Nearby discovery not running".to_string())?;
 
-    // Poll for updates
-    log_info!("🔄 Polling for device updates...");
-    let _ = discovery.poll().await;
-
-    let devices = discovery.devices();
-    log_info!("✅ Found {} recent devices", devices.len());
+    let devices = discovery.devices().await;
+    log_info!("✅ Found {} nearby devices", devices.len());
 
     // Log detailed information about each device
     for (i, device) in devices.iter().enumerate() {
-        log_info!("📱 Device #{}: {}", i + 1, device.display_name);
-        log_info!("  - Node ID: {}", device.node_id);
+        log_info!(
+            "📱 Device #{}: {} ({})",
+            i + 1,
+            device.alias,
+            device.fingerprint
+        );
+        log_info!("  - IP: {}:{}", device.ip, device.port);
         log_info!("  - Available: {}", device.available);
-        log_info!("  - Reachable: {}", device.reachable);
         log_info!("  - Last seen: {}", device.last_seen);
-        log_info!("  - Addresses: {:?}", device.addresses);
-        log_info!("  - IP Addresses: {:?}", device.ip_addresses);
-        log_info!("  - Name: {:?}", device.name);
+        log_info!("  - Device type: {:?}", device.device_type);
+        if let Some(ref ticket) = device.pending_ticket {
+            log_info!(
+                "  - Pending ticket: {}...",
+                &ticket[..std::cmp::min(30, ticket.len())]
+            );
+        }
     }
 
-    // Convert to frontend format with friendly display names
-    let result: Vec<NearbyDevice> = devices
-        .into_iter()
-        .map(|d| {
-            // Extract IP addresses from the debug-formatted transport addresses
-            let ip_addresses: Vec<String> = d
-                .addresses
-                .iter()
-                .filter_map(|addr| {
-                    // Parse "Ip(127.0.0.1:8080)" format
-                    if addr.starts_with("Ip(") {
-                        let inner = &addr[3..addr.len() - 1];
-                        // Split by ':' to separate IP from port
-                        inner.split(':').next().map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            // Create a friendly display name
-            let display_name = if let Some(ref name) = d.name {
-                name.clone()
-            } else if !ip_addresses.is_empty() {
-                // Use first IP address as identifier
-                ip_addresses[0].clone()
-            } else {
-                // Fallback to short node ID
-                format!("...{}", &d.node_id[d.node_id.len().saturating_sub(8)..])
-            };
-
-            NearbyDevice {
-                node_id: d.node_id.clone(),
-                name: d.name.clone(),
-                display_name,
-                addresses: d.addresses.clone(),
-                ip_addresses,
-                last_seen: d.last_seen,
-                available: d.available,
-                reachable: d.reachable,
-            }
-        })
-        .collect();
-
-    log_info!("📤 Returning {} devices to frontend", result.len());
-    Ok(result)
+    log_info!("📤 Returning {} devices to frontend", devices.len());
+    Ok(devices)
 }
 
 /// Stop nearby device discovery
 #[tauri::command]
-async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyDiscovery>) -> Result<(), String> {
+async fn stop_nearby_discovery(
+    nearby: tauri::State<'_, NearbyDiscoveryState>,
+) -> Result<(), String> {
     log_info!("═══════════════════════════════════════════════════");
     log_info!("🛑 STOP_NEARBY_DISCOVERY");
     log_info!("═══════════════════════════════════════════════════");
 
     let mut nearby_guard = nearby.write().await;
 
-    if nearby_guard.is_none() {
+    if let Some(mut discovery) = nearby_guard.take() {
+        discovery.stop().await;
+        log_info!("✅ Nearby discovery stopped");
+    } else {
         log_warn!("⚠️  Nearby discovery not running");
         return Err("Nearby discovery not running".to_string());
     }
 
-    *nearby_guard = None;
-
-    log_info!("✅ Nearby discovery stopped");
-
     Ok(())
 }
 
-/// Listen for incoming nearby tickets and emit events
-async fn listen_for_nearby_tickets(
-    app: AppHandle,
-    port: u16,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use tokio::net::TcpListener;
-
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-    log_info!("🎧 Listening for nearby tickets on port {}", port);
-
-    loop {
-        let (socket, addr) = match listener.accept().await {
-            Ok(conn) => conn,
-            Err(e) => {
-                log_error!("❌ Failed to accept connection: {}", e);
-                continue;
-            }
-        };
-
-        log_info!("📡 Incoming connection from {}", addr);
-
-        // Spawn a task to handle this connection
-        let app_clone = app.clone();
-        tokio::spawn(async move {
-            if let Err(e) = handle_nearby_ticket_connection(app_clone, socket, addr).await {
-                log_error!("❌ Failed to handle ticket connection from {}: {}", addr, e);
-            }
-        });
-    }
-}
-
-/// Handle a single nearby ticket connection
-async fn handle_nearby_ticket_connection(
-    app: AppHandle,
-    mut socket: tokio::net::TcpStream,
-    addr: std::net::SocketAddr,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use tokio::io::AsyncReadExt;
-
-    // Read length
-    let mut len_buf = [0u8; 4];
-    socket.read_exact(&mut len_buf).await?;
-    let total_len = u32::from_be_bytes(len_buf) as usize;
-
-    // Read protocol header
-    let mut header_buf = [0u8; 6]; // "TICKET" is 6 bytes
-    socket.read_exact(&mut header_buf).await?;
-    let header = std::str::from_utf8(&header_buf)?;
-
-    if header != "TICKET" {
-        log_warn!("⚠️  Invalid protocol header from {}: {}", addr, header);
-        return Ok(()); // Not a ticket message, just ignore
-    }
-
-    // Read ticket data
-    let ticket_len = total_len - header.len();
-    let mut ticket_buf = vec![0u8; ticket_len];
-    socket.read_exact(&mut ticket_buf).await?;
-
-    let ticket = String::from_utf8(ticket_buf)?;
-    log_info!(
-        "🎫 Received ticket from {}: {}...",
-        addr,
-        &ticket[..std::cmp::min(50, ticket.len())]
-    );
-
-    // Try to parse the ticket to extract metadata
-    // This is a simplified approach - in a real implementation you'd parse the ticket properly
-    let transfer_info = extract_ticket_metadata(&ticket);
-
-    // Emit event to frontend
-    let ticket_request = serde_json::json!({
-        "id": format!("ticket_{}", chrono::Utc::now().timestamp_millis()),
-        "sender_device": {
-            "name": addr.ip().to_string(),
-            "display_name": format!("Device at {}", addr.ip()),
-            "platform": "unknown"
-        },
-        "transfer_info": transfer_info,
-        "ticket": ticket
-    });
-
-    let _ = app.emit("nearby-ticket-received", ticket_request);
-
-    Ok(())
-}
-
-/// Extract basic metadata from a ticket (simplified implementation)
-fn extract_ticket_metadata(_ticket: &str) -> serde_json::Value {
-    // This is a very simplified approach. In a real implementation,
-    // you'd properly parse the iroh ticket format to extract file information.
-    // For now, we'll return some placeholder data.
-
-    serde_json::json!({
-        "file_count": 1,  // Assume single file for now
-        "total_size": 0,  // Unknown size
-        "names": ["Unknown file"]  // Placeholder name
-    })
-}
-
-/// Start the nearby ticket server for receiving tickets from other devices
+/// Poll for nearby events (device discovered, ticket received, etc.)
 #[tauri::command]
-async fn start_nearby_ticket_server(
+async fn poll_nearby_events(
     app: AppHandle,
-    nearby: tauri::State<'_, NearbyDiscovery>,
-) -> Result<u16, String> {
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("🎫 START_NEARBY_TICKET_SERVER");
-    log_info!("═══════════════════════════════════════════════════");
-
+    nearby: tauri::State<'_, NearbyDiscoveryState>,
+) -> Result<(), String> {
     let mut nearby_guard = nearby.write().await;
 
     let discovery = nearby_guard
         .as_mut()
-        .ok_or("Nearby discovery not running. Start discovery first.")?;
+        .ok_or("Nearby discovery not running".to_string())?;
 
-    // Start the ticket server
-    let port = discovery.start_ticket_server().await.map_err(|e| {
-        let err_msg = format!("Failed to start ticket server: {}", e);
+    // Poll for events
+    while let Some(event) = discovery.poll_event().await {
+        match event {
+            NearbyEvent::DeviceDiscovered(device) => {
+                log_info!(
+                    "🆕 Device discovered: {} ({})",
+                    device.alias,
+                    device.fingerprint
+                );
+                let _ = app.emit("nearby-device-discovered", &device);
+            }
+            NearbyEvent::DeviceUpdated(device) => {
+                log_info!(
+                    "🔄 Device updated: {} ({})",
+                    device.alias,
+                    device.fingerprint
+                );
+                let _ = app.emit("nearby-device-updated", &device);
+            }
+            NearbyEvent::DeviceExpired(fingerprint) => {
+                log_info!("⏰ Device expired: {}", fingerprint);
+                let _ = app.emit("nearby-device-expired", &fingerprint);
+            }
+            NearbyEvent::TicketReceived {
+                from,
+                ticket,
+                message,
+            } => {
+                log_info!(
+                    "🎫 Ticket received from {} ({})",
+                    from.alias,
+                    from.fingerprint
+                );
+                let ticket_event = serde_json::json!({
+                    "from": from,
+                    "ticket": ticket,
+                    "message": message
+                });
+                let _ = app.emit("nearby-ticket-received", &ticket_event);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Refresh nearby devices by sending announcement
+#[tauri::command]
+async fn refresh_nearby_devices(
+    nearby: tauri::State<'_, NearbyDiscoveryState>,
+) -> Result<(), String> {
+    log_info!("🔄 REFRESH_NEARBY_DEVICES");
+
+    let nearby_guard = nearby.read().await;
+
+    let discovery = nearby_guard
+        .as_ref()
+        .ok_or("Nearby discovery not running".to_string())?;
+
+    discovery.refresh().await.map_err(|e| {
+        let err_msg = format!("Failed to refresh devices: {}", e);
         log_error!("❌ {}", err_msg);
         err_msg
     })?;
 
-    log_info!("✅ Nearby ticket server started on port {}", port);
-
-    // Spawn a task to listen for incoming tickets
-    let app_clone = app.clone();
-    tokio::spawn(async move {
-        if let Err(e) = listen_for_nearby_tickets(app_clone, port).await {
-            log_error!("❌ Ticket listener failed: {}", e);
-        }
-    });
-
-    Ok(port)
+    log_info!("✅ Device refresh triggered");
+    Ok(())
 }
 
 /// Send a ticket to a nearby device
 #[tauri::command]
 async fn send_ticket_to_device(
-    nearby: tauri::State<'_, NearbyDiscovery>,
-    device: NearbyDevice,
+    nearby: tauri::State<'_, NearbyDiscoveryState>,
+    device_fingerprint: String,
     ticket_data: String,
-) -> Result<(), String> {
+    message: Option<String>,
+) -> Result<serde_json::Value, String> {
     log_info!("═══════════════════════════════════════════════════");
     log_info!("📤 SEND_TICKET_TO_DEVICE");
     log_info!("═══════════════════════════════════════════════════");
-    log_info!("Device: {}", device.display_name);
+    log_info!("Device fingerprint: {}", device_fingerprint);
     log_info!("Ticket length: {} chars", ticket_data.len());
+    if let Some(ref msg) = message {
+        log_info!("Message: {}", msg);
+    }
 
     let nearby_guard = nearby.read().await;
 
@@ -1346,15 +1263,15 @@ async fn send_ticket_to_device(
         .as_ref()
         .ok_or("Nearby discovery not running")?;
 
-    // Find the device in the discovery by node_id
-    let lib_device = discovery
-        .devices()
-        .iter()
-        .find(|d| d.node_id == device.node_id)
-        .ok_or_else(|| format!("Device {} not found in discovery", device.node_id))?;
+    // Find the device by fingerprint
+    let device = discovery
+        .get_device(&device_fingerprint)
+        .await
+        .ok_or_else(|| format!("Device {} not found", device_fingerprint))?;
 
-    discovery
-        .send_ticket(lib_device, &ticket_data)
+    // Send the ticket
+    let response = discovery
+        .send_ticket(&device, &ticket_data, message)
         .await
         .map_err(|e| {
             let err_msg = format!("Failed to send ticket: {}", e);
@@ -1362,39 +1279,17 @@ async fn send_ticket_to_device(
             err_msg
         })?;
 
-    log_info!("✅ Ticket sent successfully to {}", device.display_name);
-
-    Ok(())
-}
-
-/// Receive a ticket from a nearby device (blocking call for testing)
-/// In production, this would be handled asynchronously with events
-#[tauri::command]
-async fn receive_ticket_from_device(
-    nearby: tauri::State<'_, NearbyDiscovery>,
-) -> Result<String, String> {
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("📥 RECEIVE_TICKET_FROM_DEVICE");
-    log_info!("═══════════════════════════════════════════════════");
-
-    let nearby_guard = nearby.read().await;
-
-    let discovery = nearby_guard
-        .as_ref()
-        .ok_or("Nearby discovery not running")?;
-
-    let ticket = discovery.receive_ticket().await.map_err(|e| {
-        let err_msg = format!("Failed to receive ticket: {}", e);
-        log_error!("❌ {}", err_msg);
-        err_msg
-    })?;
-
+    log_info!("✅ Ticket sent successfully to {}", device.alias);
     log_info!(
-        "✅ Received ticket: {}...",
-        &ticket[..std::cmp::min(50, ticket.len())]
+        "📨 Response: accepted={}, message={:?}",
+        response.accepted,
+        response.message
     );
 
-    Ok(ticket)
+    Ok(serde_json::json!({
+        "accepted": response.accepted,
+        "message": response.message
+    }))
 }
 
 /// Get the local hostname
