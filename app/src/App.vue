@@ -103,6 +103,7 @@ const progressData = ref<Record<string, ProgressData>>({});
 const metadataCache = ref<Record<string, any>>({});
 const unlisten = ref<(() => void) | null>(null);
 const currentReceivingId = ref<string | null>(null);
+const isMobile = ref(false);
 
 // Ticket receiving state
 const currentTicketRequest = ref<any | null>(null);
@@ -159,9 +160,6 @@ function toggleTheme() {
   const currentIndex = themes.indexOf(theme.value);
   const nextTheme = themes[(currentIndex + 1) % themes.length];
   setTheme(nextTheme);
-
-  const labels = { light: "Light", dark: "Dark", system: "System" };
-  toast.success(`Theme changed to ${labels[nextTheme]}`);
 }
 
 // Ticket types
@@ -190,6 +188,10 @@ onMounted(async () => {
 
   // Check WiFi status
   await checkWifiStatus();
+
+  // Detect mobile platform
+  const currentPlatform = await platform();
+  isMobile.value = currentPlatform === "android" || currentPlatform === "ios";
 
   // Listen for progress events
   unlisten.value = await listen<ProgressUpdate>("progress", (event) => {
@@ -290,7 +292,6 @@ async function handleSend() {
       width: 300,
     });
     await loadTransfers();
-    toast.success("File shared successfully!");
   } catch (e) {
     console.error("Send failed:", e);
     toast.error(`Send failed: ${e}`);
@@ -306,7 +307,6 @@ async function handleSelectNearbyDevice(device: NearbyDevice) {
   activeTab.value = "send";
   // Collapse nearby section
   isNearbyExpanded.value = false;
-  toast.success(`Selected device: ${device.display_name}`);
 }
 
 async function handleSendToNearbyDevice(device: NearbyDevice, files: string[]) {
@@ -452,7 +452,6 @@ async function handleScanBarcode() {
   try {
     const result = await scan_barcode();
     receiveTicket.value = result;
-    toast.success("QR code scanned successfully");
   } catch (e) {
     console.error("Scan failed:", e);
     toast.error(`Scan failed: ${e}`);
@@ -495,7 +494,6 @@ async function handleOpenFile(transfer: Transfer) {
 
   try {
     await open_received_file(transfer.id);
-    toast.success("Opening file...");
   } catch (e) {
     console.error("Failed to open file:", e);
     toast.error(`Failed to open file: ${e}`);
@@ -600,19 +598,12 @@ async function selectDirectory() {
 
 async function selectOutputDirectory() {
   try {
-    // Check if we're on a mobile platform
-    const currentPlatform = platform();
-    const isMobile = currentPlatform === "android" || currentPlatform === "ios";
+    console.log("isMobile=", isMobile.value);
 
-    console.log("isMobile=", isMobile);
-
-    if (isMobile) {
+    if (isMobile.value) {
       // On mobile, use the pick_directory command
       const result = await pick_directory();
       receiveOutputDir.value = result.uri;
-      toast.success("Folder selected", {
-        description: result.name || result.uri,
-      });
     } else {
       // On desktop, use the dialog picker
       const selected = await open({
@@ -990,6 +981,7 @@ function getProgressValue(id: string) {
                       />
                     </div>
                     <Button
+                      v-if="isMobile"
                       type="button"
                       @click="handleScanBarcode"
                       :disabled="isReceiving"
