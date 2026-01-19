@@ -4,7 +4,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 
@@ -16,7 +16,103 @@ pub fn render_send_tab(f: &mut Frame, app: &App, area: Rect) {
     match app.send_tab_state {
         SendTabState::Input => render_input_view(f, app, area),
         SendTabState::Success => render_success_view(f, app, area),
+        SendTabState::FileSearch => {
+            // Render input view first, then popup overlay
+            render_input_view(f, app, area);
+            render_file_search_popup(f, app, area);
+        }
     }
+}
+
+/// Render the file search popup overlay.
+pub fn render_file_search_popup(f: &mut Frame, app: &App, area: Rect) {
+    let Some(popup) = &app.send_file_search else {
+        return;
+    };
+
+    // Calculate popup area (80% width, 60% height, centered)
+    let popup_width = area.width * 80 / 100;
+    let popup_height = area.height * 60 / 100;
+    let popup_area = Rect {
+        x: area.x + (area.width - popup_width) / 2,
+        y: area.y + (area.height - popup_height) / 2,
+        width: popup_width,
+        height: popup_height,
+    };
+
+    // Clear area behind popup
+    f.render_widget(Clear, popup_area);
+
+    // Create layout with search input and results list
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
+        .margin(1)
+        .split(popup_area);
+
+    // Render search input
+    let input_text = if popup.query.is_empty() {
+        vec![Line::from(Span::styled(
+            "Type to search files...",
+            Style::default().fg(Color::DarkGray),
+        ))]
+    } else {
+        vec![Line::from(Span::styled(
+            format!("> {}", popup.query),
+            Style::default().fg(Color::White),
+        ))]
+    };
+
+    let input = Paragraph::new(input_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(" File Search "),
+        )
+        .wrap(Wrap { trim: true });
+
+    f.render_widget(input, chunks[0]);
+
+    // Render results list
+    let items: Vec<ListItem> = popup
+        .filtered_indices
+        .iter()
+        .filter_map(|&idx| popup.files.get(idx))
+        .map(|file| {
+            let icon = if file.is_dir { "📁 " } else { "" };
+            let text = format!("{}{}", icon, file.relative_path);
+            ListItem::new(Line::from(text))
+        })
+        .collect();
+
+    let title = format!(
+        " Results ({}) ",
+        popup.filtered_indices.len().min(popup.files.len())
+    );
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Blue))
+                .title(title),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol(">> ");
+
+    // We need to track state for selection, so use a mutable state
+    let mut state = ratatui::widgets::ListState::default();
+    if !popup.filtered_indices.is_empty() {
+        state.select(Some(popup.selected_index));
+    }
+
+    f.render_stateful_widget(list, chunks[1], &mut state);
 }
 
 /// Render the input view (file path input).
@@ -85,8 +181,9 @@ fn render_input_view(f: &mut Frame, app: &App, area: Rect) {
             )]),
             Line::from(""),
             Line::from("  1. Type or paste the path to a file or directory"),
-            Line::from("  2. Press [Enter] to start sending"),
-            Line::from("  3. A ticket will be generated for sharing"),
+            Line::from("  2. Press [@] to open file search (fuzzy matching)"),
+            Line::from("  3. Press [Enter] to start sending"),
+            Line::from("  4. A ticket will be generated for sharing"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "Example paths:",

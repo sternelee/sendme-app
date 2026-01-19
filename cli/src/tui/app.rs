@@ -1,7 +1,9 @@
 //! Application state and logic for the TUI.
 
+use crate::tui::file_search::FileSearchPopup;
 use sendme_lib::progress::{DownloadProgress, ProgressEvent};
 use sendme_lib::Hash;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Current tab in the application.
@@ -232,6 +234,8 @@ pub enum SendTabState {
     Input,
     /// Showing success view with ticket/QR.
     Success,
+    /// Showing file search popup.
+    FileSearch,
 }
 
 /// Transfers tab state.
@@ -263,6 +267,8 @@ pub struct App {
     pub send_success_path: Option<String>,
     /// Show QR code flag (legacy, kept for compatibility).
     pub show_qr: bool,
+    /// File search popup state.
+    pub send_file_search: Option<FileSearchPopup>,
 
     // Receive tab state
     /// Input ticket for receiving.
@@ -292,6 +298,7 @@ impl App {
             send_success_ticket: None,
             send_success_path: None,
             show_qr: false,
+            send_file_search: None,
             receive_input_ticket: String::new(),
             receive_message: String::new(),
             transfers_tab_state: TransfersTabState::List,
@@ -331,6 +338,8 @@ impl App {
                         self.send_input_path.clear();
                         self.send_success_ticket = None;
                         self.send_success_path = None;
+                    } else if self.send_tab_state == SendTabState::FileSearch {
+                        self.close_file_search();
                     }
                 }
                 Tab::Transfers => {
@@ -356,6 +365,10 @@ impl App {
         match self.send_tab_state {
             SendTabState::Input => {
                 match key.code {
+                    // Open file search popup with '@' key
+                    crossterm::event::KeyCode::Char('@') => {
+                        self.open_file_search();
+                    }
                     crossterm::event::KeyCode::Char(c) => {
                         self.send_input_path.push(c);
                     }
@@ -370,6 +383,9 @@ impl App {
                     }
                     _ => {}
                 }
+            }
+            SendTabState::FileSearch => {
+                self.handle_file_search_key(key);
             }
             SendTabState::Success => {
                 // Handle 'C' key to copy ticket
@@ -544,6 +560,62 @@ impl App {
     /// Check if there's a clipboard message to show.
     pub fn has_clipboard_message(&self) -> bool {
         self.send_message.contains("copied") || self.send_message.contains("Copy failed")
+    }
+
+    /// Open the file search popup.
+    pub fn open_file_search(&mut self) {
+        use std::env;
+
+        let base_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let mut popup = FileSearchPopup::new(base_dir);
+        popup.refresh_files_sync();
+        self.send_tab_state = SendTabState::FileSearch;
+        self.send_file_search = Some(popup);
+    }
+
+    /// Close the file search popup.
+    pub fn close_file_search(&mut self) {
+        self.send_tab_state = SendTabState::Input;
+        self.send_file_search = None;
+    }
+
+    /// Handle key events in the file search popup.
+    fn handle_file_search_key(&mut self, key: crossterm::event::KeyEvent) {
+        let Some(popup) = &mut self.send_file_search else {
+            return;
+        };
+
+        match key.code {
+            crossterm::event::KeyCode::Char(c) => {
+                popup.update_query(c);
+            }
+            crossterm::event::KeyCode::Backspace => {
+                popup.remove_char();
+            }
+            crossterm::event::KeyCode::Up => {
+                popup.move_selection(-1);
+            }
+            crossterm::event::KeyCode::Down => {
+                popup.move_selection(1);
+            }
+            crossterm::event::KeyCode::Enter => {
+                self.select_file_from_search();
+            }
+            crossterm::event::KeyCode::Esc => {
+                self.close_file_search();
+            }
+            _ => {}
+        }
+    }
+
+    /// Select a file from the file search popup.
+    fn select_file_from_search(&mut self) {
+        if let Some(popup) = &self.send_file_search {
+            if let Some(path) = popup.selected_path() {
+                self.send_input_path = path.to_string_lossy().to_string();
+            }
+        }
+        self.close_file_search();
     }
 }
 

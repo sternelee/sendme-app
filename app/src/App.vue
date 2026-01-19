@@ -46,7 +46,6 @@ import {
   Sun,
   Moon,
   Trash2,
-  ChevronDown,
   Scan,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";

@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod event;
+pub mod file_search;
 mod ui;
 
 pub mod tabs;
