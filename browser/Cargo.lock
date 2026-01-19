@@ -3060,7 +3060,6 @@ dependencies = [
  "anyhow",
  "bytes",
  "console_error_panic_hook",
- "hex",
  "iroh",
  "iroh-blobs",
  "js-sys",
