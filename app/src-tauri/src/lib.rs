@@ -1,4 +1,3 @@
-use netdev::interface::get_interfaces;
 use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -87,11 +86,6 @@ macro_rules! log_warn {
         tracing::warn!($($arg)*)
     };
 }
-
-// Nearby discovery types - re-export from library
-pub use sendme_lib::nearby::{DeviceType, NearbyDevice, NearbyEvent};
-
-type NearbyDiscoveryState = Arc<RwLock<Option<sendme_lib::nearby::NearbyDiscovery>>>;
 
 /// Handle Android content URIs by reading the file and writing to a temporary location.
 ///
@@ -330,7 +324,6 @@ pub fn run() {
     }
 
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
-    let nearby_discovery: NearbyDiscoveryState = Arc::new(RwLock::new(None));
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
@@ -354,7 +347,6 @@ pub fn run() {
         .setup(move |app| {
             // Store transfers in app state
             app.manage(transfers.clone());
-            app.manage(nearby_discovery.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -364,15 +356,8 @@ pub fn run() {
             get_transfers,
             get_transfer_status,
             clear_transfers,
-            start_nearby_discovery,
-            get_nearby_devices,
-            stop_nearby_discovery,
-            send_ticket_to_device,
-            poll_nearby_events,
-            refresh_nearby_devices,
             get_hostname,
             get_device_model,
-            check_wifi_connection,
             get_default_download_folder,
             open_received_file,
             list_received_files,
@@ -1027,271 +1012,6 @@ async fn clear_transfers(transfers: tauri::State<'_, Transfers>) -> Result<(), S
     Ok(())
 }
 
-/// Start nearby device discovery
-#[tauri::command]
-async fn start_nearby_discovery(
-    app: AppHandle,
-    nearby: tauri::State<'_, NearbyDiscoveryState>,
-) -> Result<String, String> {
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("🔍 START_NEARBY_DISCOVERY");
-    log_info!("═══════════════════════════════════════════════════");
-
-    let mut nearby_guard = nearby.write().await;
-
-    // Check if already running
-    if nearby_guard.is_some() {
-        log_warn!("⚠️  Nearby discovery already running");
-        return Err("Nearby discovery already running".to_string());
-    }
-
-    // Check WiFi connection before starting
-    log_info!("📡 Checking WiFi connection...");
-    if !check_wifi_connection()? {
-        log_error!("❌ WiFi not connected. Nearby discovery requires WiFi.");
-        return Err("WiFi connection required for nearby device discovery. Please connect to a WiFi network and try again.".to_string());
-    }
-    log_info!("✅ WiFi connection confirmed");
-
-    // Get device model (hostname on desktop, device model on mobile)
-    log_info!("📱 Getting device model/hostname...");
-    let device_name = get_device_model()?;
-    log_info!("✅ Device name: {}", device_name);
-
-    // Create new discovery instance with the device name
-    log_info!("🔭 Creating NearbyDiscovery instance...");
-    let mut discovery = sendme_lib::nearby::NearbyDiscovery::new(device_name)
-        .await
-        .map_err(|e| {
-            let err_msg = format!("Failed to create NearbyDiscovery: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?;
-
-    // Start the discovery service (multicast + HTTP server)
-    let port = discovery.start().await.map_err(|e| {
-        let err_msg = format!("Failed to start NearbyDiscovery: {}", e);
-        log_error!("❌ {}", err_msg);
-        err_msg
-    })?;
-
-    let fingerprint = discovery.fingerprint().await;
-    log_info!("✅ NearbyDiscovery started successfully");
-    log_info!("🆔 Device fingerprint: {}", fingerprint);
-    log_info!("🔌 HTTP server port: {}", port);
-
-    // Spawn event listener for frontend notifications
-    let _app_clone = app.clone();
-    tokio::spawn(async move {
-        log_info!("🎧 Nearby event listener started");
-        // Event listener will be handled by poll_nearby_events command
-    });
-
-    // Store discovery instance
-    *nearby_guard = Some(discovery);
-
-    log_info!("✅ Nearby discovery started successfully");
-
-    Ok(fingerprint)
-}
-
-/// Get list of nearby devices
-#[tauri::command]
-async fn get_nearby_devices(
-    nearby: tauri::State<'_, NearbyDiscoveryState>,
-) -> Result<Vec<NearbyDevice>, String> {
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("📋 GET_NEARBY_DEVICES");
-    log_info!("═══════════════════════════════════════════════════");
-
-    let nearby_guard = nearby.read().await;
-
-    let discovery = nearby_guard
-        .as_ref()
-        .ok_or("Nearby discovery not running".to_string())?;
-
-    let devices = discovery.devices().await;
-    log_info!("✅ Found {} nearby devices", devices.len());
-
-    // Log detailed information about each device
-    for (i, device) in devices.iter().enumerate() {
-        log_info!(
-            "📱 Device #{}: {} ({})",
-            i + 1,
-            device.alias,
-            device.fingerprint
-        );
-        log_info!("  - IP: {}:{}", device.ip, device.port);
-        log_info!("  - Available: {}", device.available);
-        log_info!("  - Last seen: {}", device.last_seen);
-        log_info!("  - Device type: {:?}", device.device_type);
-        if let Some(ref ticket) = device.pending_ticket {
-            log_info!(
-                "  - Pending ticket: {}...",
-                &ticket[..std::cmp::min(30, ticket.len())]
-            );
-        }
-    }
-
-    log_info!("📤 Returning {} devices to frontend", devices.len());
-    Ok(devices)
-}
-
-/// Stop nearby device discovery
-#[tauri::command]
-async fn stop_nearby_discovery(
-    nearby: tauri::State<'_, NearbyDiscoveryState>,
-) -> Result<(), String> {
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("🛑 STOP_NEARBY_DISCOVERY");
-    log_info!("═══════════════════════════════════════════════════");
-
-    let mut nearby_guard = nearby.write().await;
-
-    if let Some(mut discovery) = nearby_guard.take() {
-        discovery.stop().await;
-        log_info!("✅ Nearby discovery stopped");
-    } else {
-        log_warn!("⚠️  Nearby discovery not running");
-        return Err("Nearby discovery not running".to_string());
-    }
-
-    Ok(())
-}
-
-/// Poll for nearby events (device discovered, ticket received, etc.)
-#[tauri::command]
-async fn poll_nearby_events(
-    app: AppHandle,
-    nearby: tauri::State<'_, NearbyDiscoveryState>,
-) -> Result<(), String> {
-    let mut nearby_guard = nearby.write().await;
-
-    let discovery = nearby_guard
-        .as_mut()
-        .ok_or("Nearby discovery not running".to_string())?;
-
-    // Poll for events
-    while let Some(event) = discovery.poll_event().await {
-        match event {
-            NearbyEvent::DeviceDiscovered(device) => {
-                log_info!(
-                    "🆕 Device discovered: {} ({})",
-                    device.alias,
-                    device.fingerprint
-                );
-                let _ = app.emit("nearby-device-discovered", &device);
-            }
-            NearbyEvent::DeviceUpdated(device) => {
-                log_info!(
-                    "🔄 Device updated: {} ({})",
-                    device.alias,
-                    device.fingerprint
-                );
-                let _ = app.emit("nearby-device-updated", &device);
-            }
-            NearbyEvent::DeviceExpired(fingerprint) => {
-                log_info!("⏰ Device expired: {}", fingerprint);
-                let _ = app.emit("nearby-device-expired", &fingerprint);
-            }
-            NearbyEvent::TicketReceived {
-                from,
-                ticket,
-                message,
-            } => {
-                log_info!(
-                    "🎫 Ticket received from {} ({})",
-                    from.alias,
-                    from.fingerprint
-                );
-                let ticket_event = serde_json::json!({
-                    "from": from,
-                    "ticket": ticket,
-                    "message": message
-                });
-                let _ = app.emit("nearby-ticket-received", &ticket_event);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Refresh nearby devices by sending announcement
-#[tauri::command]
-async fn refresh_nearby_devices(
-    nearby: tauri::State<'_, NearbyDiscoveryState>,
-) -> Result<(), String> {
-    log_info!("🔄 REFRESH_NEARBY_DEVICES");
-
-    let nearby_guard = nearby.read().await;
-
-    let discovery = nearby_guard
-        .as_ref()
-        .ok_or("Nearby discovery not running".to_string())?;
-
-    discovery.refresh().await.map_err(|e| {
-        let err_msg = format!("Failed to refresh devices: {}", e);
-        log_error!("❌ {}", err_msg);
-        err_msg
-    })?;
-
-    log_info!("✅ Device refresh triggered");
-    Ok(())
-}
-
-/// Send a ticket to a nearby device
-#[tauri::command]
-async fn send_ticket_to_device(
-    nearby: tauri::State<'_, NearbyDiscoveryState>,
-    device_fingerprint: String,
-    ticket_data: String,
-    message: Option<String>,
-) -> Result<serde_json::Value, String> {
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("📤 SEND_TICKET_TO_DEVICE");
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("Device fingerprint: {}", device_fingerprint);
-    log_info!("Ticket length: {} chars", ticket_data.len());
-    if let Some(ref msg) = message {
-        log_info!("Message: {}", msg);
-    }
-
-    let nearby_guard = nearby.read().await;
-
-    let discovery = nearby_guard
-        .as_ref()
-        .ok_or("Nearby discovery not running")?;
-
-    // Find the device by fingerprint
-    let device = discovery
-        .get_device(&device_fingerprint)
-        .await
-        .ok_or_else(|| format!("Device {} not found", device_fingerprint))?;
-
-    // Send the ticket
-    let response = discovery
-        .send_ticket(&device, &ticket_data, message)
-        .await
-        .map_err(|e| {
-            let err_msg = format!("Failed to send ticket: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?;
-
-    log_info!("✅ Ticket sent successfully to {}", device.alias);
-    log_info!(
-        "📨 Response: accepted={}, message={:?}",
-        response.accepted,
-        response.message
-    );
-
-    Ok(serde_json::json!({
-        "accepted": response.accepted,
-        "message": response.message
-    }))
-}
-
 /// Get the local hostname
 #[tauri::command]
 fn get_hostname() -> Result<String, String> {
@@ -1467,7 +1187,7 @@ fn get_device_model() -> Result<String, String> {
             log_info!("📱 Machine identifier: {}", machine);
 
             // Map common machine identifiers to friendly names
-            let result = map_ios_machine_to_name(&machine);
+            let result = machine.to_string();
             log_info!("✅ Device model: {}", result);
             Ok(result)
         }
@@ -1481,128 +1201,6 @@ fn get_device_model() -> Result<String, String> {
         log_info!("✅ Using hostname: {}", hostname);
         Ok(hostname)
     }
-}
-
-/// Map iOS machine identifiers to friendly names
-#[cfg(target_os = "ios")]
-fn map_ios_machine_to_name(machine: &str) -> String {
-    match machine {
-        // iPhone 15 series
-        "iPhone15,4" | "iPhone15,5" => "iPhone 15 Plus".to_string(),
-        "iPhone15,2" | "iPhone15,3" => "iPhone 15 Pro".to_string(),
-        "iPhone16,1" | "iPhone16,2" => "iPhone 15 Pro Max".to_string(),
-
-        // iPhone 14 series
-        "iPhone14,7" | "iPhone14,8" => "iPhone 14".to_string(),
-        "iPhone14,5" | "iPhone14,6" => "iPhone 13".to_string(),
-        "iPhone14,2" | "iPhone14,3" => "iPhone 13 Pro".to_string(),
-        "iPhone14,4" => "iPhone 13 mini".to_string(),
-        "iPhone14,9" => "iPhone SE (3rd gen)".to_string(),
-
-        // iPhone 12 series
-        "iPhone13,2" | "iPhone13,3" => "iPhone 12".to_string(),
-        "iPhone13,1" => "iPhone 12 mini".to_string(),
-        "iPhone13,4" | "iPhone13,5" => "iPhone 12 Pro".to_string(),
-        "iPhone13,6" | "iPhone13,7" => "iPhone 12 Pro Max".to_string(),
-
-        // iPad Pro
-        "iPad13,16" | "iPad13,17" => "iPad Pro 12.9 (6th gen)".to_string(),
-        "iPad13,18" | "iPad13,19" => "iPad Pro 12.9 (6th gen)".to_string(),
-        "iPad13,10" | "iPad13,11" => "iPad Pro 11 (4th gen)".to_string(),
-        "iPad13,6" | "iPad13,7" => "iPad Pro 12.9 (5th gen)".to_string(),
-        "iPad13,4" | "iPad13,5" => "iPad Pro 11 (3rd gen)".to_string(),
-        "iPad13,1" | "iPad13,2" => "iPad Pro 11 (3rd gen)".to_string(),
-
-        // iPad Air
-        "iPad13,16" | "iPad13,17" => "iPad Air (5th gen)".to_string(),
-        "iPad13,18" | "iPad13,19" => "iPad Air (5th gen)".to_string(),
-
-        // iPad mini
-        "iPad14,1" | "iPad14,2" => "iPad mini (6th gen)".to_string(),
-
-        // Fallback - return the machine identifier
-        _ => machine.to_string(),
-    }
-}
-
-/// Check if device is connected to WiFi
-///
-/// Returns true if the device has an active WiFi connection,
-/// false otherwise. This is required for nearby device discovery
-/// which uses mDNS over the local network.
-#[tauri::command]
-fn check_wifi_connection() -> Result<bool, String> {
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("📡 CHECK_WIFI_CONNECTION");
-    log_info!("═══════════════════════════════════════════════════");
-
-    // Get all network interfaces
-    log_info!("🔍 Scanning network interfaces...");
-    let interfaces = get_interfaces();
-    log_info!("📊 Found {} network interfaces", interfaces.len());
-
-    // Check if any interface is connected and appears to be WiFi
-    for (index, interface) in interfaces.iter().enumerate() {
-        log_info!("📋 Interface #{}: {}", index, interface.name);
-        log_info!("  - Loopback: {}", interface.is_loopback());
-        log_info!("  - Up: {}", interface.is_up());
-        log_info!("  - IPv4: {:?}", interface.ipv4);
-        log_info!("  - IPv6: {:?}", interface.ipv6);
-
-        // Skip loopback and down interfaces
-        if interface.is_loopback() {
-            log_info!("  ⏭️  Skipping (loopback)");
-            continue;
-        }
-        if !interface.is_up() {
-            log_info!("  ⏭️  Skipping (down)");
-            continue;
-        }
-
-        // Check if interface has an IP address (v4 or v6)
-        let has_ip = !interface.ipv4.is_empty() || !interface.ipv6.is_empty();
-
-        if !has_ip {
-            log_info!("  ⏭️  Skipping (no IP)");
-            continue;
-        }
-
-        // Interface name patterns that indicate WiFi:
-        // - Contains "wi-fi", "wifi", "wlan" (case insensitive)
-        // - macOS: "en0" is typically WiFi on most Macs
-        // - Windows: name may contain "Wi-Fi" or "Wireless"
-        // - Linux: "wlan0", "wlp*"
-        // - Android/iOS: various patterns
-        let name_lower = interface.name.to_lowercase();
-
-        // Check for common WiFi interface name patterns
-        let is_wifi = name_lower.contains("wi-fi")
-            || name_lower.contains("wifi")
-            || name_lower.contains("wlan")
-            || name_lower.contains("wireless")
-            || name_lower.starts_with("wlp")
-            // macOS common WiFi interface
-            || (cfg!(target_os = "macos") && interface.name == "en0")
-            // iOS WiFi interface
-            || (cfg!(target_os = "ios") && interface.name.starts_with("en"));
-
-        log_info!("  - WiFi match: {}", is_wifi);
-
-        if is_wifi {
-            log_info!(
-                "✅ Found WiFi connection on interface: {} ({})",
-                interface.name,
-                interface
-                    .friendly_name
-                    .as_ref()
-                    .unwrap_or(&"Unknown".to_string())
-            );
-            return Ok(true);
-        }
-    }
-
-    log_warn!("⚠️  No WiFi connection detected");
-    Ok(false)
 }
 
 /// Get the default download folder path for mobile devices

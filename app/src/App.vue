@@ -12,13 +12,9 @@ import {
   cancel_transfer,
   get_transfers,
   clear_transfers,
-  check_wifi_connection,
   open_received_file,
   scan_barcode,
   pick_directory,
-  start_nearby_ticket_server,
-  send_ticket_to_device,
-  type NearbyDevice,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
 import { Input } from "@/components/ui/input";
@@ -31,8 +27,6 @@ import {
 } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { Toaster } from "@/components/ui/sonner";
-import NearbyDevices from "@/components/NearbyDevices.vue";
-import TicketReceiveDialog from "@/components/TicketReceiveDialog.vue";
 import {
   Loader2,
   FolderOpen,
@@ -52,7 +46,6 @@ import {
   Sun,
   Moon,
   Trash2,
-  Wifi,
   ChevronDown,
   Scan,
 } from "lucide-vue-next";
@@ -81,9 +74,6 @@ interface ProgressUpdate {
 // State
 const activeTab = ref("send");
 const transfers = ref<Transfer[]>([]);
-const isNearbyExpanded = ref(false);
-const isWifiConnected = ref(false);
-const nearbyDevicesRef = ref<InstanceType<typeof NearbyDevices> | null>(null);
 
 // Send state
 const sendPath = ref("");
@@ -91,7 +81,6 @@ const sendTicketType = ref("relay_and_addresses");
 const sendTicket = ref("");
 const sendTicketQrCode = ref("");
 const isSending = ref(false);
-const selectedNearbyDevice = ref<NearbyDevice | null>(null);
 
 // Receive state
 const receiveTicket = ref("");
@@ -104,10 +93,6 @@ const metadataCache = ref<Record<string, any>>({});
 const unlisten = ref<(() => void) | null>(null);
 const currentReceivingId = ref<string | null>(null);
 const isMobile = ref(false);
-
-// Ticket receiving state
-const currentTicketRequest = ref<any | null>(null);
-const isTicketDialogOpen = ref(false);
 
 // Computed properties for receive progress
 const receiveProgress = computed(() => {
@@ -186,9 +171,6 @@ onMounted(async () => {
   // Load transfers
   await loadTransfers();
 
-  // Check WiFi status
-  await checkWifiStatus();
-
   // Detect mobile platform
   const currentPlatform = await platform();
   isMobile.value = currentPlatform === "android" || currentPlatform === "ios";
@@ -221,41 +203,6 @@ onMounted(async () => {
       metadataCache.value[transfer_id] = data.progress;
     }
   });
-
-  // Listen for incoming ticket requests from nearby devices
-  const ticketUnlisten = await listen("nearby-ticket-received", (event) => {
-    const ticketRequest = event.payload as any;
-    console.log("Received nearby ticket request:", ticketRequest);
-
-    // Show the ticket request dialog
-    currentTicketRequest.value = ticketRequest;
-    isTicketDialogOpen.value = true;
-
-    // Also show a toast notification
-    toast.info(
-      `Incoming transfer from ${ticketRequest.sender_device?.display_name || "nearby device"}`,
-      {
-        description: `${ticketRequest.transfer_info?.file_count || 0} files (${formatFileSize(ticketRequest.transfer_info?.total_size || 0)})`,
-        duration: 10000, // Show for 10 seconds
-      },
-    );
-  });
-
-  // Store the ticket event unlistener for cleanup
-  if (unlisten.value) {
-    const originalUnlisten = unlisten.value;
-    unlisten.value = () => {
-      originalUnlisten();
-      ticketUnlisten();
-    };
-  } else {
-    unlisten.value = ticketUnlisten;
-  }
-
-  // Check WiFi status periodically
-  setInterval(async () => {
-    await checkWifiStatus();
-  }, 10000);
 });
 
 onUnmounted(() => {
@@ -303,95 +250,6 @@ async function handleSend() {
   }
 }
 
-async function handleSelectNearbyDevice(device: NearbyDevice) {
-  selectedNearbyDevice.value = device;
-  // Switch to send tab and set ticket type to addresses (local-only)
-  sendTicketType.value = "addresses";
-  activeTab.value = "send";
-  // Collapse nearby section
-  isNearbyExpanded.value = false;
-}
-
-async function handleSendToNearbyDevice(device: NearbyDevice, files: string[]) {
-  if (files.length === 0) {
-    toast.error("No files selected");
-    return;
-  }
-
-  // Check if device is available (discovered via multicast)
-  if (!device.available) {
-    toast.error(
-      "Device is not available. Please wait for it to be discovered.",
-    );
-    return;
-  }
-
-  try {
-    // Start nearby ticket server if not already started
-    await start_nearby_ticket_server();
-    toast.info("Preparing to send files to nearby device...");
-
-    // Create ticket for the files
-    // For now, we'll send the first file. In a full implementation, we'd handle multiple files
-    const filePath = files[0];
-    sendPath.value = filePath;
-
-    // Generate ticket using the existing send logic but capture the ticket
-    const ticket = await send_file({
-      path: filePath,
-      ticket_type: "addresses", // Use local-only addresses for nearby transfers
-    });
-
-    if (ticket) {
-      // Send the ticket to the nearby device
-      await send_ticket_to_device(device, ticket);
-      toast.success(
-        `Files sent to ${device.alias}! They should see a transfer request.`,
-      );
-    } else {
-      toast.error("Failed to generate ticket for nearby transfer");
-    }
-  } catch (e) {
-    console.error("Nearby send failed:", e);
-    toast.error(`Failed to send to nearby device: ${e}`);
-  } finally {
-    // Clear the send path since this was just for ticket generation
-    sendPath.value = "";
-  }
-}
-
-async function checkWifiStatus() {
-  try {
-    isWifiConnected.value = await check_wifi_connection();
-    // Auto-expand nearby section when WiFi is connected
-    if (isWifiConnected.value && !isNearbyExpanded.value) {
-      // Don't auto-expand if user has manually collapsed it
-      const manuallyCollapsed = sessionStorage.getItem(
-        "nearbyManuallyCollapsed",
-      );
-      if (!manuallyCollapsed) {
-        isNearbyExpanded.value = true;
-      }
-    }
-    // Auto-collapse when WiFi disconnects
-    if (!isWifiConnected.value && isNearbyExpanded.value) {
-      isNearbyExpanded.value = false;
-    }
-  } catch (e) {
-    console.error("Failed to check WiFi status:", e);
-  }
-}
-
-function toggleNearbySection() {
-  isNearbyExpanded.value = !isNearbyExpanded.value;
-  // Remember user's manual toggle
-  if (!isNearbyExpanded.value) {
-    sessionStorage.setItem("nearbyManuallyCollapsed", "true");
-  } else {
-    sessionStorage.removeItem("nearbyManuallyCollapsed");
-  }
-}
-
 async function handleReceive() {
   if (!receiveTicket.value) {
     return;
@@ -423,36 +281,6 @@ async function handleCancelReceive() {
     await handleCancel(currentReceivingId.value);
     currentReceivingId.value = null;
   }
-}
-
-async function handleAcceptNearbyTicket(ticket: string) {
-  try {
-    await receive_file({
-      ticket: ticket,
-      output_dir: receiveOutputDir.value || undefined,
-    });
-    // currentReceivingId will be set by progress event listener
-    await loadTransfers();
-    toast.success("Transfer accepted and started");
-  } catch (e) {
-    console.error("Failed to accept nearby ticket:", e);
-    toast.error(`Failed to accept transfer: ${e}`);
-  } finally {
-    // Close the dialog
-    handleCloseTicketDialog();
-  }
-}
-
-async function handleRejectNearbyTicket(requestId: string) {
-  // For now, just close the dialog and log rejection
-  console.log("Rejected nearby ticket request:", requestId);
-  toast.info("Transfer request declined");
-  handleCloseTicketDialog();
-}
-
-function handleCloseTicketDialog() {
-  currentTicketRequest.value = null;
-  isTicketDialogOpen.value = false;
 }
 
 async function handleScanBarcode() {
@@ -686,14 +514,6 @@ function getProgressValue(id: string) {
 <template>
   <Toaster />
 
-  <!-- Ticket Receive Dialog -->
-  <TicketReceiveDialog
-    :open="isTicketDialogOpen"
-    :request="currentTicketRequest"
-    @accept="handleAcceptNearbyTicket"
-    @reject="handleRejectNearbyTicket"
-    @close="handleCloseTicketDialog"
-  />
   <div
     class="fixed inset-0 pointer-events-none overflow-hidden blur-[120px] opacity-20 dark:opacity-40"
   >
@@ -737,64 +557,6 @@ function getProgressValue(id: string) {
 
       <!-- Main Container -->
       <div class="glass rounded-2xl sm:rounded-3xl overflow-hidden">
-        <!-- Collapsible Nearby Devices Section -->
-        <div v-if="isWifiConnected" class="border-b border-white/10">
-          <div
-            class="w-full px-4 sm:px-6 py-3 flex items-center justify-between"
-          >
-            <button
-              @click="toggleNearbySection"
-              class="flex-1 flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <Wifi
-                class="w-4 h-4 text-primary"
-                :class="{ 'animate-pulse': nearbyDevicesRef?.isScanning }"
-              />
-              <span class="text-sm font-semibold">Nearby Devices</span>
-              <span
-                class="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full"
-              >
-                {{ nearbyDevicesRef?.availableDevices?.length || 0 }}
-              </span>
-              <ChevronDown
-                class="w-4 h-4 transition-transform duration-200 ml-auto"
-                :class="{ 'rotate-180': isNearbyExpanded }"
-              />
-            </button>
-            <button
-              @click="nearbyDevicesRef?.refreshDevices()"
-              :disabled="!nearbyDevicesRef?.isScanning"
-              class="p-1.5 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-2"
-              title="Refresh devices"
-            >
-              <RefreshCw
-                class="w-4 h-4"
-                :class="{ 'animate-spin': nearbyDevicesRef?.isScanning }"
-              />
-            </button>
-          </div>
-
-          <transition
-            enter-active-class="transition-all duration-300 ease-out"
-            enter-from-class="opacity-0 max-h-0"
-            enter-to-class="opacity-100 max-h-[800px]"
-            leave-active-class="transition-all duration-300 ease-in"
-            leave-from-class="opacity-100 max-h-[800px]"
-            leave-to-class="opacity-0 max-h-0"
-          >
-            <div
-              v-if="isNearbyExpanded"
-              class="px-4 sm:px-6 pb-1 overflow-hidden"
-            >
-              <NearbyDevices
-                ref="nearbyDevicesRef"
-                @select-device="handleSelectNearbyDevice"
-                @send-to-device="handleSendToNearbyDevice"
-              />
-            </div>
-          </transition>
-        </div>
-
         <Tabs v-model="activeTab" class="w-full">
           <TabsList
             class="flex w-full h-auto bg-transparent p-2 gap-2 border-b border-white/10"

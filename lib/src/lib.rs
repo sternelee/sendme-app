@@ -7,17 +7,11 @@ use anyhow::Context;
 
 pub mod export;
 pub mod import;
-pub mod nearby;
 pub mod progress;
 pub mod receive;
 pub mod send;
 pub mod types;
 
-pub use nearby::{
-    get_hostname, get_local_ip, DeviceInfo, DeviceType, MulticastMessage, NearbyDevice,
-    NearbyDiscovery, NearbyEvent, TicketRequest, TicketResponse, DEFAULT_NEARBY_PORT,
-    MULTICAST_GROUP, PROTOCOL_VERSION,
-};
 pub use progress::*;
 pub use types::*;
 

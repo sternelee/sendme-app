@@ -1,7 +1,6 @@
 //! Event system for the TUI.
 
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use sendme_lib::nearby::NearbyDevice;
 use sendme_lib::progress::ProgressEvent;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -15,16 +14,8 @@ pub enum AppEvent {
     Tick,
     /// Transfer progress update.
     TransferUpdate(ProgressEvent),
-    /// Nearby device update.
-    NearbyDeviceUpdate(Vec<NearbyDevice>),
     /// Send completed with ticket.
     SendCompleted { ticket: String, path: String },
-    /// Ticket sent to nearby device result.
-    TicketSentResult {
-        device_alias: String,
-        success: bool,
-        message: String,
-    },
 }
 
 /// Event handler for the application.
@@ -75,23 +66,9 @@ impl EventHandler {
         let _ = self.sender.send(AppEvent::TransferUpdate(event));
     }
 
-    /// Send a nearby device update event.
-    pub fn send_nearby_update(&self, devices: Vec<NearbyDevice>) {
-        let _ = self.sender.send(AppEvent::NearbyDeviceUpdate(devices));
-    }
-
     /// Send a send completed event with ticket.
     pub fn send_send_completed(&self, ticket: String, path: String) {
         let _ = self.sender.send(AppEvent::SendCompleted { ticket, path });
-    }
-
-    /// Send a ticket sent result event.
-    pub fn send_ticket_sent_result(&self, device_alias: String, success: bool, message: String) {
-        let _ = self.sender.send(AppEvent::TicketSentResult {
-            device_alias,
-            success,
-            message,
-        });
     }
 }
 
@@ -109,7 +86,6 @@ pub fn get_tab_switch(key: &KeyEvent) -> Option<usize> {
         KeyCode::Char('1') => Some(0),
         KeyCode::Char('2') => Some(1),
         KeyCode::Char('3') => Some(2),
-        KeyCode::Char('4') => Some(3),
         _ => None,
     }
 }

@@ -10,8 +10,8 @@ use ratatui::{
 };
 
 use crate::tui::{
-    app::Tab, tabs::nearby::render_nearby_tab, tabs::receive::render_receive_tab,
-    tabs::send::render_send_tab, tabs::transfers::render_transfers_tab, App,
+    app::Tab, tabs::receive::render_receive_tab, tabs::send::render_send_tab,
+    tabs::transfers::render_transfers_tab, App,
 };
 
 /// Main UI rendering function.
@@ -78,7 +78,6 @@ fn render_current_tab(f: &mut Frame, app: &App, area: Rect) {
         Tab::Send => render_send_tab(f, app, area),
         Tab::Receive => render_receive_tab(f, app, area),
         Tab::Transfers => render_transfers_tab(f, app, area),
-        Tab::Nearby => render_nearby_tab(f, app, area),
     }
 }
 
@@ -86,13 +85,12 @@ fn render_current_tab(f: &mut Frame, app: &App, area: Rect) {
 fn render_footer(f: &mut Frame, current_tab: Tab, area: Rect) {
     let help_text = match current_tab {
         Tab::Send => {
-            " [1-4] Switch Tab | [q] Quit | [Enter] Send | [ESC] Return | Type to enter path "
+            " [1-3] Switch Tab | [q] Quit | [Enter] Send | [ESC] Return | Type to enter path "
         }
-        Tab::Receive => " [1-4] Switch Tab | [q] Quit | [Enter] Receive | Type to paste ticket ",
+        Tab::Receive => " [1-3] Switch Tab | [q] Quit | [Enter] Receive | Type to paste ticket ",
         Tab::Transfers => {
-            " [1-4] Switch Tab | [q] Quit | [Up/Down] Navigate | [Enter] View | [d] Delete | [c] Clean up "
+            " [1-3] Switch Tab | [q] Quit | [Up/Down] Navigate | [Enter] View | [d] Delete | [c] Clean up "
         }
-        Tab::Nearby => " [1-4] Switch Tab | [q] Quit | [s] Start/Stop Discovery ",
     };
 
     let paragraph = Paragraph::new(help_text)

@@ -11,7 +11,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use sendme_lib::{nearby::NearbyDiscovery, types::*, BlobTicket};
+use sendme_lib::{types::*, BlobTicket};
 use tokio::sync::mpsc;
 
 mod tui;
@@ -43,7 +43,6 @@ async fn main() -> Result<()> {
     // Channels for async operations
     let (send_tx, mut send_rx) = mpsc::channel::<SendRequest>(32);
     let (receive_tx, mut receive_rx) = mpsc::channel::<ReceiveRequest>(32);
-    let (nearby_tx, nearby_rx) = mpsc::channel::<NearbyRequest>(32);
 
     // Spawn background tasks
     let send_event_handler = event_handler.clone();
@@ -62,11 +61,6 @@ async fn main() -> Result<()> {
                 eprintln!("Receive error: {}", e);
             }
         }
-    });
-
-    let nearby_event_handler = event_handler.clone();
-    tokio::spawn(async move {
-        handle_nearby_requests(nearby_rx, nearby_event_handler).await;
     });
 
     // Run the event loop in a blocking task, then restore terminal
@@ -146,31 +140,6 @@ async fn main() -> Result<()> {
                                 app.cleanup_finished_transfers();
                             }
                         }
-
-                        // Handle nearby tab toggle
-                        if app.current_tab == tui::app::Tab::Nearby {
-                            if let crossterm::event::KeyCode::Char('s') = key.code {
-                                // Note: nearby_enabled is already toggled in app.handle_key()
-                                let _ = nearby_tx.try_send(if app.nearby_enabled {
-                                    NearbyRequest::Start
-                                } else {
-                                    NearbyRequest::Stop
-                                });
-                            }
-
-                            // Handle Enter key to send ticket to selected device
-                            if let crossterm::event::KeyCode::Enter = key.code {
-                                if let (Some(device), Some(ticket)) = (
-                                    app.get_selected_nearby_device().cloned(),
-                                    app.send_success_ticket.clone(),
-                                ) {
-                                    app.nearby_message =
-                                        format!("Sending ticket to {}...", device.alias);
-                                    let _ = nearby_tx
-                                        .try_send(NearbyRequest::SendTicket { device, ticket });
-                                }
-                            }
-                        }
                     }
                     Ok(tui::event::AppEvent::Tick) => {
                         // Periodic updates
@@ -181,9 +150,6 @@ async fn main() -> Result<()> {
                             transfer.update_progress(&event);
                         }
                     }
-                    Ok(tui::event::AppEvent::NearbyDeviceUpdate(devices)) => {
-                        app.update_nearby_devices(devices);
-                    }
                     Ok(tui::event::AppEvent::SendCompleted { ticket, path }) => {
                         // Store ticket in the transfer and show success view
                         if let Some(transfer) = app.transfers.last_mut() {
@@ -191,18 +157,6 @@ async fn main() -> Result<()> {
                             transfer.status = tui::app::TransferStatus::Serving;
                         }
                         app.set_send_success(ticket, path);
-                    }
-                    Ok(tui::event::AppEvent::TicketSentResult {
-                        device_alias,
-                        success,
-                        message,
-                    }) => {
-                        // Update nearby message with result
-                        if success {
-                            app.nearby_message = format!("✓ Sent to {}: {}", device_alias, message);
-                        } else {
-                            app.nearby_message = format!("✗ {}: {}", device_alias, message);
-                        }
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => {
                         // No more events, break inner loop
@@ -266,16 +220,6 @@ struct SendRequest {
 struct ReceiveRequest {
     ticket: BlobTicket,
     transfer_id: String,
-}
-
-/// Nearby request.
-enum NearbyRequest {
-    Start,
-    Stop,
-    SendTicket {
-        device: sendme_lib::nearby::NearbyDevice,
-        ticket: String,
-    },
 }
 
 /// Handle a send request.
@@ -343,119 +287,4 @@ async fn handle_receive_request(
     }
 
     Ok(())
-}
-
-/// Handle nearby discovery requests.
-async fn handle_nearby_requests(
-    mut rx: tokio::sync::mpsc::Receiver<NearbyRequest>,
-    event_handler: EventHandler,
-) {
-    // Use an atomic flag to track if discovery is running
-    let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    // Store discovery instance for sending tickets
-    let discovery_ref: std::sync::Arc<tokio::sync::RwLock<Option<NearbyDiscovery>>> =
-        std::sync::Arc::new(tokio::sync::RwLock::new(None));
-
-    while let Some(request) = rx.recv().await {
-        match request {
-            NearbyRequest::Start => {
-                if running.load(std::sync::atomic::Ordering::Relaxed) {
-                    continue;
-                }
-
-                // Get hostname for device alias
-                let alias = sendme_lib::get_hostname();
-
-                match NearbyDiscovery::new(alias).await {
-                    Ok(d) => {
-                        running.store(true, std::sync::atomic::Ordering::Relaxed);
-
-                        // Store discovery reference
-                        *discovery_ref.write().await = Some(d);
-
-                        let event_handler = event_handler.clone();
-                        let running_clone = running.clone();
-                        let discovery_ref_clone = discovery_ref.clone();
-
-                        tokio::spawn(async move {
-                            // Start the discovery service
-                            {
-                                let mut guard = discovery_ref_clone.write().await;
-                                if let Some(ref mut discovery) = *guard {
-                                    if let Err(e) = discovery.start().await {
-                                        eprintln!("Failed to start nearby discovery: {}", e);
-                                        return;
-                                    }
-                                }
-                            }
-
-                            while running_clone.load(std::sync::atomic::Ordering::Relaxed) {
-                                // Refresh to trigger announcements
-                                {
-                                    let guard = discovery_ref_clone.read().await;
-                                    if let Some(ref discovery) = *guard {
-                                        if let Err(e) = discovery.refresh().await {
-                                            eprintln!("Nearby refresh error: {}", e);
-                                        }
-                                        let devices = discovery.devices().await;
-                                        event_handler.send_nearby_update(devices);
-                                    }
-                                }
-                                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                            }
-
-                            // Stop discovery
-                            {
-                                let mut guard = discovery_ref_clone.write().await;
-                                if let Some(ref mut discovery) = *guard {
-                                    discovery.stop().await;
-                                }
-                                *guard = None;
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to start nearby discovery: {}", e);
-                    }
-                }
-            }
-            NearbyRequest::Stop => {
-                running.store(false, std::sync::atomic::Ordering::Relaxed);
-                event_handler.send_nearby_update(vec![]);
-            }
-            NearbyRequest::SendTicket { device, ticket } => {
-                let discovery_ref_clone = discovery_ref.clone();
-                let event_handler = event_handler.clone();
-                let device_alias = device.alias.clone();
-
-                tokio::spawn(async move {
-                    let guard = discovery_ref_clone.read().await;
-                    if let Some(ref discovery) = *guard {
-                        match discovery.send_ticket(&device, &ticket, None).await {
-                            Ok(_response) => {
-                                event_handler.send_ticket_sent_result(
-                                    device_alias,
-                                    true,
-                                    "Ticket sent successfully!".to_string(),
-                                );
-                            }
-                            Err(e) => {
-                                event_handler.send_ticket_sent_result(
-                                    device_alias,
-                                    false,
-                                    format!("Failed: {}", e),
-                                );
-                            }
-                        }
-                    } else {
-                        event_handler.send_ticket_sent_result(
-                            device_alias,
-                            false,
-                            "Discovery not running".to_string(),
-                        );
-                    }
-                });
-            }
-        }
-    }
 }

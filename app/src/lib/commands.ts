@@ -26,20 +26,6 @@ export interface ProgressUpdate {
   data: any;
 }
 
-export type DeviceType = "desktop" | "mobile" | "web" | "headless" | "server";
-
-export interface NearbyDevice {
-  fingerprint: string;
-  alias: string;
-  device_model: string | null;
-  device_type: DeviceType;
-  version: string;
-  ip: string;
-  port: number;
-  last_seen: number;
-  available: boolean;
-}
-
 /**
  * Send a file or directory and return the ticket
  */
@@ -85,59 +71,6 @@ export async function clear_transfers(): Promise<void> {
 }
 
 /**
- * Start nearby device discovery, returns the local node ID
- */
-export async function start_nearby_discovery(): Promise<string> {
-  return await invoke("start_nearby_discovery");
-}
-
-/**
- * Get list of nearby devices
- */
-export async function get_nearby_devices(): Promise<NearbyDevice[]> {
-  return await invoke("get_nearby_devices");
-}
-
-/**
- * Stop nearby device discovery
- */
-export async function stop_nearby_discovery(): Promise<void> {
-  return await invoke("stop_nearby_discovery");
-}
-
-/**
- * Start the nearby ticket server for receiving tickets from other devices
- *
- * Returns the port number the server is listening on.
- */
-export async function start_nearby_ticket_server(): Promise<number> {
-  return await invoke("start_nearby_ticket_server");
-}
-
-/**
- * Send a ticket to a nearby device
- *
- * @param device - The nearby device to send the ticket to
- * @param ticketData - The ticket data to send
- */
-export async function send_ticket_to_device(
-  device: NearbyDevice,
-  ticketData: string,
-): Promise<void> {
-  return await invoke("send_ticket_to_device", { device, ticketData });
-}
-
-/**
- * Receive a ticket from a nearby device (blocking call)
- *
- * In production, tickets would be received asynchronously via events.
- * This is mainly for testing purposes.
- */
-export async function receive_ticket_from_device(): Promise<string> {
-  return await invoke("receive_ticket_from_device");
-}
-
-/**
  * Get the local hostname
  */
 export function get_hostname(): Promise<string> {
@@ -149,16 +82,6 @@ export function get_hostname(): Promise<string> {
  */
 export async function get_device_model(): Promise<string> {
   return await invoke("get_device_model");
-}
-
-/**
- * Check if device is connected to WiFi
- *
- * Returns true if connected to WiFi, false otherwise.
- * WiFi connection is required for nearby device discovery.
- */
-export async function check_wifi_connection(): Promise<boolean> {
-  return await invoke("check_wifi_connection");
 }
 
 /**
