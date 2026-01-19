@@ -274,6 +274,99 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         }
         return "Unknown"
     }
+
+    /**
+     * Try to get a file path from a content URI.
+     * This attempts various methods to resolve the URI to a file path.
+     * Returns null if no path can be determined.
+     */
+    private fun getPathFromUri(uri: Uri): String? {
+        // For file:// URIs, just return the path
+        if (uri.scheme == "file") {
+            return uri.path
+        }
+
+        // For content:// URIs, try to resolve using DocumentsContract
+        if (uri.scheme == "content") {
+            try {
+                // Check if this is a document URI
+                if (android.provider.DocumentsContract.isDocumentUri(activity, uri)) {
+                    val docId = android.provider.DocumentsContract.getDocumentId(uri)
+
+                    // Handle different authority types
+                    when (uri.authority) {
+                        "com.android.externalstorage.documents" -> {
+                            // External storage document
+                            val split = docId.split(":")
+                            val type = split[0]
+                            val relativePath = if (split.size > 1) split[1] else ""
+
+                            if ("primary".equals(type, ignoreCase = true)) {
+                                return "${android.os.Environment.getExternalStorageDirectory()}/$relativePath"
+                            }
+                            // For non-primary volumes, we can't easily get the path
+                        }
+                        "com.android.providers.downloads.documents" -> {
+                            // Downloads document
+                            if (docId.startsWith("raw:")) {
+                                return docId.substringAfter("raw:")
+                            }
+                            // For numeric IDs, we can't easily resolve the path
+                        }
+                        "com.android.providers.media.documents" -> {
+                            // Media document
+                            val split = docId.split(":")
+                            val type = split[0]
+                            val id = if (split.size > 1) split[1] else null
+
+                            if (id != null) {
+                                val contentUri = when (type) {
+                                    "image" -> android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                                    "video" -> android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                                    "audio" -> android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                                    else -> null
+                                }
+
+                                if (contentUri != null) {
+                                    val selection = "_id=?"
+                                    val selectionArgs = arrayOf(id)
+                                    return getDataColumn(contentUri, selection, selectionArgs)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Try to get path from _data column (works for some content providers)
+                return getDataColumn(uri, null, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not resolve path from URI: ${e.message}")
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Get the value of the data column for this URI.
+     */
+    private fun getDataColumn(uri: Uri, selection: String?, selectionArgs: Array<String>?): String? {
+        val column = "_data"
+        val projection = arrayOf(column)
+
+        try {
+            activity.contentResolver.query(uri, projection, selection, selectionArgs, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val columnIndex = cursor.getColumnIndexOrThrow(column)
+                    return cursor.getString(columnIndex)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not get data column: ${e.message}")
+        }
+
+        return null
+    }
 }
 
 // Argument classes for parsing
