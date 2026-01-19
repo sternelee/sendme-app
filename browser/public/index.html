@@ -189,22 +189,25 @@
                 receiveProgressFill.style.width = '30%';
                 receiveProgressText.textContent = 'Fetching data...';
 
-                const data = await node.get(ticketInput);
+                const result = await node.get(ticketInput);
+                const filename = result.filename || 'received-file';
+                const data = result.data;
 
                 receiveProgressFill.style.width = '80%';
                 receiveProgressText.textContent = 'Preparing download...';
 
-                // Create download link
+                // Create download link with proper filename
                 const blob = new Blob([data], { type: 'application/octet-stream' });
                 const url = URL.createObjectURL(blob);
                 downloadLink.href = url;
-                downloadLink.download = 'received-file';
+                downloadLink.download = filename;
+                downloadLink.textContent = 'Download: ' + filename;
                 downloadLink.style.display = 'block';
 
                 receiveProgressFill.style.width = '100%';
                 receiveProgressText.textContent = 'Complete!';
 
-                setStatus('File received! Ready to download.', 'ready');
+                setStatus('File received: ' + filename, 'ready');
             } catch (error) {
                 setStatus('Error: ' + error.message, 'error');
                 console.error('Receive error:', error);

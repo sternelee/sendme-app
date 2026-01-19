@@ -100,15 +100,29 @@ impl SendmeNodeWasm {
     /// and the hash of the data to fetch.
     ///
     /// First checks local store, then attempts P2P fetch from remote peer.
+    /// Returns a JS object with { filename: string, data: Uint8Array }
     pub fn get(&self, ticket: String) -> Result<js_sys::Promise, JsError> {
         let node = self.0.clone();
 
         let promise = future_to_promise(async move {
-            let data = node
+            let (filename, data) = node
                 .get(ticket)
                 .await
                 .map_err(|e: anyhow::Error| JsError::new(&e.to_string()))?;
-            Ok(JsValue::from(bytes_to_uint8array(&data)))
+
+            // Create a JS object with filename and data
+            let obj = js_sys::Object::new();
+            js_sys::Reflect::set(&obj, &JsValue::from("filename"), &JsValue::from(filename))
+                .map_err(|e| JsError::new(&format!("Failed to set filename: {:?}", e)))?;
+
+            js_sys::Reflect::set(
+                &obj,
+                &JsValue::from("data"),
+                &JsValue::from(bytes_to_uint8array(&data)),
+            )
+            .map_err(|e| JsError::new(&format!("Failed to set data: {:?}", e)))?;
+
+            Ok(JsValue::from(obj))
         });
 
         Ok(promise)

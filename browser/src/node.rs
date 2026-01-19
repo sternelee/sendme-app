@@ -5,9 +5,10 @@
 
 use anyhow::Result;
 use bytes::Bytes;
-use iroh::{discovery::static_provider::StaticProvider, protocol::Router, Endpoint, EndpointId};
+use iroh::{discovery::static_provider::StaticProvider, protocol::Router, Endpoint};
 use iroh_blobs::{
     api::{blobs::BlobStatus, downloader::Downloader, Store},
+    format::collection::Collection,
     ticket::BlobTicket,
     BlobFormat, Hash,
 };
@@ -79,19 +80,31 @@ impl SendmeNode {
 
     /// Import data and create a ticket for sharing
     ///
-    /// This creates a proper BlobTicket with endpoint addressing information
+    /// This creates a proper BlobTicket with HashSeq format (Collection)
     /// that can be shared with others for P2P file transfer.
-    pub async fn import_and_create_ticket(&self, _name: String, data: Bytes) -> Result<String> {
+    /// The Collection format preserves the filename and is compatible with CLI/App.
+    pub async fn import_and_create_ticket(&self, name: String, data: Bytes) -> Result<String> {
+        // 1. Add the raw blob data to the store
         let tag = self.blobs.add_bytes(data).await?;
-        tracing::info!(?tag, "imported!");
+        let blob_hash = tag.hash;
+        tracing::info!(?tag, "blob imported with hash: {}", blob_hash);
 
-        // Wait for endpoint to be online
+        // 2. Create a Collection with the filename using FromIterator
+        let collection: Collection = std::iter::once((name, blob_hash)).collect();
+        tracing::info!("Collection created with 1 file");
+
+        // 3. Store the Collection
+        let collection_tag = collection.store(&self.blobs).await?;
+        let collection_hash = collection_tag.hash();
+        tracing::info!("Collection stored with hash: {}", collection_hash);
+
+        // 4. Wait for endpoint to be online
         self.endpoint().online().await;
         let addr = self.endpoint().addr();
         tracing::info!("Creating ticket with addr: {:?}", addr);
 
-        // Create a BlobTicket with the raw blob hash
-        let ticket = BlobTicket::new(addr, tag.hash, tag.format);
+        // 5. Create a BlobTicket with HashSeq format (compatible with CLI/App)
+        let ticket = BlobTicket::new(addr, collection_hash, BlobFormat::HashSeq);
 
         Ok(ticket.to_string())
     }
@@ -102,31 +115,51 @@ impl SendmeNode {
     /// and the hash of the data to fetch.
     ///
     /// First checks local store, then attempts P2P fetch from remote peer.
-    pub async fn get(&self, ticket_str: String) -> Result<Bytes> {
+    /// Returns a tuple of (filename, data).
+    pub async fn get(&self, ticket_str: String) -> Result<(String, Bytes)> {
         // Parse the ticket
         let ticket: BlobTicket = ticket_str.parse()?;
-        let hash = ticket.hash();
+        let hash_and_format = ticket.hash_and_format();
+        let collection_hash = hash_and_format.hash;
 
-        // Check if we have it locally
-        let status = self.blobs.status(hash).await?;
+        tracing::info!(
+            "Getting data for hash: {}, format: {:?}",
+            collection_hash,
+            hash_and_format.format
+        );
+
+        // Check if we have the collection locally
+        let status = self.blobs.status(collection_hash).await?;
         let has_local = matches!(status, BlobStatus::Complete { .. });
 
-        if has_local {
-            tracing::info!("Blob found locally, fetching from store");
-            return self.blobs.get_bytes(hash).await;
+        if !has_local {
+            // Download from remote peer
+            tracing::info!("Collection not local, attempting remote fetch");
+            self.discovery.add_endpoint_info(ticket.addr().clone());
+            self.downloader
+                .download(hash_and_format, [ticket.addr().id])
+                .await?;
+            tracing::info!("Download complete");
+        } else {
+            tracing::info!("Collection found locally");
         }
 
-        // Download from remote peer
-        tracing::info!("Blob not local, attempting remote fetch");
-        self.discovery.add_endpoint_info(ticket.addr().clone());
-        self.downloader
-            .download(ticket.hash_and_format(), [ticket.addr().id])
-            .await?;
+        // Load the Collection to get filename and blob hash
+        let collection = Collection::load(collection_hash, &self.blobs).await?;
+        tracing::info!("Collection loaded with {} files", collection.iter().count());
 
-        tracing::info!("Download complete, getting bytes from store");
-        let bytes = self.blobs.get_bytes(hash).await?;
+        // Get the first (and should be only) file from the collection
+        let (filename, blob_hash) = collection
+            .iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Collection is empty"))?;
 
-        Ok(bytes)
+        tracing::info!("Fetching blob: {} ({})", filename, blob_hash);
+
+        // Get the actual file data
+        let bytes = self.blobs.get_bytes(*blob_hash).await?;
+
+        Ok((filename.to_string(), bytes))
     }
 
     /// Check if a blob exists and is complete
@@ -161,7 +194,6 @@ impl SendmeNode {
 
 /// WASM-compatible sleep using JavaScript setTimeout
 async fn sleep_ms(ms: i32) -> Result<()> {
-    use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
 
     let promise = js_sys::Promise::new(&mut |resolve, _reject| {
@@ -176,177 +208,4 @@ async fn sleep_ms(ms: i32) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Sleep error: {:?}", e))?;
 
     Ok(())
-}
-
-    /// Get the endpoint ID as a string
-    pub fn endpoint_id(&self) -> String {
-        self.endpoint_id.to_string()
-    }
-
-    /// Get the current relay URLs
-    pub fn relay_urls(&self) -> Vec<String> {
-        self.router
-            .endpoint()
-            .addr()
-            .relay_urls()
-            .map(|url| url.to_string())
-            .collect()
-    }
-
-    /// Get local addresses
-    pub fn local_addrs(&self) -> Vec<String> {
-        self.router
-            .endpoint()
-            .addr()
-            .ip_addrs()
-            .map(|addr| addr.to_string())
-            .collect()
-    }
-
-    /// Import data and create a ticket for sharing
-    ///
-    /// This creates a proper BlobTicket with endpoint addressing information
-    /// that can be shared with others for P2P file transfer.
-    pub async fn import_and_create_ticket(&self, _name: String, data: Bytes) -> Result<String> {
-        // Add the data to the store
-        let tag = self.store.add_bytes(data).await?;
-        let hash = tag.hash;
-
-        let addr = self.router.endpoint().addr();
-
-        tracing::info!("Creating ticket with addr: {:?}", addr);
-
-        // Create a BlobTicket with the raw blob hash
-        let ticket = BlobTicket::new(addr, hash, BlobFormat::Raw);
-
-        Ok(ticket.to_string())
-    }
-
-    /// Get data by ticket string
-    ///
-    /// The ticket string contains both the peer's addressing information
-    /// and the hash of the data to fetch.
-    ///
-    /// First checks local store, then attempts P2P fetch from remote peer.
-    pub async fn get(&self, ticket_str: String) -> Result<Bytes> {
-        // Parse the ticket
-        let ticket: BlobTicket = ticket_str.parse()?;
-        let hash_and_format = ticket.hash_and_format();
-        let hash = hash_and_format.hash;
-
-        // Check if we have it locally
-        let status = self.store.status(hash).await?;
-        let has_local = matches!(status, iroh_blobs::api::blobs::BlobStatus::Complete { .. });
-
-        if has_local {
-            tracing::info!("Blob found locally, fetching from store");
-            return self
-                .store
-                .get_bytes(hash)
-                .await
-                .map_err(|e| anyhow::anyhow!(e));
-        }
-
-        // Try to fetch from remote peer
-        tracing::info!("Blob not local, attempting remote fetch");
-
-        let endpoint = self.router.endpoint();
-        let addr = ticket.addr().clone();
-
-        // Connect to the peer
-        let connection = endpoint
-            .connect(addr, iroh_blobs::protocol::ALPN)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to connect to peer: {}", e))?;
-
-        tracing::info!("Connected to peer, fetching blob");
-
-        // Get hash sequence and sizes
-        let (_hash_seq, _sizes) =
-            get_hash_seq_and_sizes(&connection, &hash, 1024 * 1024 * 32, None)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get hash seq: {:?}", e);
-                    map_get_error(e)
-                })?;
-
-        // Since we're using raw blobs (not collections), the data should already be in the store
-        tracing::info!("Fetch complete, getting bytes from store");
-
-        let bytes = self
-            .store
-            .get_bytes(hash)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))?;
-
-        Ok(bytes)
-    }
-
-    /// Check if a blob exists and is complete
-    pub async fn has_blob(&self, hash: String) -> Result<bool> {
-        let hash: Hash = hash.parse()?;
-        let status = self.store.status(hash).await?;
-        let is_complete = matches!(status, iroh_blobs::api::blobs::BlobStatus::Complete { .. });
-        Ok(is_complete)
-    }
-
-    /// Wait for the endpoint to be ready with addresses
-    pub async fn wait_for_ready(&self, duration_ms: u64) -> Result<bool> {
-        let endpoint = self.router.endpoint();
-        let start = std::time::Instant::now();
-        let timeout = std::time::Duration::from_millis(duration_ms);
-
-        loop {
-            let addr = endpoint.addr();
-            if addr.relay_urls().next().is_some() || addr.ip_addrs().next().is_some() {
-                return Ok(true);
-            }
-
-            if start.elapsed() > timeout {
-                return Ok(false);
-            }
-
-            // Sleep using JavaScript setTimeout (WASM-compatible)
-            let promise = js_sys::Promise::new(&mut |resolve, _reject| {
-                let window = web_sys::window().expect("no global `window` exists");
-                let timeout_ms = 100;
-                window
-                    .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, timeout_ms)
-                    .expect("should register setTimeout handler");
-            });
-            JsFuture::from(promise)
-                .await
-                .map_err(|e| anyhow::anyhow!("Sleep error: {:?}", e))?;
-        }
-    }
-}
-
-/// Map GetError to more readable error
-fn map_get_error(e: GetError) -> anyhow::Error {
-    match &e {
-        GetError::InitialNext { .. } => {
-            anyhow::anyhow!("Failed to establish initial connection")
-        }
-        GetError::ConnectedNext { .. } => {
-            anyhow::anyhow!("Connection failed after established")
-        }
-        GetError::AtBlobHeaderNext { .. } => {
-            anyhow::anyhow!("Failed to read blob header")
-        }
-        GetError::Decode { .. } => {
-            anyhow::anyhow!("Failed to decode data")
-        }
-        GetError::IrpcSend { .. } => {
-            anyhow::anyhow!("Failed to send data through connection")
-        }
-        GetError::AtClosingNext { .. } => {
-            anyhow::anyhow!("Connection closed unexpectedly")
-        }
-        GetError::BadRequest { .. } => {
-            anyhow::anyhow!("Peer rejected our request")
-        }
-        GetError::LocalFailure { .. } => {
-            anyhow::anyhow!("Local storage error")
-        }
-    }
 }
