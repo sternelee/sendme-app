@@ -384,7 +384,15 @@ impl App {
                 }
             }
             SendTabState::Success => {
-                // ESC handled in main handler, just wait for it
+                // Handle 'C' key to copy ticket
+                if key.code == crossterm::event::KeyCode::Char('c')
+                    || key.code == crossterm::event::KeyCode::Char('C')
+                {
+                    if let Some(ticket) = self.send_success_ticket.clone() {
+                        self.copy_to_clipboard(&ticket);
+                    }
+                }
+                // ESC handled in main handler
             }
         }
     }
@@ -467,6 +475,15 @@ impl App {
                 }
             }
             TransfersTabState::Detail { .. } => {
+                // Handle 'C' key to copy ticket
+                if key.code == crossterm::event::KeyCode::Char('c')
+                    || key.code == crossterm::event::KeyCode::Char('C')
+                {
+                    if let Some(ticket) = self.get_selected_transfer_ticket() {
+                        let ticket = ticket.to_string();
+                        self.copy_to_clipboard(&ticket);
+                    }
+                }
                 // ESC handled in main handler
             }
         }
@@ -524,6 +541,36 @@ impl App {
     /// Get transfer by ID.
     pub fn get_transfer_by_id(&self, id: &str) -> Option<&Transfer> {
         self.transfers.iter().find(|t| t.id == id)
+    }
+
+    /// Copy text to clipboard.
+    pub fn copy_to_clipboard(&mut self, text: &str) {
+        #[cfg(feature = "clipboard")]
+        {
+            use crossterm::execute;
+            use crossterm::clipboard::CopyToClipboard;
+            use std::io::stdout;
+            if let Err(e) = execute!(stdout(), CopyToClipboard::to_clipboard_from(text)) {
+                self.send_message = format!("Copy failed: {}", e);
+            } else {
+                self.send_message = "Ticket copied to clipboard!".to_string();
+            }
+        }
+
+        #[cfg(not(feature = "clipboard"))]
+        {
+            self.send_message = "Clipboard feature not enabled".to_string();
+        }
+    }
+
+    /// Get a mutable reference to the clipboard message.
+    pub fn clipboard_message(&self) -> &str {
+        &self.send_message
+    }
+
+    /// Check if there's a clipboard message to show.
+    pub fn has_clipboard_message(&self) -> bool {
+        self.send_message.contains("copied") || self.send_message.contains("Copy failed")
     }
 }
 
