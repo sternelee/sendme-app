@@ -232,10 +232,13 @@ onMounted(async () => {
     isTicketDialogOpen.value = true;
 
     // Also show a toast notification
-    toast.info(`Incoming transfer from ${ticketRequest.sender_device?.display_name || "nearby device"}`, {
-      description: `${ticketRequest.transfer_info?.file_count || 0} files (${formatFileSize(ticketRequest.transfer_info?.total_size || 0)})`,
-      duration: 10000, // Show for 10 seconds
-    });
+    toast.info(
+      `Incoming transfer from ${ticketRequest.sender_device?.display_name || "nearby device"}`,
+      {
+        description: `${ticketRequest.transfer_info?.file_count || 0} files (${formatFileSize(ticketRequest.transfer_info?.total_size || 0)})`,
+        duration: 10000, // Show for 10 seconds
+      },
+    );
   });
 
   // Store the ticket event unlistener for cleanup
@@ -315,9 +318,11 @@ async function handleSendToNearbyDevice(device: NearbyDevice, files: string[]) {
     return;
   }
 
-  // Check if device is reachable
-  if (!device.reachable) {
-    toast.error("Device is not reachable. Please wait for connection to be established.");
+  // Check if device is available (discovered via multicast)
+  if (!device.available) {
+    toast.error(
+      "Device is not available. Please wait for it to be discovered.",
+    );
     return;
   }
 
@@ -340,7 +345,9 @@ async function handleSendToNearbyDevice(device: NearbyDevice, files: string[]) {
     if (ticket) {
       // Send the ticket to the nearby device
       await send_ticket_to_device(device, ticket);
-      toast.success(`Files sent to ${device.display_name}! They should see a transfer request.`);
+      toast.success(
+        `Files sent to ${device.alias}! They should see a transfer request.`,
+      );
     } else {
       toast.error("Failed to generate ticket for nearby transfer");
     }

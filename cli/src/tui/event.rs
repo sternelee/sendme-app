@@ -19,6 +19,12 @@ pub enum AppEvent {
     NearbyDeviceUpdate(Vec<NearbyDevice>),
     /// Send completed with ticket.
     SendCompleted { ticket: String, path: String },
+    /// Ticket sent to nearby device result.
+    TicketSentResult {
+        device_alias: String,
+        success: bool,
+        message: String,
+    },
 }
 
 /// Event handler for the application.
@@ -77,6 +83,15 @@ impl EventHandler {
     /// Send a send completed event with ticket.
     pub fn send_send_completed(&self, ticket: String, path: String) {
         let _ = self.sender.send(AppEvent::SendCompleted { ticket, path });
+    }
+
+    /// Send a ticket sent result event.
+    pub fn send_ticket_sent_result(&self, device_alias: String, success: bool, message: String) {
+        let _ = self.sender.send(AppEvent::TicketSentResult {
+            device_alias,
+            success,
+            message,
+        });
     }
 }
 
