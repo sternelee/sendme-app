@@ -31,6 +31,11 @@ crossterm = { version = "0.29.0", features = [
 fast_qr = "0.12"
 futures-lite = "2.6.1"
 
+# TUI dependencies
+ratatui = "0.29"
+uuid = "1.11"
+tracing = "0.1"
+
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2.174", optional = true }
 
