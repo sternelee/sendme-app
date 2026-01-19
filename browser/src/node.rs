@@ -5,9 +5,10 @@
 
 use anyhow::Result;
 use bytes::Bytes;
+use futures_lite::StreamExt;
 use iroh::{discovery::static_provider::StaticProvider, protocol::Router, Endpoint};
 use iroh_blobs::{
-    api::{blobs::BlobStatus, downloader::Downloader, Store},
+    api::{blobs::BlobStatus, Store},
     format::collection::Collection,
     ticket::BlobTicket,
     BlobFormat, Hash,
@@ -21,7 +22,6 @@ pub struct SendmeNode {
     discovery: StaticProvider,
     router: Router,
     pub blobs: Store,
-    downloader: Downloader,
 }
 
 impl SendmeNode {
@@ -33,7 +33,6 @@ impl SendmeNode {
 
         // Use in-memory store for WebAssembly
         let store = iroh_blobs::store::mem::MemStore::default();
-        let downloader = Downloader::new(&store, &endpoint);
 
         let blobs = iroh_blobs::BlobsProtocol::new(&store, None);
         let router = Router::builder(endpoint)
@@ -43,7 +42,6 @@ impl SendmeNode {
         Ok(Self {
             blobs: store.as_ref().clone(),
             router,
-            downloader,
             discovery,
         })
     }
@@ -133,13 +131,40 @@ impl SendmeNode {
         let has_local = matches!(status, BlobStatus::Complete { .. });
 
         if !has_local {
-            // Download from remote peer
+            // Download from remote peer using direct connection
             tracing::info!("Collection not local, attempting remote fetch");
             self.discovery.add_endpoint_info(ticket.addr().clone());
-            self.downloader
-                .download(hash_and_format, [ticket.addr().id])
+
+            // Connect to the peer
+            let endpoint = self.router.endpoint();
+            let connection = endpoint
+                .connect(ticket.addr().clone(), iroh_blobs::ALPN)
                 .await?;
-            tracing::info!("Download complete");
+
+            tracing::info!("Connected to peer, starting download");
+
+            // Get the local blob state
+            let local = self.blobs.remote().local(hash_and_format).await?;
+
+            // Execute get to download missing blobs
+            let get = self.blobs.remote().execute_get(connection, local.missing());
+            let mut stream = get.stream();
+
+            // Consume the stream to download all data
+            while let Some(item) = stream.next().await {
+                match item {
+                    iroh_blobs::api::remote::GetProgressItem::Progress(offset) => {
+                        tracing::debug!("Downloaded {} bytes", offset);
+                    }
+                    iroh_blobs::api::remote::GetProgressItem::Done(_stats) => {
+                        tracing::info!("Download complete");
+                        break;
+                    }
+                    iroh_blobs::api::remote::GetProgressItem::Error(cause) => {
+                        return Err(anyhow::anyhow!("Download failed: {:?}", cause));
+                    }
+                }
+            }
         } else {
             tracing::info!("Collection found locally");
         }
