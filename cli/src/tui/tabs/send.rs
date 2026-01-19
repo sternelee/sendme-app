@@ -137,9 +137,9 @@ fn render_success_view(f: &mut Frame, app: &App, area: Rect) {
         .direction(Direction::Vertical)
         .constraints(
             [
-                Constraint::Length(3),
+                Constraint::Length(2), // Reduced from 3
                 Constraint::Min(0),
-                Constraint::Length(3),
+                Constraint::Length(2), // Reduced from 3
             ]
             .as_ref(),
         )
@@ -186,19 +186,16 @@ fn render_success_view(f: &mut Frame, app: &App, area: Rect) {
 
     // Main content area - ticket first, then QR code
     let mut all_lines = vec![
-        Line::from(""),
         Line::from(vec![Span::styled(
             format!("File: {}", path),
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         )]),
-        Line::from(""),
         Line::from(vec![Span::styled(
             "Ticket:",
             Style::default().fg(Color::Yellow),
         )]),
-        Line::from(""),
     ];
 
     // Split ticket into multiple lines if too long
@@ -213,12 +210,10 @@ fn render_success_view(f: &mut Frame, app: &App, area: Rect) {
 
     // Add separator and QR code
     all_lines.push(Line::from(""));
-    all_lines.push(Line::from(""));
     all_lines.push(Line::from(vec![Span::styled(
         "QR Code:",
         Style::default().fg(Color::Yellow),
     )]));
-    all_lines.push(Line::from(""));
 
     // Add QR code lines
     for line in qr_text.lines() {
@@ -260,9 +255,9 @@ fn render_success_view(f: &mut Frame, app: &App, area: Rect) {
 
 /// Generate a string representation of a QR code for the given ticket.
 fn generate_qr_string(ticket: &str) -> String {
-    use fast_qr::QRBuilder;
+    use fast_qr::{QRBuilder, ECL};
 
-    match QRBuilder::new(ticket).build() {
+    match QRBuilder::new(ticket).ecl(ECL::M).build() {
         Ok(qr) => qr.to_str(),
         Err(_) => "[QR Code Error]".to_string(),
     }

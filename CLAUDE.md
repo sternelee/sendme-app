@@ -57,6 +57,9 @@ iroh-sendme/
 │   ├── src/          # Vue frontend
 │   ├── src-tauri/    # Rust backend (Tauri commands)
 │   └── package.json  # Frontend dependencies
+├── tauri-plugin-mobile-file-picker/  # Custom Tauri plugin for mobile file picking
+│   ├── src/          # Plugin implementation (desktop/mobile)
+│   └── examples/     # Example usage
 └── browser/      # WebAssembly browser bindings
     ├── src/          # Rust WASM bindings
     ├── public/       # Web demo
@@ -156,6 +159,7 @@ Registered Tauri Plugins:
 - `tauri_plugin_os` - Cross-platform OS info (hostname, device model, etc.)
 - `tauri_plugin_fs` - Filesystem access
 - `tauri_plugin_http` - HTTP requests
+- `mobile-file-picker` - **Custom plugin** for unified file/directory picking across desktop/mobile
 - `tauri_plugin_barcode_scanner` - QR code scanning (mobile, commented out)
 - `tauri_plugin_sharesheet` - Native share sheets (mobile, commented out)
 
@@ -349,3 +353,11 @@ cd app
 pnpm run tauri android build  # Build Android APK
 pnpm run tauri ios build      # Build iOS app
 ```
+
+### Custom Mobile File Picker Plugin
+
+The `tauri-plugin-mobile-file-picker` is a custom workspace member that provides unified file/directory picking:
+
+- **Desktop**: Uses `tauri_plugin_dialog` APIs
+- **Mobile**: Uses platform-native file pickers
+- Commands: `pick_file`, `pick_directory`, `ping`

@@ -200,8 +200,8 @@ fn render_transfer_detail(f: &mut Frame, app: &App, area: Rect, transfer_id: &st
         }
     };
 
-    // Create a centered popup
-    let popup_area = centered_popup_area(area, 70, 80);
+    // Create a centered popup with maximum height for QR code
+    let popup_area = centered_popup_area(area, 70, 94);
 
     // Clear the popup area
     f.render_widget(Clear, popup_area);
@@ -210,9 +210,9 @@ fn render_transfer_detail(f: &mut Frame, app: &App, area: Rect, transfer_id: &st
         .direction(Direction::Vertical)
         .constraints(
             [
-                Constraint::Length(3),
-                Constraint::Min(0),
-                Constraint::Length(3),
+                Constraint::Length(2), // Title
+                Constraint::Min(0),    // Content (takes all remaining space)
+                Constraint::Length(3), // Footer
             ]
             .as_ref(),
         )
@@ -240,17 +240,14 @@ fn render_transfer_detail(f: &mut Frame, app: &App, area: Rect, transfer_id: &st
 
     // Main content area - ticket first, then QR code
     let mut all_lines = vec![
-        Line::from(""),
         Line::from(vec![Span::styled(
             format!("Status: {}", transfer.status),
             Style::default().fg(Color::Yellow),
         )]),
-        Line::from(""),
         Line::from(vec![Span::styled(
             "Ticket:",
             Style::default().fg(Color::Yellow),
         )]),
-        Line::from(""),
     ];
 
     // Split ticket into multiple lines if too long
@@ -264,12 +261,10 @@ fn render_transfer_detail(f: &mut Frame, app: &App, area: Rect, transfer_id: &st
 
     // Add separator and QR code
     all_lines.push(Line::from(""));
-    all_lines.push(Line::from(""));
     all_lines.push(Line::from(vec![Span::styled(
         "QR Code:",
         Style::default().fg(Color::Yellow),
     )]));
-    all_lines.push(Line::from(""));
 
     // Add QR code lines
     for line in qr_text.lines() {
@@ -322,9 +317,9 @@ fn centered_popup_area(parent: Rect, percent_width: u16, percent_height: u16) ->
 
 /// Generate a string representation of a QR code for the given ticket.
 fn generate_qr_string(ticket: &str) -> String {
-    use fast_qr::QRBuilder;
+    use fast_qr::{QRBuilder, ECL};
 
-    match QRBuilder::new(ticket).build() {
+    match QRBuilder::new(ticket).ecl(ECL::M).build() {
         Ok(qr) => qr.to_str(),
         Err(_) => "[QR Code Error]".to_string(),
     }

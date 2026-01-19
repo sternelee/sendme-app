@@ -547,8 +547,8 @@ impl App {
     pub fn copy_to_clipboard(&mut self, text: &str) {
         #[cfg(feature = "clipboard")]
         {
-            use crossterm::execute;
             use crossterm::clipboard::CopyToClipboard;
+            use crossterm::execute;
             use std::io::stdout;
             if let Err(e) = execute!(stdout(), CopyToClipboard::to_clipboard_from(text)) {
                 self.send_message = format!("Copy failed: {}", e);
