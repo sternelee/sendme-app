@@ -307,10 +307,10 @@
           "markdownDescription": "Denies the ping command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the mobile-file-picker plugin\n#### This default permission set includes:\n\n- `allow-pick-file`\n- `allow-pick-directory`\n- `allow-ping`",
+          "description": "Default permissions for the mobile-file-picker plugin\n#### This default permission set includes:\n\n- `allow-pick-file`\n- `allow-pick-directory`\n- `allow-read-content`\n- `allow-copy-to-local`\n- `allow-write-content`\n- `allow-release-access`\n- `allow-ping`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the mobile-file-picker plugin\n#### This default permission set includes:\n\n- `allow-pick-file`\n- `allow-pick-directory`\n- `allow-ping`"
+          "markdownDescription": "Default permissions for the mobile-file-picker plugin\n#### This default permission set includes:\n\n- `allow-pick-file`\n- `allow-pick-directory`\n- `allow-read-content`\n- `allow-copy-to-local`\n- `allow-write-content`\n- `allow-release-access`\n- `allow-ping`"
         }
       ]
     }

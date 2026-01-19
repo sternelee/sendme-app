@@ -38,6 +38,10 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(tauri::generate_handler![
             commands::pick_file,
             commands::pick_directory,
+            commands::read_content,
+            commands::copy_to_local,
+            commands::write_content,
+            commands::release_access,
             commands::ping,
         ])
         .setup(|app, api| {

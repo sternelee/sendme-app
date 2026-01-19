@@ -6,6 +6,10 @@ Default permissions for the mobile-file-picker plugin
 
 - `allow-pick-file`
 - `allow-pick-directory`
+- `allow-read-content`
+- `allow-copy-to-local`
+- `allow-write-content`
+- `allow-release-access`
 - `allow-ping`
 
 ## Permission Table
