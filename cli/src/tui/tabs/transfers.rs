@@ -291,11 +291,20 @@ fn render_transfer_detail(f: &mut Frame, app: &App, area: Rect, transfer_id: &st
     f.render_widget(qr_paragraph, chunks[1]);
 
     // Footer with instructions
-    let footer = Paragraph::new(vec![Line::from(vec![Span::styled(
-        "Press [ESC] to return to transfers list",
+    let mut footer_lines = vec![Line::from(vec![Span::styled(
+        "[C] Copy ticket | [ESC] Return to transfers list",
         Style::default().fg(Color::Yellow),
-    )])])
-    .alignment(Alignment::Center);
+    )])];
+
+    // Show clipboard message if available
+    if app.has_clipboard_message() {
+        footer_lines.push(Line::from(vec![Span::styled(
+            app.clipboard_message(),
+            Style::default().fg(Color::Green),
+        )]));
+    }
+
+    let footer = Paragraph::new(footer_lines).alignment(Alignment::Center);
 
     f.render_widget(footer, chunks[2]);
 }
