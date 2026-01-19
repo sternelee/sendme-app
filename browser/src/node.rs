@@ -173,22 +173,23 @@ impl SendmeNode {
     /// Wait for the endpoint to be ready with addresses
     pub async fn wait_for_ready(&self, duration_ms: u64) -> Result<bool> {
         let endpoint = self.router.endpoint();
-        let start = std::time::Instant::now();
-        let timeout = std::time::Duration::from_millis(duration_ms);
 
-        loop {
+        // Use a counter-based approach instead of wall-clock time for WASM compatibility
+        let max_iterations = (duration_ms / 100) as usize; // Check every 100ms
+
+        for _ in 0..max_iterations {
             let addr = endpoint.addr();
             if addr.relay_urls().next().is_some() || addr.ip_addrs().next().is_some() {
                 return Ok(true);
             }
 
-            if start.elapsed() > timeout {
-                return Ok(false);
-            }
-
             // Sleep using JavaScript setTimeout (WASM-compatible)
             sleep_ms(100).await?;
         }
+
+        // One final check
+        let addr = endpoint.addr();
+        Ok(addr.relay_urls().next().is_some() || addr.ip_addrs().next().is_some())
     }
 }
 
