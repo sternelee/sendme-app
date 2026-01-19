@@ -12,6 +12,10 @@ The browser now uses `BlobFormat::HashSeq` (Collection format) instead of `BlobF
 - ✅ Browser → Browser transfers (still works)
 - ✅ Filename preservation across all transfers
 
+**Recent Fixes**:
+- ✅ Fixed WASM time panic by replacing `std::time::Instant` with iteration-based timeout
+- ✅ All WASM-incompatible APIs removed
+
 ## Build & Run
 
 ```bash
