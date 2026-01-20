@@ -6,7 +6,6 @@ edition = "2021"
 # Exclude this crate from the parent workspace to avoid WASM-incompatible dependencies
 [workspace]
 
-
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -23,7 +22,7 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tracing-subscriber-wasm = "0.1.0"
 wasm-bindgen = "=0.2.105"
-wasm-bindgen-futures = "0.4"
+wasm-bindgen-futures = "0.4.4"
 
 [dependencies.web-sys]
 version = "0.3"
