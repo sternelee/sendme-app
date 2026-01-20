@@ -1,10 +1,12 @@
 [workspace]
-members = ["lib", "cli", "browser-lib", "app/src-tauri", "tauri-plugin-mobile-file-picker"]
+members = ["lib", "cli", "app/src-tauri", "tauri-plugin-mobile-file-picker"]
 resolver = "2"
 
-# Note: browser crate is excluded from workspace because it requires WASM-specific
-# dependency configuration that conflicts with native builds. Build it separately with:
-#   cd browser && export CC=/opt/homebrew/opt/llvm/bin/clang && cargo build --target=wasm32-unknown-unknown
+# Note: browser-lib crate is a separate workspace to avoid WASM-incompatible
+# dependencies. Build it separately with:
+#   cd browser-lib && cargo build --target=wasm32-unknown-unknown
+# Or from the browser demo:
+#   cd browser && pnpm run build
 
 [workspace.package]
 version = "0.31.0"
