@@ -180,8 +180,23 @@ async fn copy_files_to_content_uri(
     content_uri: &str,
     collection: &iroh_blobs::format::collection::Collection,
 ) -> anyhow::Result<()> {
+    use jni::objects::{JObject, JValue};
+    use ndk_context::android_context;
+
     log_info!("Starting copy to content URI: {}", content_uri);
     log_info!("Files to copy: {}", collection.len());
+
+    // Get JNI environment properly
+    let ctx = android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
+        .map_err(|e| anyhow::anyhow!("Failed to get JavaVM: {:?}", e))?;
+    let mut env = vm
+        .attach_current_thread()
+        .map_err(|e| anyhow::anyhow!("Failed to attach to JVM: {:?}", e))?;
+
+    // Get the activity context for ContentResolver access
+    let activity_raw = ctx.context() as jni::sys::jobject;
+    let activity = unsafe { JObject::from_raw(activity_raw) };
 
     for (name, _hash) in collection.iter() {
         // Read file from temp_dir
@@ -195,68 +210,53 @@ async fn copy_files_to_content_uri(
 
         log_info!("Writing {} ({} bytes) to content URI", name, content.len());
 
-        // Use JNI to write the file to the content URI
-        #[cfg(target_os = "android")]
-        unsafe {
-            use jni::objects::{JObject, JValue};
-            use ndk_context::android_context;
+        // Convert content to Java byte array
+        let byte_array = env
+            .byte_array_from_slice(&content)
+            .map_err(|e| anyhow::anyhow!("Failed to create byte array: {:?}", e))?;
 
-            let android_ctx = android_context();
-            let vm = android_ctx.vm();
+        // Call Java method to write file
+        let class_name = "com/sendme/app/FileUtils";
+        let method_name = "writeFileToContentUri";
 
-            // Get JNI env
-            let mut env = jni::JNIEnv::from_raw(vm as *mut _)
-                .map_err(|e| anyhow::anyhow!("Failed to get JNI env: {:?}", e))?;
+        let class = env
+            .find_class(class_name)
+            .map_err(|e| anyhow::anyhow!("Failed to find class {}: {:?}", class_name, e))?;
 
-            // Convert content to Java byte array
-            let byte_array = env
-                .byte_array_from_slice(&content)
-                .map_err(|e| anyhow::anyhow!("Failed to create byte array: {:?}", e))?;
+        // Create JObject wrappers
+        let dir_uri_jstring = env
+            .new_string(content_uri)
+            .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?;
+        let file_name_jstring = env
+            .new_string(name)
+            .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?;
 
-            // Call Java method to write file
-            let class_name = "com/sendme/app/FileUtils";
-            let method_name = "writeFileToContentUri";
+        // Call static method with context parameter
+        // Updated signature: (Context, String, String, byte[]) -> boolean
+        let result = env
+            .call_static_method(
+                class,
+                method_name,
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;[B)Z",
+                &[
+                    JValue::Object(&activity),
+                    JValue::Object(&JObject::from(dir_uri_jstring)),
+                    JValue::Object(&JObject::from(file_name_jstring)),
+                    JValue::Object(&JObject::from(byte_array)),
+                ],
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to call method: {:?}", e))?;
 
-            let class = env
-                .find_class(class_name)
-                .map_err(|e| anyhow::anyhow!("Failed to find class {}: {:?}", class_name, e))?;
+        // Extract the boolean result
+        let success = result
+            .z()
+            .map_err(|e| anyhow::anyhow!("Failed to extract boolean: {:?}", e))?;
 
-            // Create JObject wrappers
-            let dir_uri_jobject = JObject::from(
-                env.new_string(content_uri)
-                    .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?,
-            );
-            let file_name_jobject = JObject::from(
-                env.new_string(name)
-                    .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?,
-            );
-            let byte_array_jobject = JObject::from(byte_array);
-
-            // Call using call_static_method which handles types
-            let result = env
-                .call_static_method(
-                    class,
-                    method_name,
-                    "(Ljava/lang/String;Ljava/lang/String;[B)Z",
-                    &[
-                        JValue::Object(&dir_uri_jobject),
-                        JValue::Object(&file_name_jobject),
-                        JValue::Object(&byte_array_jobject),
-                    ],
-                )
-                .map_err(|e| anyhow::anyhow!("Failed to call method: {:?}", e))?;
-
-            // result is JValue, need to extract the boolean
-            let success = result
-                .z()
-                .map_err(|e| anyhow::anyhow!("Failed to extract boolean: {:?}", e))?;
-
-            if !success {
-                anyhow::bail!("Failed to write file {} to content URI", name);
-            }
-
-            log_info!("✅ Copied {} to content URI", name);
+        if !success {
+            anyhow::bail!("Failed to write file {} to content URI", name);
         }
+
+        log_info!("✅ Copied {} to content URI", name);
 
         // Clean up the temp file
         std::fs::remove_file(&source_path).ok();

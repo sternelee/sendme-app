@@ -1,13 +1,10 @@
 package com.sendme.app
 
-import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
-import android.os.Environment
 import android.provider.DocumentsContract
 import android.util.Log
-import java.io.File
-import java.io.FileOutputStream
+import androidx.documentfile.provider.DocumentFile
 
 private const val TAG = "FileUtils"
 
@@ -15,130 +12,108 @@ object FileUtils {
     /**
      * Write file data to a content URI directory.
      *
+     * @param context The Android context (activity)
      * @param dirUri The directory URI (tree URI) from the file picker
      * @param fileName The name of the file to create
      * @param data The file data as a byte array
      * @return true if successful, false otherwise
      */
     @JvmStatic
-    fun writeFileToContentUri(dirUri: String, fileName: String, data: ByteArray): Boolean {
+    fun writeFileToContentUri(context: Context, dirUri: String, fileName: String, data: ByteArray): Boolean {
         return try {
-            val context = getContext()
             val contentResolver = context.contentResolver
 
             // Parse the directory tree URI
             val treeUri = Uri.parse(dirUri)
 
             Log.d(TAG, "Writing file: $fileName to tree URI: $dirUri")
+            Log.d(TAG, "Data size: ${data.size} bytes")
 
-            // Create the document URI for the new file
-            // For tree URIs, we need to use DocumentsContract API
-            val documentUri = createDocumentUri(treeUri, fileName)
-
-            Log.d(TAG, "Created document URI: $documentUri")
-
-            // Create the document
-            val contentValues = ContentValues().apply {
-                put(DocumentsContract.Document.COLUMN_DISPLAY_NAME, fileName)
-                put(DocumentsContract.Document.COLUMN_MIME_TYPE, getMimeType(fileName))
+            // Use DocumentFile API for reliable tree URI handling
+            val documentTree = DocumentFile.fromTreeUri(context, treeUri)
+            if (documentTree == null) {
+                Log.e(TAG, "Failed to get DocumentFile from tree URI: $dirUri")
+                return false
             }
 
-            // Try to create the document
-            val createdUri = contentResolver.insert(documentUri, contentValues)
+            Log.d(TAG, "DocumentTree name: ${documentTree.name}, canWrite: ${documentTree.canWrite()}")
 
-            if (createdUri == null) {
-                Log.e(TAG, "Failed to create document: $documentUri")
-                // Fallback: try using DocumentsContract.createDocument
-                val altUri = DocumentsContract.createDocument(
-                    contentResolver,
-                    treeUri,
-                    DocumentsContract.Document.MIME_TYPE_DIR,
-                    fileName
-                )
-
-                if (altUri != null) {
-                    Log.d(TAG, "Created document using createDocument: $altUri")
-                    writeToFile(contentResolver, altUri, data)
-                } else {
-                    Log.e(TAG, "Failed to create document using createDocument")
-                    false
-                }
-            } else {
-                Log.d(TAG, "Created document: $createdUri")
-                writeToFile(contentResolver, createdUri, data)
+            // Check if file already exists, if so delete it
+            val existingFile = documentTree.findFile(fileName)
+            if (existingFile != null) {
+                Log.d(TAG, "File already exists, deleting: $fileName")
+                existingFile.delete()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error writing file to content URI", e)
-            false
-        }
-    }
 
-    private fun createDocumentUri(treeUri: Uri, fileName: String): Uri {
-        // Build the document URI from tree URI
-        // tree URI: content://com.android.externalstorage.documents/tree/primary%3ADownload%2Fsendme
-        // document URI: content://com.android.externalstorage.documents/tree/primary%3ADownload%2Fsendme/document/primary%3ADownload%2Fsendme%2Ffilename.jpg
+            // Determine MIME type
+            val mimeType = getMimeType(fileName)
+            Log.d(TAG, "Creating file with MIME type: $mimeType")
 
-        val treePath = treeUri.lastPathSegment ?: return treeUri
+            // Create new file in the directory
+            val newFile = documentTree.createFile(mimeType, fileName)
+            if (newFile == null) {
+                Log.e(TAG, "Failed to create file: $fileName in ${documentTree.uri}")
+                return false
+            }
 
-        // Decode the tree path and encode the filename
-        val decodedTreePath = java.net.URLDecoder.decode(treePath, "UTF-8")
-        val encodedFileName = java.net.URLEncoder.encode(fileName, "UTF-8")
+            Log.d(TAG, "Created file: ${newFile.uri}")
 
-        val documentPath = "$decodedTreePath/$encodedFileName"
-
-        return DocumentsContract.buildDocumentUriUsingTree(treeUri, documentPath)
-    }
-
-    private fun writeToFile(contentResolver: android.content.ContentResolver, uri: Uri, data: ByteArray): Boolean {
-        return try {
-            contentResolver.openOutputStream(uri)?.use { outputStream ->
+            // Write data to the file
+            contentResolver.openOutputStream(newFile.uri)?.use { outputStream ->
                 outputStream.write(data)
                 outputStream.flush()
-                Log.d(TAG, "Successfully wrote ${data.size} bytes to $uri")
+                Log.d(TAG, "Successfully wrote ${data.size} bytes to ${newFile.uri}")
                 true
             } ?: run {
-                Log.e(TAG, "Failed to open output stream for $uri")
+                Log.e(TAG, "Failed to open output stream for ${newFile.uri}")
                 false
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error writing to output stream", e)
+            Log.e(TAG, "Error writing file to content URI", e)
+            e.printStackTrace()
             false
         }
     }
 
     private fun getMimeType(fileName: String): String {
-        val extension = fileName.substringAfterLast('.', "")
-        return when (extension.lowercase()) {
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        return when (extension) {
             "jpg", "jpeg" -> "image/jpeg"
             "png" -> "image/png"
             "gif" -> "image/gif"
             "webp" -> "image/webp"
+            "bmp" -> "image/bmp"
+            "svg" -> "image/svg+xml"
             "pdf" -> "application/pdf"
             "zip" -> "application/zip"
+            "7z" -> "application/x-7z-compressed"
+            "rar" -> "application/vnd.rar"
+            "tar" -> "application/x-tar"
+            "gz", "gzip" -> "application/gzip"
             "txt" -> "text/plain"
+            "html", "htm" -> "text/html"
+            "css" -> "text/css"
+            "js" -> "application/javascript"
+            "json" -> "application/json"
+            "xml" -> "application/xml"
             "mp4" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            "avi" -> "video/x-msvideo"
+            "mov" -> "video/quicktime"
+            "webm" -> "video/webm"
             "mp3" -> "audio/mpeg"
+            "wav" -> "audio/wav"
+            "ogg" -> "audio/ogg"
+            "flac" -> "audio/flac"
+            "m4a" -> "audio/mp4"
+            "doc" -> "application/msword"
+            "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "xls" -> "application/vnd.ms-excel"
+            "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "ppt" -> "application/vnd.ms-powerpoint"
+            "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            "apk" -> "application/vnd.android.package-archive"
             else -> "application/octet-stream"
-        }
-    }
-
-    private fun getContext(): Context {
-        // Try to get the context from the current activity
-        val activity = getCurrentActivity()
-        return activity ?: throw IllegalStateException("No activity available")
-    }
-
-    private fun getCurrentActivity(): android.app.Activity? {
-        // This is a simplified approach - in practice you'd get this from Tauri
-        return try {
-            Class.forName("android.app.ActivityThread")
-                .getMethod("currentActivityThread")
-                .invoke(null)
-                .let { it.javaClass.getMethod("getActivities").invoke(it) as Array<android.app.Activity> }
-                .firstOrNull()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get current activity", e)
-            null
         }
     }
 }
