@@ -5,6 +5,7 @@ import { useLocalStorage } from "@vueuse/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { platform } from "@tauri-apps/plugin-os";
+import { scan, Format, checkPermissions, requestPermissions } from "@tauri-apps/plugin-barcode-scanner";
 import QRCode from "qrcode";
 import {
   send_file,
@@ -13,7 +14,6 @@ import {
   get_transfers,
   clear_transfers,
   open_received_file,
-  scan_barcode,
   pick_directory,
 } from "@/lib/commands";
 import Button from "@/components/ui/button/Button.vue";
@@ -284,8 +284,22 @@ async function handleCancelReceive() {
 
 async function handleScanBarcode() {
   try {
-    const result = await scan_barcode();
-    receiveTicket.value = result;
+    // Check and request camera permission before scanning
+    let permissionStatus = await checkPermissions();
+    if (permissionStatus !== 'granted') {
+      permissionStatus = await requestPermissions();
+    }
+
+    if (permissionStatus !== 'granted') {
+      toast.error('Camera permission is required to scan QR codes');
+      return;
+    }
+
+    // Use the barcode scanner plugin directly
+    const result = await scan({ formats: [Format.QRCode] });
+    if (result && result.content) {
+      receiveTicket.value = result.content;
+    }
   } catch (e) {
     console.error("Scan failed:", e);
     toast.error(`Scan failed: ${e}`);

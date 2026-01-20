@@ -24,16 +24,8 @@ tracing = "0.1.40"
 walkdir = "2.4.0"
 data-encoding = "2.6.0"
 hex = "0.4.3"
-irpc = "0.11.0"
 derive_more = { version = "2.0.1", features = ["display", "from_str"] }
-socket2 = { version = "0.5", features = ["all"] }
 uuid = { version = "1.0", features = ["v4"] }
-axum = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
-local-ip-address = "0.6"
-hostname = "0.4"
-chrono = { version = "0.4", features = ["serde"] }
-reqwest = { version = "0.12", features = ["json"] }
 
 [dev-dependencies]
 tempfile = "3.8.1"

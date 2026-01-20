@@ -123,13 +123,19 @@ export async function list_received_files(): Promise<string[]> {
 /**
  * Scan a barcode/QR code using the device camera
  *
- * Opens the camera scanner and returns the scanned text content.
- * Only available on mobile platforms (Android/iOS).
+ * @deprecated Use `scan` from `@tauri-apps/plugin-barcode-scanner` directly instead.
+ * This function is no longer implemented in the Rust backend.
  *
- * @returns The scanned text content (typically a sendme ticket)
+ * Example:
+ * ```typescript
+ * import { scan, Format } from '@tauri-apps/plugin-barcode-scanner';
+ * const result = await scan({ formats: [Format.QRCode] });
+ * ```
  */
 export async function scan_barcode(): Promise<string> {
-  return await invoke("scan_barcode");
+  throw new Error(
+    "scan_barcode is deprecated. Use `scan` from `@tauri-apps/plugin-barcode-scanner` directly."
+  );
 }
 
 /**

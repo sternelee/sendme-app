@@ -361,7 +361,6 @@ pub fn run() {
             get_default_download_folder,
             open_received_file,
             list_received_files,
-            scan_barcode,
             pick_file,
             pick_directory
         ])
@@ -1499,41 +1498,6 @@ async fn list_received_files(app: AppHandle) -> Result<Vec<String>, String> {
         log_info!("Found {} files", files.len());
         Ok(files)
     }
-}
-
-/// Scan a barcode/QR code using the device camera
-///
-/// This function uses the tauri-plugin-barcode-scanner to open the camera
-/// and scan a QR code or barcode. Returns the scanned text content.
-///
-/// Only available on mobile platforms (Android/iOS).
-#[tauri::command]
-#[cfg(mobile)]
-async fn scan_barcode(app: AppHandle) -> Result<String, String> {
-    log_info!("═══════════════════════════════════════════════════");
-    log_info!("📷 SCAN_BARCODE");
-    log_info!("═══════════════════════════════════════════════════");
-
-    log_info!("Opening camera scanner...");
-
-    // Invoke the scan command from the barcode scanner plugin
-    // The plugin expects formats as strings
-    use tauri_plugin_barcode_scanner::BarcodeScannerExt;
-
-    // Note: The barcode scanner plugin doesn't export the scan function directly
-    // For now, we'll return an error indicating this needs to be implemented
-    // TODO: Implement proper barcode scanning by invoking the native plugin command
-    Err("Barcode scanning needs to be implemented through the plugin command system".to_string())
-}
-
-/// Scan a barcode/QR code (desktop stub)
-///
-/// On desktop platforms, this function returns an error since barcode
-/// scanning is only supported on mobile platforms.
-#[tauri::command]
-#[cfg(not(mobile))]
-async fn scan_barcode() -> Result<String, String> {
-    Err("Barcode scanning is only available on mobile platforms (Android/iOS)".to_string())
 }
 
 /// Pick a file using the native mobile file picker

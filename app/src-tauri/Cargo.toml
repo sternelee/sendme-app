@@ -17,7 +17,6 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 log = "0.4"
 uuid = { version = "1", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
@@ -25,10 +24,9 @@ tauri-plugin-os = "2"
 tauri-plugin-http = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-sharesheet = { git = "https://github.com/rittme/tauri-plugin-sharesheet" }
-netdev = "0.31"
 tauri-plugin-opener = "2"
 anyhow = "1"
-iroh-blobs = "0.97"
+iroh-blobs.workspace = true
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -40,5 +38,5 @@ tauri-plugin-mobile-file-picker = { path = "../../tauri-plugin-mobile-file-picke
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
 ndk-context = "0.1"
-android_logger = "0.14"
+android_logger = "0.15"
 urlencoding = "2"
