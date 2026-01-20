@@ -180,11 +180,35 @@ async fn copy_files_to_content_uri(
     content_uri: &str,
     collection: &iroh_blobs::format::collection::Collection,
 ) -> anyhow::Result<()> {
-    use jni::objects::{JObject, JValue};
-    use ndk_context::android_context;
-
     log_info!("Starting copy to content URI: {}", content_uri);
     log_info!("Files to copy: {}", collection.len());
+
+    // Collect file info to copy
+    let files_to_copy: Vec<(String, std::path::PathBuf)> = collection
+        .iter()
+        .map(|(name, _hash)| (name.to_string(), temp_dir.join(name)))
+        .collect();
+
+    let content_uri = content_uri.to_string();
+
+    // Run JNI operations in a blocking thread to avoid issues with async runtime
+    let result = tokio::task::spawn_blocking(move || {
+        copy_files_to_content_uri_sync(&content_uri, &files_to_copy)
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("Task join error: {:?}", e))??;
+
+    Ok(result)
+}
+
+/// Synchronous version of copy_files_to_content_uri for use in spawn_blocking
+#[cfg(target_os = "android")]
+fn copy_files_to_content_uri_sync(
+    content_uri: &str,
+    files_to_copy: &[(String, std::path::PathBuf)],
+) -> anyhow::Result<()> {
+    use jni::objects::{JObject, JValue};
+    use ndk_context::android_context;
 
     // Get JNI environment properly
     let ctx = android_context();
@@ -198,68 +222,78 @@ async fn copy_files_to_content_uri(
     let activity_raw = ctx.context() as jni::sys::jobject;
     let activity = unsafe { JObject::from_raw(activity_raw) };
 
-    for (name, _hash) in collection.iter() {
-        // Read file from temp_dir
-        let source_path = temp_dir.join(name);
+    // Find the FileUtils class once
+    let class = env
+        .find_class("com/sendme/app/FileUtils")
+        .map_err(|e| anyhow::anyhow!("Failed to find FileUtils class: {:?}", e))?;
+
+    for (name, source_path) in files_to_copy {
         log_info!("Reading file from: {:?}", source_path);
 
-        let content = std::fs::read(&source_path).map_err(|e| {
+        let content = std::fs::read(source_path).map_err(|e| {
             log_error!("Failed to read file {:?}: {}", source_path, e);
             anyhow::anyhow!("Failed to read file {:?}: {}", source_path, e)
         })?;
 
         log_info!("Writing {} ({} bytes) to content URI", name, content.len());
 
-        // Convert content to Java byte array
-        let byte_array = env
-            .byte_array_from_slice(&content)
-            .map_err(|e| anyhow::anyhow!("Failed to create byte array: {:?}", e))?;
+        // Push a local frame to manage JNI local references
+        env.push_local_frame(16)
+            .map_err(|e| anyhow::anyhow!("Failed to push local frame: {:?}", e))?;
 
-        // Call Java method to write file
-        let class_name = "com/sendme/app/FileUtils";
-        let method_name = "writeFileToContentUri";
+        let result = (|| -> anyhow::Result<()> {
+            // Convert content to Java byte array
+            let byte_array = env
+                .byte_array_from_slice(&content)
+                .map_err(|e| anyhow::anyhow!("Failed to create byte array: {:?}", e))?;
 
-        let class = env
-            .find_class(class_name)
-            .map_err(|e| anyhow::anyhow!("Failed to find class {}: {:?}", class_name, e))?;
+            // Create JObject wrappers
+            let dir_uri_jstring = env
+                .new_string(content_uri)
+                .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?;
+            let file_name_jstring = env
+                .new_string(name)
+                .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?;
 
-        // Create JObject wrappers
-        let dir_uri_jstring = env
-            .new_string(content_uri)
-            .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?;
-        let file_name_jstring = env
-            .new_string(name)
-            .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?;
+            // Call static method with context parameter
+            let call_result = env
+                .call_static_method(
+                    &class,
+                    "writeFileToContentUri",
+                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;[B)Z",
+                    &[
+                        JValue::Object(&activity),
+                        JValue::Object(&JObject::from(dir_uri_jstring)),
+                        JValue::Object(&JObject::from(file_name_jstring)),
+                        JValue::Object(&JObject::from(byte_array)),
+                    ],
+                )
+                .map_err(|e| anyhow::anyhow!("Failed to call writeFileToContentUri: {:?}", e))?;
 
-        // Call static method with context parameter
-        // Updated signature: (Context, String, String, byte[]) -> boolean
-        let result = env
-            .call_static_method(
-                class,
-                method_name,
-                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;[B)Z",
-                &[
-                    JValue::Object(&activity),
-                    JValue::Object(&JObject::from(dir_uri_jstring)),
-                    JValue::Object(&JObject::from(file_name_jstring)),
-                    JValue::Object(&JObject::from(byte_array)),
-                ],
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to call method: {:?}", e))?;
+            // Extract the boolean result
+            let success = call_result
+                .z()
+                .map_err(|e| anyhow::anyhow!("Failed to extract boolean: {:?}", e))?;
 
-        // Extract the boolean result
-        let success = result
-            .z()
-            .map_err(|e| anyhow::anyhow!("Failed to extract boolean: {:?}", e))?;
+            if !success {
+                anyhow::bail!("Failed to write file {} to content URI", name);
+            }
 
-        if !success {
-            anyhow::bail!("Failed to write file {} to content URI", name);
+            log_info!("✅ Copied {} to content URI", name);
+            Ok(())
+        })();
+
+        // Pop the local frame (passing null since we don't need to return an object)
+        unsafe {
+            env.pop_local_frame(&JObject::null())
+                .map_err(|e| anyhow::anyhow!("Failed to pop local frame: {:?}", e))?;
         }
 
-        log_info!("✅ Copied {} to content URI", name);
+        // Propagate any error from inside the frame
+        result?;
 
         // Clean up the temp file
-        std::fs::remove_file(&source_path).ok();
+        std::fs::remove_file(source_path).ok();
     }
 
     Ok(())
