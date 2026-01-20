@@ -75,27 +75,72 @@ const getFileIcon = (filename: string) => {
 const detectDevicePlatform = (device: { display_name: string }) => {
   const name = device.display_name.toLowerCase();
 
-  if (name.includes("iphone") || name.includes("ipad") || name.includes("ipod")) {
-    return { icon: Smartphone, label: "iOS", colorClass: "text-slate-700 dark:text-slate-300" };
+  if (
+    name.includes("iphone") ||
+    name.includes("ipad") ||
+    name.includes("ipod")
+  ) {
+    return {
+      icon: Smartphone,
+      label: "iOS",
+      colorClass: "text-slate-700 dark:text-slate-300",
+    };
   }
 
-  if (name.includes("macbook") || name.includes("imac") || name.includes("mac mini") || name.includes(".local")) {
-    return { icon: Laptop, label: "macOS", colorClass: "text-slate-700 dark:text-slate-300" };
+  if (
+    name.includes("macbook") ||
+    name.includes("imac") ||
+    name.includes("mac mini") ||
+    name.includes(".local")
+  ) {
+    return {
+      icon: Laptop,
+      label: "macOS",
+      colorClass: "text-slate-700 dark:text-slate-300",
+    };
   }
 
-  if (name.includes("android") || name.includes("pixel") || name.includes("samsung")) {
-    return { icon: Smartphone, label: "Android", colorClass: "text-green-600 dark:text-green-500" };
+  if (
+    name.includes("android") ||
+    name.includes("pixel") ||
+    name.includes("samsung")
+  ) {
+    return {
+      icon: Smartphone,
+      label: "Android",
+      colorClass: "text-green-600 dark:text-green-500",
+    };
   }
 
-  if (name.includes("windows") || name.includes("desktop-") || name.includes("pc-")) {
-    return { icon: Laptop, label: "Windows", colorClass: "text-blue-600 dark:text-blue-500" };
+  if (
+    name.includes("windows") ||
+    name.includes("desktop-") ||
+    name.includes("pc-")
+  ) {
+    return {
+      icon: Laptop,
+      label: "Windows",
+      colorClass: "text-blue-600 dark:text-blue-500",
+    };
   }
 
-  if (name.includes("linux") || name.includes("ubuntu") || name.includes("debian")) {
-    return { icon: Laptop, label: "Linux", colorClass: "text-orange-600 dark:text-orange-500" };
+  if (
+    name.includes("linux") ||
+    name.includes("ubuntu") ||
+    name.includes("debian")
+  ) {
+    return {
+      icon: Laptop,
+      label: "Linux",
+      colorClass: "text-orange-600 dark:text-orange-500",
+    };
   }
 
-  return { icon: Monitor, label: "Device", colorClass: "text-slate-600 dark:text-slate-400" };
+  return {
+    icon: Monitor,
+    label: "Device",
+    colorClass: "text-slate-600 dark:text-slate-400",
+  };
 };
 
 const handleAccept = async () => {
@@ -124,29 +169,43 @@ const handleClose = () => {
     <DialogContent class="sm:max-w-md glass-card rounded-2xl border-white/10">
       <DialogHeader class="text-center">
         <div class="flex items-center justify-center mb-2">
-          <div class="w-12 h-12 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center">
-            <component :is="request ? detectDevicePlatform(request.sender_device).icon : Monitor" class="w-6 h-6" />
+          <div
+            class="w-12 h-12 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center"
+          >
+            <component
+              :is="
+                request
+                  ? detectDevicePlatform(request.sender_device).icon
+                  : Monitor
+              "
+              class="w-6 h-6"
+            />
           </div>
         </div>
-        <DialogTitle class="text-xl font-bold">
-          Incoming Transfer
-        </DialogTitle>
+        <DialogTitle class="text-xl font-bold"> Incoming Transfer </DialogTitle>
         <DialogDescription class="text-sm text-slate-600 dark:text-slate-400">
-          {{ request?.sender_device.display_name || "Unknown device" }} wants to send you files
+          {{ request?.sender_device.display_name || "Unknown device" }} wants to
+          send you files
         </DialogDescription>
       </DialogHeader>
 
       <div v-if="request" class="space-y-4 py-4">
         <!-- Device Info -->
-        <div class="flex items-center gap-3 p-3 bg-black/5 dark:bg-white/5 rounded-xl">
+        <div
+          class="flex items-center gap-3 p-3 bg-black/5 dark:bg-white/5 rounded-xl"
+        >
           <component
             :is="detectDevicePlatform(request.sender_device).icon"
             :class="detectDevicePlatform(request.sender_device).colorClass"
             class="w-5 h-5"
           />
           <div class="flex-1 min-w-0">
-            <div class="font-semibold text-sm truncate">{{ request.sender_device.display_name }}</div>
-            <div class="text-xs text-slate-500">{{ detectDevicePlatform(request.sender_device).label }}</div>
+            <div class="font-semibold text-sm truncate">
+              {{ request.sender_device.display_name }}
+            </div>
+            <div class="text-xs text-slate-500">
+              {{ detectDevicePlatform(request.sender_device).label }}
+            </div>
           </div>
         </div>
 
@@ -154,16 +213,25 @@ const handleClose = () => {
         <div class="space-y-3 p-3 bg-black/5 dark:bg-white/5 rounded-xl">
           <div class="flex items-center justify-between text-sm">
             <span class="text-slate-600 dark:text-slate-400">Files:</span>
-            <span class="font-semibold">{{ request.transfer_info.file_count }}</span>
+            <span class="font-semibold">{{
+              request.transfer_info.file_count
+            }}</span>
           </div>
           <div class="flex items-center justify-between text-sm">
             <span class="text-slate-600 dark:text-slate-400">Total size:</span>
-            <span class="font-semibold">{{ formatFileSize(request.transfer_info.total_size) }}</span>
+            <span class="font-semibold">{{
+              formatFileSize(request.transfer_info.total_size)
+            }}</span>
           </div>
 
           <!-- File List -->
-          <div v-if="request.transfer_info.names.length > 0" class="pt-2 border-t border-white/5">
-            <div class="text-xs text-slate-600 dark:text-slate-400 mb-2">Contents:</div>
+          <div
+            v-if="request.transfer_info.names.length > 0"
+            class="pt-2 border-t border-white/5"
+          >
+            <div class="text-xs text-slate-600 dark:text-slate-400 mb-2">
+              Contents:
+            </div>
             <div class="space-y-1 max-h-32 overflow-y-auto">
               <div
                 v-for="(name, i) in request.transfer_info.names.slice(0, 5)"
@@ -173,7 +241,10 @@ const handleClose = () => {
                 <component :is="getFileIcon(name)" class="w-3 h-3 opacity-50" />
                 <span class="font-mono truncate">{{ name }}</span>
               </div>
-              <div v-if="request.transfer_info.names.length > 5" class="text-xs text-slate-500 pl-5">
+              <div
+                v-if="request.transfer_info.names.length > 5"
+                class="text-xs text-slate-500 pl-5"
+              >
                 +{{ request.transfer_info.names.length - 5 }} more files
               </div>
             </div>
@@ -197,10 +268,14 @@ const handleClose = () => {
           class="flex-1 h-12 rounded-xl bg-primary hover:bg-primary/90"
         >
           <Download v-if="!isAccepting" class="w-4 h-4 mr-2" />
-          <div v-else class="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+          <div
+            v-else
+            class="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent"
+          ></div>
           {{ isAccepting ? "Accepting..." : "Accept" }}
         </Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
 </template>
+
