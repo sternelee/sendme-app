@@ -1,0 +1,338 @@
+name: "Release Sendme CLI and Tauri App"
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build CLI for multiple platforms
+  build-cli:
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - binary_name: sendme-x86_64-unknown-linux-gnu
+            binary_path: target/x86_64-unknown-linux-gnu/release/sendme
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          # macOS builds
+          - binary_name: sendme-x86_64-apple-darwin
+            binary_path: target/x86_64-apple-darwin/release/sendme
+            os: macos-latest
+            target: x86_64-apple-darwin
+          - binary_name: sendme-aarch64-apple-darwin
+            binary_path: target/aarch64-apple-darwin/release/sendme
+            os: macos-latest
+            target: aarch64-apple-darwin
+          # Windows builds
+          - binary_name: sendme-x86_64-pc-windows-msvc.exe
+            binary_path: target/x86_64-pc-windows-msvc/release/sendme.exe
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build CLI
+        run: cargo build -p sendme --release --target ${{ matrix.target }}
+
+      - name: Rename CLI binary
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "${{ matrix.binary_path }}" "sendme.exe"
+          else
+            cp "${{ matrix.binary_path }}" "sendme"
+          fi
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: |
+            sendme
+            sendme.exe
+          retention-days: 7
+          if-no-files-found: error
+
+  # Build Tauri App for desktop platforms
+  build-desktop-app:
+    permissions:
+      contents: write
+    needs: build-cli
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "macos-latest"
+            args: "--target aarch64-apple-darwin"
+            arch: "arm64"
+          - platform: "macos-latest"
+            args: "--target x86_64-apple-darwin"
+            arch: "x64"
+          - platform: "ubuntu-22.04"
+            args: ""
+            arch: "x64"
+          - platform: "windows-latest"
+            args: ""
+            arch: "x64"
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install
+
+      - name: Build frontend
+        working-directory: app
+        run: pnpm build
+
+      - name: Build Tauri app
+        working-directory: app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Sendme ${{ github.ref_name }}"
+          releaseBody: |
+            ## Sendme ${{ github.ref_name }}
+
+            ### 🖥️ Desktop Apps
+            - **macOS**: Download `.dmg` for Intel or Apple Silicon Macs
+            - **Windows**: Download `.msi` installer
+            - **Linux**: Download `.AppImage` or `.deb` package
+
+            ### 💻 CLI Tools
+            - Pre-compiled binaries for multiple platforms are included below
+
+            ### ✨ Features
+            - P2P file transfer with NAT hole punching
+            - Blake3 verified streaming with resumable downloads
+            - Cross-platform support (Desktop, CLI, Mobile)
+            - Local network discovery via mDNS
+
+            ---
+            Full changelog and documentation available in the repository.
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+          args: ${{ matrix.args }}
+
+  # Build Mobile Apps (iOS/Android)
+  build-mobile-app:
+    permissions:
+      contents: write
+    needs: build-cli
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "macos-latest"
+            type: "android"
+          - platform: "macos-latest"
+            type: "ios"
+
+    runs-on: ${{ matrix.platform }}
+    if: ${{ !contains(github.ref, '-test') }} # Skip mobile builds for test releases
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install
+
+      - name: Build frontend
+        working-directory: app
+        run: pnpm build
+
+      - name: Setup Android environment
+        if: matrix.type == 'android'
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android signing
+        if: matrix.type == 'android'
+        run: |
+          cd app/src-tauri/gen/android
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
+          echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
+          base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
+          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
+
+      - name: Setup iOS environment
+        if: matrix.type == 'ios'
+        run: |
+          brew install xcodegen
+          xcode-select --install
+
+      - name: Build mobile app
+        working-directory: app
+        run: pnpm run tauri ${{ matrix.type }} build
+
+      - name: Upload mobile artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-${{ matrix.type }}
+          path: |
+            app/src-tauri/gen/android/**/*.apk
+            app/src-tauri/gen/apple/**/*.ipa
+          retention-days: 7
+          if-no-files-found: warn
+
+  # Finalize release with all artifacts
+  finalize-release:
+    permissions:
+      contents: write
+    needs: [build-cli, build-desktop-app]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get tag name
+        id: get_tag_name
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Download all CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cli-*
+          path: cli-binaries
+          merge-multiple: true
+
+      - name: Download mobile artifacts (if available)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mobile-*
+          path: mobile-apps
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Create release directory
+        run: |
+          mkdir -p release-artifacts
+
+          # Organize CLI binaries
+          cd cli-binaries
+          for binary in sendme*; do
+            if [ -f "$binary" ]; then
+              chmod +x "$binary"
+              mv "$binary" "../release-artifacts/"
+            fi
+          done
+
+          # Add mobile apps if they exist
+          if [ -d "../mobile-apps" ]; then
+            find ../mobile-apps -type f \( -name "*.apk" -o -name "*.ipa" \) -exec cp {} ../release-artifacts/ \;
+          fi
+
+      - name: Create checksums
+        working-directory: release-artifacts
+        run: |
+          sha256sum * > checksums.txt || true
+
+      - name: Upload CLI binaries to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release-artifacts/*
+          fail_on_unmatched_files: false
+
+  # Optional: Build and publish Browser WASM package
+  build-browser-wasm:
+    permissions:
+      contents: write
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        working-directory: browser
+        run: pnpm install
+
+      - name: Build WASM package
+        working-directory: browser
+        run: pnpm run build:release
+
+      - name: Upload WASM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: sendme-browser-wasm
+          path: browser/pkg
+          retention-days: 7

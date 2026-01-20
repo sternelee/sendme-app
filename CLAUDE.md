@@ -47,7 +47,7 @@ pnpm run tauri build      # Build complete desktop app
 
 ## Workspace Structure
 
-This is a Cargo workspace with four members:
+This is a Cargo workspace with five members:
 
 ```
 iroh-sendme/
@@ -57,14 +57,17 @@ iroh-sendme/
 │   ├── src/          # Vue frontend
 │   ├── src-tauri/    # Rust backend (Tauri commands)
 │   └── package.json  # Frontend dependencies
+├── browser-lib/  # WebAssembly library crate (sendme-browser)
+│   └── src/          # Rust WASM bindings
 ├── tauri-plugin-mobile-file-picker/  # Custom Tauri plugin for mobile file picking
 │   ├── src/          # Plugin implementation (desktop/mobile)
 │   └── examples/     # Example usage
-└── browser/      # WebAssembly browser bindings
-    ├── src/          # Rust WASM bindings
-    ├── public/       # Web demo
-    └── package.json  # Build scripts
+└── browser/      # Legacy web demo (deprecated, uses browser-lib)
+    ├── public/       # Web demo HTML
+    └── package.json  # Build scripts for demo
 ```
+
+**Note**: The `browser/` directory is deprecated. The WASM bindings have been extracted to `browser-lib/` for better workspace organization.
 
 ## Architecture
 
@@ -174,11 +177,11 @@ Tauri Commands:
 - **`get_nearby_devices`**: Returns list of discovered nearby devices
 - **`stop_nearby_discovery`**: Stops mDNS discovery
 
-### Browser WASM (`sendme-browser`)
+### Browser WASM Library (`sendme-browser` / `browser-lib`)
 
-The browser crate (`browser/`) provides WebAssembly bindings for in-browser P2P file transfer:
+The `browser-lib` crate provides WebAssembly bindings for in-browser P2P file transfer:
 
-**IMPORTANT**: The browser crate is **excluded from the workspace** to prevent WASM-incompatible dependencies (like `mio`) from being pulled in. It has its own `[workspace]` section in `Cargo.toml`.
+**IMPORTANT**: `browser-lib` is **a workspace member** but has its own `[workspace]` section in `Cargo.toml` to isolate WASM-specific dependencies.
 
 #### Build Requirements
 
@@ -187,9 +190,9 @@ The browser crate (`browser/`) provides WebAssembly bindings for in-browser P2P 
 export CC=/opt/homebrew/opt/llvm/bin/clang
 
 # Build from repository root
-cargo build --target=wasm32-unknown-unknown --manifest-path=browser/Cargo.toml
+cargo build --target=wasm32-unknown-unknown --manifest-path=browser-lib/Cargo.toml
 
-# Or use npm scripts from browser directory
+# Or use npm scripts from browser directory (demo app)
 cd browser
 pnpm run build           # Debug build with wasm-bindgen
 pnpm run build:release   # Release build with wasm-bindgen
@@ -199,20 +202,24 @@ pnpm run serve           # Serve demo locally
 #### Structure
 
 - **`src/lib.rs`**: Main entry point, exports `SendmeNode`
-- **`src/node.rs`**: Core `SendmeNode` implementation using `iroh::Endpoint::builder().bind()`
+- **`src/node.rs`**: Core `SendmeNode` implementation
+  - Uses `iroh::Endpoint::builder().bind()` for WASM-compatible endpoint creation
   - Uses `MemStore` for in-memory blob storage
-  - Creates proper `BlobTicket` with endpoint addressing
-  - Implements P2P fetching via `get_hash_seq_and_sizes`
-  - Uses JavaScript `setTimeout` for WASM-compatible async sleeping
+  - Creates proper `BlobTicket` with `HashSeq` format (Collection) for CLI/App compatibility
+  - Implements P2P fetching via `execute_get()` with stream consumption
+  - Uses JavaScript `setTimeout` for WASM-compatible async sleeping (`sleep_ms()`)
 - **`src/wasm.rs`**: `wasm-bindgen` exports for JavaScript interop
-- **`public/index.html`**: Demo web interface with Send/Receive tabs
+  - `SendmeNodeWasm` wrapper struct with JS-friendly API
+  - Returns `js_sys::Promise` for async operations
+  - Converts between `Uint8Array` and Rust `Bytes`
 
 #### Key Implementation Details
 
-- **Key generation**: Uses `iroh::Endpoint::builder().bind()` which handles key generation internally (WASM-compatible)
-- **No `tokio::time::sleep`**: Uses `web_sys::window().set_timeout()` via `JsFuture` instead
-- **Workspace exclusion**: Has `[workspace]` section to prevent dependency conflicts
-- **No `rand`/`getrandom`**: Removed unused crypto dependencies after switching to `Endpoint::builder().bind()`
+- **Endpoint creation**: Uses `iroh::Endpoint::builder().bind()` which handles key generation internally (WASM-compatible)
+- **No `tokio::time::sleep`**: Uses custom `sleep_ms()` function with `web_sys::window().set_timeout()` via `JsFuture`
+- **Workspace isolation**: Has `[workspace]` section to prevent WASM-incompatible deps (like `mio`) from affecting the main workspace
+- **Collection format**: Uses `BlobFormat::HashSeq` (Collection) to preserve filenames and ensure compatibility with CLI/App
+- **Static discovery**: Uses `StaticProvider` for manual peer discovery via ticket addresses
 
 #### JavaScript API
 
@@ -229,7 +236,8 @@ const ready = await node.wait_for_ready(5000);
 const ticket = await node.import_and_create_ticket(filename, dataArray);
 
 // Receive file (fetch from ticket)
-const data = await node.get(ticketString);
+const result = await node.get(ticketString);
+// result = { filename: string, data: Uint8Array }
 ```
 
 ## Key Data Structures
