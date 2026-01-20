@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+/* Cosmic gradient theme */
+@theme {
+  --color-primary: oklch(0.65 0.25 280);
+  --color-primary-foreground: oklch(0.98 0 0);
+  --color-secondary: oklch(0.85 0.05 280);
+  --color-secondary-foreground: oklch(0.2 0.05 280);
+  --color-background: oklch(0.15 0.05 280);
+  --color-foreground: oklch(0.98 0 0);
+  --color-muted: oklch(0.25 0.05 280);
+  --color-muted-foreground: oklch(0.7 0.02 280);
+  --color-accent: oklch(0.3 0.1 280);
+  --color-accent-foreground: oklch(0.98 0 0);
+  --color-destructive: oklch(0.6 0.2 0);
+  --color-destructive-foreground: oklch(0.98 0 0);
+  --color-border: oklch(0.3 0.05 280);
+  --color-input: oklch(0.25 0.05 280);
+  --color-ring: oklch(0.65 0.25 280);
+  --color-card: oklch(0.2 0.05 280);
+  --color-card-foreground: oklch(0.98 0 0);
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Cosmic glow animation */
+@keyframes glow {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.cosmic-glow {
+  animation: glow 4s ease-in-out infinite;
+}
+
+/* Smooth transitions */
+* {
+  transition-property: color, background-color, border-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid oklch(0.65 0.25 280);
+  outline-offset: 2px;
+}
