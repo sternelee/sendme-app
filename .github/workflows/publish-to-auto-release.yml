@@ -135,11 +135,11 @@ jobs:
         run: pnpm build
 
       - name: Build Tauri app
-        working-directory: app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          directory: app
           tagName: ${{ github.ref_name }}
           releaseName: "Sendme ${{ github.ref_name }}"
           releaseBody: |
