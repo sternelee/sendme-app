@@ -14,6 +14,7 @@ import app.tauri.annotation.Command
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
+import app.tauri.annotation.InvokeArg
 import app.tauri.plugin.Plugin
 import java.io.File
 import java.io.FileOutputStream
@@ -37,9 +38,9 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         val args = invoke.parseArgs(FilePickerArgs::class.java)
         currentOptions = args
 
-        val allowMultiple = args.allowMultiple ?: false
+        val allowMultiple = args.allowMultiple
         val mimeTypes = args.allowedTypes
-        val mode = args.mode ?: "import"
+        val mode = args.mode
 
         // Use ACTION_OPEN_DOCUMENT for "open" mode (provides persistent access)
         // Use ACTION_GET_CONTENT for "import" mode (simpler, one-time access)
@@ -52,7 +53,7 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
                 }
                 putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
                 // Add flag for virtual file support if requested
-                if (args.allowVirtualFiles == true) {
+                if (args.allowVirtualFiles) {
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
             }
@@ -76,7 +77,7 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
             // Request persistent access if needed
-            if (args.requestLongTermAccess == true) {
+            if (args.requestLongTermAccess) {
                 addFlags(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
@@ -629,42 +630,49 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
     }
 }
 
-// Argument classes for parsing
+// Argument classes for parsing - using @InvokeArg annotation for Tauri compatibility
+@InvokeArg
 class FilePickerArgs {
-    var allowMultiple: Boolean? = null
+    var allowMultiple: Boolean = false
     var allowedTypes: Array<String>? = null
-    var mode: String? = null  // "import" or "open"
-    var requestLongTermAccess: Boolean? = null
-    var allowVirtualFiles: Boolean? = null
+    var mode: String = "import"  // "import" or "open"
+    var requestLongTermAccess: Boolean = false
+    var allowVirtualFiles: Boolean = false
 }
 
+@InvokeArg
 class DirectoryPickerArgs {
     var startDirectory: String? = null
-    var requestLongTermAccess: Boolean? = null
+    var requestLongTermAccess: Boolean = false
 }
 
+@InvokeArg
 class ReadContentArgs {
     var uri: String? = null
     var convertVirtualAsType: String? = null
 }
 
+@InvokeArg
 class CopyToLocalArgs {
     var uri: String? = null
-    var destination: String? = null  // "cache" or "documents"
+    var destination: String = "cache"  // "cache" or "documents"
     var filename: String? = null
     var convertVirtualAsType: String? = null
 }
 
+@InvokeArg
 class WriteContentArgs {
     var uri: String? = null
     var data: String? = null
     var mimeType: String? = null
 }
 
+@InvokeArg
 class ReleaseAccessArgs {
     var uris: Array<String>? = null
 }
 
+@InvokeArg
 class PingArgs {
     var value: String? = null
 }
