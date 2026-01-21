@@ -9,14 +9,14 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 // Mobile file picker type aliases
-// On mobile, these alias to the plugin types
-// On desktop, we define local stubs
-#[cfg(mobile)]
+// On Android, these alias to the plugin types
+// On desktop/iOS, we define local stubs
+#[cfg(target_os = "android")]
 pub use tauri_plugin_mobile_file_picker::{
     DirectoryInfo as PickerDirectoryInfo, FileInfo as PickerFileInfo,
 };
 
-#[cfg(not(mobile))]
+#[cfg(not(target_os = "android"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PickerFileInfo {
@@ -27,7 +27,7 @@ pub struct PickerFileInfo {
     pub mime_type: String,
 }
 
-#[cfg(not(mobile))]
+#[cfg(not(target_os = "android"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PickerDirectoryInfo {
@@ -369,11 +369,15 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init());
 
+    #[cfg(target_os = "android")]
+    {
+        builder = builder.plugin(tauri_plugin_mobile_file_picker::init());
+    }
+
     #[cfg(mobile)]
     {
         builder = builder
             .plugin(tauri_plugin_barcode_scanner::init())
-            .plugin(tauri_plugin_mobile_file_picker::init())
             .plugin(tauri_plugin_sharesheet::init());
     }
 
@@ -1541,7 +1545,7 @@ async fn list_received_files(app: AppHandle) -> Result<Vec<String>, String> {
 ///
 /// Only available on mobile platforms (Android/iOS).
 #[tauri::command]
-#[cfg(mobile)]
+#[cfg(target_os = "android")]
 fn pick_file(
     app: AppHandle,
     allowed_types: Option<Vec<String>>,
@@ -1569,7 +1573,7 @@ fn pick_file(
 ///
 /// Only available on mobile platforms (Android/iOS).
 #[tauri::command]
-#[cfg(mobile)]
+#[cfg(target_os = "android")]
 fn pick_directory(
     app: AppHandle,
     start_directory: Option<String>,
@@ -1587,12 +1591,35 @@ fn pick_directory(
         .map_err(|e: tauri_plugin_mobile_file_picker::Error| e.to_string())
 }
 
+/// Pick a file using the iOS dialog plugin
+#[tauri::command]
+#[cfg(target_os = "ios")]
+fn pick_file(
+    _app: AppHandle,
+    _allowed_types: Option<Vec<String>>,
+    _allow_multiple: Option<bool>,
+) -> Result<Vec<PickerFileInfo>, String> {
+    // On iOS, use tauri-plugin-dialog directly from the frontend
+    Err("On iOS, use the dialog plugin directly via invoke('plugin:dialog|pick_file', ...)".to_string())
+}
+
+/// Pick a directory using the iOS dialog plugin
+#[tauri::command]
+#[cfg(target_os = "ios")]
+fn pick_directory(
+    _app: AppHandle,
+    _start_directory: Option<String>,
+) -> Result<PickerDirectoryInfo, String> {
+    // On iOS, use tauri-plugin-dialog directly from the frontend
+    Err("On iOS, use the dialog plugin directly via invoke('plugin:dialog|pick_folder', ...)".to_string())
+}
+
 /// Pick a file (desktop stub)
 ///
 /// On desktop platforms, this function returns an error since file picking
 /// should be done using tauri-plugin-dialog instead.
 #[tauri::command]
-#[cfg(not(mobile))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn pick_file(
     _app: AppHandle,
     _allowed_types: Option<Vec<String>>,
@@ -1609,7 +1636,7 @@ fn pick_file(
 /// On desktop platforms, this function returns an error since directory picking
 /// should be done using tauri-plugin-dialog instead.
 #[tauri::command]
-#[cfg(not(mobile))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn pick_directory(
     _app: AppHandle,
     _start_directory: Option<String>,
