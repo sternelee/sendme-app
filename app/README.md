@@ -1,18 +1,19 @@
-# Tauri + Vue + TypeScript
+# Tauri + SolidJS + TypeScript
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+This Tauri desktop application provides a modern GUI for Sendme file transfers, built with SolidJS and TypeScript.
 
 ## Recommended IDE Setup
 
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- [VS Code](https://code.visualstudio.com/) + [SolidJS](https://marketplace.visualstudio.com/items?itemName=amnedelka.styled-jsx-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 
 ## Features
 
 - **CLI Tool**: Send files from command line
-- **Desktop App**: Tauri-based GUI with Vue + shadcn/ui
+- **Desktop App**: Tauri-based GUI with SolidJS + Tailwind CSS v4
 - **Mobile Support**: Android and iOS apps
 - **Nearby Discovery**: mDNS-based local network device discovery
 - **Device Model Detection**: Shows actual device names on mobile (e.g., "iPhone 13 Pro", "Samsung SM-G998B")
+- **Theme Support**: Light/dark/system theme with smooth transitions
 
 # Installation
 
@@ -133,3 +134,12 @@ cd app && pnpm run tauri android dev
 # iOS dev (macOS only)
 cd app && pnpm run tauri ios dev
 ```
+
+# Tech Stack
+
+- **Frontend**: SolidJS with TypeScript
+- **Styling**: Tailwind CSS v4
+- **Backend**: Rust (Tauri v2)
+- **Icons**: Lucide Solid
+- **Toast Notifications**: solid-sonner
+- **QR Codes**: qrcode

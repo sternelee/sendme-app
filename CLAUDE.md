@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Sendme is a Rust CLI tool for sending files and directories over the internet using the [iroh](https://crates.io/crates/iroh) networking library. It provides P2P file transfer with NAT hole punching, blake3 verified streaming, and resumable downloads.
 
-**This is a fork** that adds a Tauri desktop application with a modern Vue + shadcn/ui frontend.
+**This is a fork** that adds a Tauri desktop application with a modern SolidJS + Tailwind CSS v4 frontend.
 
 ## Package Manager
 
@@ -54,7 +54,7 @@ iroh-sendme/
 ├── lib/          # sendme-lib crate - core library
 ├── cli/          # sendme CLI - original command-line interface
 ├── app/          # Tauri desktop application
-│   ├── src/          # Vue frontend
+│   ├── src/          # SolidJS frontend
 │   ├── src-tauri/    # Rust backend (Tauri commands)
 │   └── package.json  # Frontend dependencies
 ├── browser-lib/  # WebAssembly library crate (sendme-browser)
@@ -138,16 +138,16 @@ The desktop app (`app/`) has two parts:
 
 #### Frontend (`app/src/`)
 
-- **Vue 3** with Composition API (`<script setup>`)
-- **shadcn/ui** components built on **reka-ui** (Radix Vue)
+- **SolidJS** with TypeScript
 - **Tailwind CSS v4** for styling
-- **TypeScript** with `vue-tsc` checking
+- **Lucide Solid** for icons
+- **solid-sonner** for toast notifications
 
 Key files:
 
-- **`App.vue`**: Main UI with Send/Receive tabs and transfers list
-- **`lib/commands.ts`**: Type-safe wrappers for Tauri commands
-- **`components/ui/`**: shadcn/ui components (Button, Input, Tabs, Popover, Progress, etc.)
+- **`routes/index.tsx`**: Main UI with Send/Receive tabs and transfers list
+- **`bindings.ts`**: Type-safe wrappers for Tauri commands
+- **`lib/utils.ts`**: Utility functions (formatFileSize, formatDate, etc.)
 
 #### Backend (`app/src-tauri/src/`)
 

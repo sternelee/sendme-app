@@ -25,7 +25,7 @@ Sendme is a complete file transfer solution that works across **CLI**, **Desktop
 - 📱 **Cross-Platform**: CLI, Desktop (Windows/macOS/Linux), Mobile (iOS/Android), Web
 - ⚡ **Resumable**: Interrupted downloads can be resumed
 - 🔗 **Location Transparent**: Works with 256-bit node IDs, tickets remain valid if IP changes
-- 🎨 **Modern UI**: Beautiful Vue + shadcn/ui interface for desktop/mobile
+- 🎨 **Modern UI**: Beautiful SolidJS + Tailwind CSS v4 interface for desktop/mobile
 
 ## ✨ Features
 
@@ -206,7 +206,7 @@ iroh-sendme/
 │   └── tui/              # Terminal UI components
 │
 ├── app/                   # Tauri desktop/mobile application
-│   ├── src/              # Vue 3 frontend (TypeScript + shadcn/ui)
+│   ├── src/              # SolidJS frontend (TypeScript + Tailwind CSS v4)
 │   ├── src-tauri/        # Rust backend (Tauri commands)
 │   └── package.json      # Frontend dependencies (pnpm)
 │
@@ -236,9 +236,9 @@ The heart of the application, providing:
 - Color-coded status indicators
 
 #### **app** - Desktop/Mobile Application
-- **Frontend**: Vue 3 + TypeScript + shadcn/ui components
+- **Frontend**: SolidJS + TypeScript + Tailwind CSS v4
 - **Backend**: Tauri commands wrapping sendme-lib
-- **Features**: QR codes, clipboard, notifications, file pickers
+- **Features**: QR codes, clipboard, notifications, file pickers, theme switching
 - **Mobile**: iOS and Android support with native APIs
 
 #### **browser-lib** - WASM Bindings
@@ -340,7 +340,7 @@ cargo test send_recv_file
 
 ### Development Workflow
 
-1. **Make changes** to Rust code or Vue frontend
+1. **Make changes** to Rust code or SolidJS frontend
 2. **Format code**: `cargo fmt --all`
 3. **Lint code**: `cargo clippy --workspace`
 4. **Run tests**: `cargo test --workspace`
@@ -374,8 +374,8 @@ Built with:
 - [iroh](https://github.com/n0-computer/iroh) - Networking library
 - [iroh-blobs](https://github.com/n0-computer/iroh) - Content-addressed storage
 - [Tauri](https://tauri.app/) - Desktop/mobile framework
-- [Vue 3](https://vuejs.org/) - Frontend framework
+- [SolidJS](https://www.solidjs.com/) - Frontend framework
 - [ratatui](https://github.com/ratatui-org/ratatui) - Terminal UI
-- [shadcn/ui](https://ui.shadcn.com/) - UI components (via reka-ui)
+- [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS framework
 
 Original project by [n0-computer](https://github.com/n0-computer/sendme), forked and enhanced with desktop/mobile support.
