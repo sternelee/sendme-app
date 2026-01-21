@@ -1,264 +1,234 @@
-# Sendme Browser
+# Sendme Browser App
 
-Browser WebAssembly bindings for sendme file transfer.
-
-## Status
-
-✅ **Functional - Requires special build configuration**
-
-This crate provides WASM bindings for sendme to run in browsers. The browser crate is **excluded from the workspace** because it requires WASM-specific dependency configuration that conflicts with native builds.
+A modern SolidJS web application for P2P file transfer using [iroh](https://iroh.computer) networking. Features a cosmic gradient UI with glass morphism effects and WebAssembly-powered file transfers.
 
 ## Quick Start
 
 ```bash
-cd browser
-
-# Install dependencies (only needed once)
-rustup target install wasm32-unknown-unknown
-cargo install wasm-bindgen-cli --version 0.2.105
+# Install dependencies
 pnpm install
 
-# macOS only: Use llvm.org Clang (NOT Apple Clang)
-export CC=/opt/homebrew/opt/llvm/bin/clang
+# Build WASM module (debug)
+pnpm run build:wasm
 
-# Build and serve
-pnpm run build
-pnpm run serve
+# Start development server
+pnpm run dev
 ```
 
-Then open [`http://localhost:8080`](http://localhost:8080)
+Visit `http://localhost:3000` to use the app.
 
-## What's New (2026-01-19)
+## Platform-Specific Requirements
 
-### Improvements Based on `iroh-examples/browser-blobs`
+### macOS
 
-1. **Simplified node.rs implementation**
-   - Now uses official `Downloader` API instead of manual `get_hash_seq_and_sizes`
-   - Better error handling and more reliable P2P connections
-   - Added `endpoint.online().await` to ensure node is ready before creating tickets
-
-2. **Better discovery management**
-   - Properly integrates `StaticProvider` with endpoint discovery
-   - `discovery.add_endpoint_info()` for remote peer info
-
-3. **Cleaner architecture**
-   - Uses `Store` trait for cleaner abstraction
-   - Follows official iroh patterns more closely
-
-4. **Build improvements**
-   - Fixed package.json paths (use `./target` not `../target`)
-   - Removed unused `hex` dependency
-   - Added external CSS file for better maintainability
-
-## Architecture
-
-```
-browser/
-├── src/
-│   ├── lib.rs          # Main entry point
-│   ├── node.rs         # Core SendmeNode (uses Downloader API)
-│   └── wasm.rs         # WASM bindings via wasm-bindgen
-├── public/
-│   ├── index.html      # Demo web interface
-│   ├── style.css       # Styling
-│   └── wasm/           # Generated WASM files (from build)
-├── Cargo.toml          # Has [workspace] to exclude from parent
-└── package.json        # Build scripts with pnpm
-```
-
-## Prerequisites
-
-### Required Tools
+macOS users need to use **llvm.org Clang** (NOT Apple Clang) for WASM builds:
 
 ```bash
-# Install wasm32 target
-rustup target install wasm32-unknown-unknown
-
-# Install wasm-bindgen CLI (version must match Cargo.toml)
-cargo install wasm-bindgen-cli --version 0.2.105
-
-# Install Node.js dependencies
-pnpm install
-```
-
-### Platform-Specific Requirements
-
-#### macOS
-
-**Critical**: Apple Clang does NOT support `wasm32-unknown-unknown`. You must use llvm.org Clang:
-
-```bash
-# Install llvm.org Clang via homebrew
+# Install llvm from Homebrew
 brew install llvm
 
-# Set CC environment variable (add to ~/.zshrc or ~/.bashrc)
+# Set CC environment variable
 export CC=/opt/homebrew/opt/llvm/bin/clang
+
+# Then build as normal
+pnpm run build:wasm
 ```
 
-#### Windows
+### Windows
 
-Building for WASM on Windows has limited support. Consider using:
+Install the following:
+- [Rust](https://rustup.rs/)
+- [Node.js](https://nodejs.org/) (v22+)
+- [LLVM](https://releases.llvm.org/) - Add to PATH after installation
+- [Make](https://gnuwin32.sourceforge.net/packages/make.htm) (optional, for Windows Build Tools)
 
-- WSL (Windows Subsystem for Linux)
-- Docker
-- GitHub Actions (linux runners)
+```powershell
+# In PowerShell, set CC to use clang
+$env:CC = "clang"
 
-#### NixOS
+# Then build
+pnpm run build:wasm
+```
 
-Install 32-bit clang:
+### NixOS
 
-```bash
-nix shell nixpkgs#clang_multi
-cargo build --target=wasm32-unknown-unknown
+Add the following to your `flake.nix` or `shell.nix`:
+
+```nix
+{ pkgs ? import <nixpkgs> {} }:
+
+pkgs.mkShell {
+  buildInputs = with pkgs; [
+    rustc
+    cargo
+    nodejs
+    llvm
+    clang
+    wasm-bindgen-cli
+  ];
+
+  shellHook = ''
+    export CC=${pkgs.clang}/bin/clang
+  '';
+}
 ```
 
 ## Build Commands
 
 ```bash
-# Development build (with debug symbols)
+# Debug WASM build (faster compilation, larger file)
+pnpm run build:wasm
+
+# Release WASM build (slower compilation, optimized file)
+pnpm run build:wasm:release
+
+# Build the SolidJS app
 pnpm run build
 
-# Production build (optimized)
-pnpm run build:release
-
-# Serve locally
-pnpm run serve
+# Deploy to Cloudflare Workers
+pnpm run deploy
 ```
 
-### Manual Build Steps
+## Architecture
+
+### Tech Stack
+
+- **SolidJS** - Reactive UI framework
+- **SolidStart** - Full-stack framework with SSR
+- **Tailwind CSS v4** - Utility-first styling
+- **solid-toast** - Toast notifications
+- **solid-icons** - Tabler Icons for UI
+
+### WASM Integration
+
+The app uses WebAssembly bindings from `browser-lib` crate:
+
+```typescript
+import { initWasm, sendFile, receiveFile } from "./lib/commands";
+
+// Initialize WASM module
+await initWasm();
+
+// Send a file
+const ticket = await sendFile(file);
+
+// Receive a file
+const { filename, data } = await receiveFile(ticket);
+```
+
+### Key Components
+
+- **`src/routes/index.tsx`** - Main page with Send/Receive tabs
+- **`src/components/sendme/SendTab.tsx`** - File sending with drag & drop
+- **`src/components/sendme/ReceiveTab.tsx`** - File receiving via ticket
+- **`src/lib/commands.ts`** - WASM integration layer
+
+### Data Flow
+
+```
+User selects file
+    ↓
+sendFile(file) in commands.ts
+    ↓
+SendmeNodeWasm.import_and_create_ticket()
+    ↓
+WASM module processes file
+    ↓
+Returns ticket string
+    ↓
+User shares ticket
+```
+
+## Development
+
+### File Structure
+
+```
+browser-app/
+├── public/
+│   └── wasm/              # Generated WASM files (DO NOT edit)
+├── src/
+│   ├── components/
+│   │   └── sendme/        # Send/Receive components
+│   ├── lib/
+│   │   └── commands.ts    # WASM integration
+│   ├── routes/
+│   │   └── index.tsx      # Main page
+│   ├── app.css            # Cosmic gradient theme
+│   └── app.tsx            # App root
+└── package.json
+```
+
+### Adding Features
+
+1. **New component**: Add to `src/components/`
+2. **New route**: Add to `src/routes/`
+3. **WASM functions**: Add to `browser-lib/src/` then rebuild WASM
+
+### Vite Configuration
+
+The app uses special Vite plugins for WASM support:
+
+```typescript
+// app.config.ts
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
+
+export default defineConfig({
+  vite: {
+    plugins: [tailwindcss(), wasm(), topLevelAwait()]
+  }
+});
+```
+
+## Troubleshooting
+
+### WASM Import Errors
+
+**Error**: `Cannot import non-asset file`
+
+**Solution**: WASM files are in `src/wasm/` (not `public/wasm/`) after build.
+
+### LocalStorage SSR Errors
+
+**Error**: `localStorage is not defined`
+
+**Solution**: The app only runs in browser context. WASM initialization happens client-side.
+
+### Build Failures
+
+**Error**: `linking with cc failed`
+
+**Solution**: Ensure you have the correct compiler:
+- macOS: Use llvm.org Clang, NOT Apple Clang
+- Windows: Install LLVM and add to PATH
+- Linux: Install clang and wasm32-unknown-unknown target
+
+### Endpoint Not Ready
+
+**Error**: `Endpoint not ready`
+
+**Solution**: The WASM module needs time to initialize. The app automatically waits up to 5 seconds.
+
+## Deployment
+
+### Cloudflare Workers
 
 ```bash
-# 1. Build Rust to WASM
-cargo build --target=wasm32-unknown-unknown
-
-# 2. Generate JavaScript bindings
-wasm-bindgen ./target/wasm32-unknown-unknown/debug/sendme_browser.wasm \
-  --out-dir=public/wasm --weak-refs --target=web --debug
-
-# 3. Serve
-pnpm run serve
+pnpm run deploy
 ```
 
-## Important: Build Configuration
+Requires `wrangler` authentication.
 
-The browser crate has its own `[workspace]` section in `Cargo.toml` to exclude it from the parent workspace. This prevents WASM-incompatible dependencies (like `mio`) from being pulled in.
-
-When building, **always** use:
+### Static Hosting
 
 ```bash
-# From the browser directory
-cd browser
-cargo build --target=wasm32-unknown-unknown
-
-# Or from the repository root (use --manifest-path)
-cargo build --target=wasm32-unknown-unknown --manifest-path=browser/Cargo.toml
+pnpm run build
+# Output in .solid/output/
 ```
 
-**DO NOT** use `cargo build -p sendme-browser` from the root - this will pull in workspace dependencies and fail.
+Deploy to any static host (Vercel, Netlify, GitHub Pages).
 
-## Common Issues
+## License
 
-#### 1. Ring crate build failure
-
-**Error**:
-
-```
-error: unable to create target: 'No available targets are compatible with triple "wasm32-unknown-unknown"'
-```
-
-**Cause**: Apple Clang doesn't support wasm32
-
-**Fix**: Use llvm.org Clang (see macOS requirements above)
-
-#### 2. mio dependency errors
-
-**Error**: `error: could not compile 'mio'` when building for WASM
-
-**Cause**: `mio` crate doesn't support WASM, and gets pulled in by workspace dependencies
-
-**Fix**: The browser crate has its own `[workspace]` section to exclude it from the parent workspace. Always build using `--manifest-path=browser/Cargo.toml` or from the browser directory.
-
-#### 3. wasm-bindgen version mismatch
-
-**Error**:
-
-```
-rust Wasm file schema version: 0.2.105
-   this binary schema version: 0.2.106
-```
-
-**Fix**: Ensure wasm-bindgen-cli version matches Cargo.toml (currently 0.2.105)
-
-```bash
-cargo install wasm-bindgen-cli --version 0.2.105 --force
-```
-
-## Testing with Official Examples
-
-To verify your environment works, test with official iroh examples first:
-
-```bash
-git clone https://github.com/n0-computer/iroh-examples.git
-cd iroh-examples/browser-blobs
-npm install
-npm run build
-npm run serve
-```
-
-## Key Features
-
-- ✅ Full P2P file transfer in the browser
-- ✅ In-memory storage (no persistence yet)
-- ✅ Proper BlobTicket creation with endpoint addressing
-- ✅ Uses official `Downloader` API for reliability
-- ✅ Discovery management with `StaticProvider`
-- ✅ WASM-compatible async operations
-- ✅ Clean web interface with progress indicators
-
-## Known Limitations
-
-1. **In-memory storage only**: File persistence requires additional browser APIs (IndexedDB)
-2. **Platform-specific**: Windows support limited, macOS requires llvm.org Clang
-3. **Upstream dependencies**: Dependent on `ring` crate WASM support
-4. **NAT traversal**: Full P2P hole punching may not work in all browser environments
-5. **No file metadata**: Currently transfers raw bytes, filename not preserved in transfer
-
-## Implementation Details
-
-### Core Components
-
-**`src/node.rs`** - SendmeNode implementation
-- Uses `Endpoint::bind()` for WASM-compatible key generation
-- Integrates `Downloader` for reliable P2P fetching
-- `StaticProvider` for discovery management
-- `endpoint.online().await` ensures node readiness
-
-**`src/wasm.rs`** - JavaScript bindings
-- `wasm-bindgen` exports for browser
-- Promise-based async operations
-- `Uint8Array` for binary data transfer
-
-**`public/index.html`** - Demo interface
-- Send/Receive tabs
-- Progress indicators
-- Ticket sharing
-- Node status display
-
-## References
-
-- [iroh-examples/browser-blobs](https://github.com/n0-computer/iroh-examples/tree/main/browser-blobs) - Official reference implementation
-- [Common WASM/browser Troubleshooting](https://github.com/n0-computer/iroh/discussions/3200)
-- [iroh WebAssembly Support](https://www.iroh.computer/docs/wasm-browser-support)
-- [Iroh & the Web](https://www.iroh.computer/blog/iroh-and-the-web)
-- [Issue #2799: WebAssembly support tracking](https://github.com/n0-computer/iroh/issues/2799)
-- [ring Issue #657: Build fails for wasm32-unknown-unknown](https://github.com/briansmith/ring/issues/657)
-
-## Contributing
-
-When modifying the browser code:
-
-1. Keep the `[workspace]` section in `Cargo.toml` - it's critical
-2. Test on macOS with llvm.org Clang
-3. Ensure wasm-bindgen version matches exactly
-4. Follow patterns from `iroh-examples/browser-blobs`
-5. Use official iroh APIs (`Downloader`, `Store`) when possible
+MIT OR Apache-2.0
