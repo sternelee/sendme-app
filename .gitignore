@@ -10,9 +10,6 @@ dist
 
 # Browser WASM build artifacts
 browser/target
-browser/public/wasm/*.wasm
-browser/public/wasm/*.js
-browser/public/wasm/*.d.ts
 
 # android sign file
 keystore.properties
