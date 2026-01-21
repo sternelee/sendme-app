@@ -1,10 +1,14 @@
-import { createSignal, createMemo } from "solid-js";
+import { createSignal, createMemo, Show } from "solid-js";
 import toast from "solid-toast";
 import { sendFile } from "../../lib/commands";
+import { Motion, Presence } from "solid-motionone";
 import {
   TbOutlineUpload,
   TbOutlineCheck,
   TbOutlineCopy,
+  TbOutlineFileText,
+  TbOutlineX,
+  TbOutlineSparkles,
 } from "solid-icons/tb";
 
 interface SendTabProps {}
@@ -18,8 +22,10 @@ export default function SendTab(_props: SendTabProps) {
 
   const dropZoneClass = createMemo(() =>
     isDragging()
-      ? "border-purple-400 bg-purple-500/10"
-      : "border-white/20 bg-white/5 hover:border-white/30 hover:bg-white/10"
+      ? "border-purple-500/50 bg-purple-500/10 scale-[1.02]"
+      : file() 
+        ? "border-green-500/30 bg-green-500/5"
+        : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
   );
 
   async function handleSend() {
@@ -30,10 +36,10 @@ export default function SendTab(_props: SendTabProps) {
     try {
       const result = await sendFile(currentFile);
       setTicket(result);
-      toast.success("Ticket created successfully!");
+      toast.success("Ticket ready to share!");
     } catch (error) {
       console.error("Send failed:", error);
-      toast.error("Failed to send file: " + (error as Error).message);
+      toast.error("Failed to share file: " + (error as Error).message);
     } finally {
       setIsSending(false);
     }
@@ -67,11 +73,16 @@ export default function SendTab(_props: SendTabProps) {
 
   function copyTicket() {
     navigator.clipboard.writeText(ticket());
-    toast.success("Ticket copied to clipboard!");
+    toast.success("Copied to clipboard!");
   }
 
   function selectFile() {
     fileInputRef?.click();
+  }
+
+  function resetFile() {
+    setFile(null);
+    setTicket("");
   }
 
   function formatFileSize(bytes: number): string {
@@ -81,102 +92,143 @@ export default function SendTab(_props: SendTabProps) {
   }
 
   return (
-    <div class="space-y-6">
-      {/* Title */}
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-white mb-2">Send Files</h2>
-        <p class="text-white/60">Share files securely over P2P</p>
+    <div class="space-y-8">
+      {/* Header Info */}
+      <div class="text-center space-y-2">
+        <h2 class="text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-white to-white/70">
+          Share a File
+        </h2>
+        <p class="text-white/40 text-sm">
+          Everything is encrypted and sent directly peer-to-peer.
+        </p>
       </div>
 
-      {/* Drop zone */}
-      <div
-        class={`border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${dropZoneClass()}`}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onClick={selectFile}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          class="hidden"
-          onChange={handleFileSelect}
-        />
-
-        {!file() ? (
-          <div class="flex flex-col items-center gap-4">
-            <TbOutlineUpload size={48} class="text-white/40" />
-            <span class="text-white/80">
-              Drop a file here or click to browse
-            </span>
-          </div>
-        ) : (
-          <div class="flex flex-col items-center gap-3">
-            <TbOutlineCheck size={48} class="text-green-400" />
-            <div class="font-medium text-white truncate w-full text-center">
-              {file()!.name}
-            </div>
-            <div class="text-sm text-white/60">
-              {formatFileSize(file()!.size)}
-            </div>
-          </div>
-        )}
+      {/* Main Action Area */}
+      <div class="relative group">
+        <Presence exitBeforeEnter>
+          <Show 
+            when={!file()} 
+            fallback={
+              <Motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.1 }}
+                transition={{ duration: 0.2 }}
+                class={`relative border-2 border-dashed rounded-3xl p-10 text-center transition-all duration-300 overflow-hidden ${dropZoneClass()}`}
+              >
+                <div class="flex flex-col items-center gap-4 py-2">
+                  <Motion.div 
+                    initial={{ scale: 0.8 }}
+                    animate={{ scale: 1 }}
+                    class="w-16 h-16 rounded-2xl bg-green-500/20 text-green-400 flex items-center justify-center relative"
+                  >
+                    <TbOutlineFileText size={32} />
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); resetFile(); }}
+                      class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white/60 flex items-center justify-center backdrop-blur-md border border-white/10"
+                    >
+                      <TbOutlineX size={12} />
+                    </button>
+                  </Motion.div>
+                  <div class="max-w-xs">
+                    <p class="font-semibold text-white truncate px-4">{file()!.name}</p>
+                    <p class="text-xs text-white/40 mt-1">{formatFileSize(file()!.size)}</p>
+                  </div>
+                </div>
+              </Motion.div>
+            }
+          >
+            <Motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              class={`relative border-2 border-dashed rounded-3xl p-10 text-center transition-all duration-300 cursor-pointer overflow-hidden ${dropZoneClass()}`}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onClick={selectFile}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                class="hidden"
+                onChange={handleFileSelect}
+              />
+              <div class="flex flex-col items-center gap-5 py-4">
+                <div class="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-purple-500/20 group-hover:text-purple-400 transition-all duration-500">
+                  <TbOutlineUpload size={32} class="opacity-50 group-hover:opacity-100" />
+                </div>
+                <div>
+                  <p class="text-white/80 font-medium mb-1">Click to browse or drop file</p>
+                  <p class="text-white/40 text-sm">Maximum file size: 1GB</p>
+                </div>
+              </div>
+            </Motion.div>
+          </Show>
+        </Presence>
       </div>
 
-      {/* Send button */}
-      {file() && !ticket() && (
-        <button
+      {/* Action Button */}
+      <Show when={file() && !ticket()}>
+        <Motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          hover={{ scale: 1.02 }}
+          press={{ scale: 0.98 }}
           onClick={handleSend}
           disabled={isSending()}
-          class="w-full py-3 px-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:from-purple-500/50 disabled:to-pink-500/50 text-white rounded-xl font-medium transition-all shadow-lg shadow-purple-500/25 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          class="w-full py-4 px-6 bg-linear-to-r from-purple-500 via-indigo-500 to-purple-600 hover:hue-rotate-15 disabled:grayscale text-white rounded-2xl font-bold transition-all shadow-xl shadow-purple-500/20 disabled:cursor-not-allowed flex items-center justify-center gap-3 relative overflow-hidden"
         >
-          {isSending() ? (
-            <>
-              <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-              Creating Ticket...
-            </>
-          ) : (
-            <>
-              <TbOutlineUpload size={20} />
-              Create Ticket
-            </>
-          )}
-        </button>
-      )}
+          <Show when={isSending()}>
+            <div class="absolute inset-0 shimmer opacity-20" />
+            <div class="w-5 h-5 border-3 border-white/20 border-t-white rounded-full animate-spin" />
+            <span>Encapsulating...</span>
+          </Show>
+          <Show when={!isSending()}>
+            <TbOutlineSparkles size={20} class="animate-float" />
+            <span>Generate Shared Ticket</span>
+          </Show>
+        </Motion.button>
+      </Show>
 
-      {/* Ticket display */}
-      {ticket() && (
-        <div class="bg-green-500/10 border border-green-500/20 rounded-xl p-5 space-y-4">
-          <div class="flex items-center gap-2 text-green-400">
-            <TbOutlineCheck size={20} />
-            <span class="font-medium">Ready to Share</span>
-          </div>
-
-          <div>
-            <label class="text-sm text-white/60 mb-2 block">Share Ticket</label>
-            <div class="flex gap-2">
-              <input
-                type="text"
-                value={ticket()}
-                readonly
-                class="flex-1 bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm font-mono focus:outline-none"
-              />
-              <button
-                onClick={copyTicket}
-                class="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg transition-colors"
-                aria-label="Copy ticket"
-              >
-                <TbOutlineCopy size={18} />
-              </button>
+      {/* Result Display */}
+      <Presence>
+        <Show when={ticket()}>
+          <Motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            class="glass rounded-3xl p-6 border-indigo-500/20 bg-indigo-500/5 space-y-5"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center">
+                  <TbOutlineCheck size={18} />
+                </div>
+                <span class="font-bold text-white">Target Locked</span>
+              </div>
+              <span class="text-[10px] font-black uppercase tracking-widest text-white/20">Ticket Type: P2P</span>
             </div>
-          </div>
 
-          <p class="text-sm text-white/50">
-            Share this ticket with the recipient. They can use it to download
-            your file.
-          </p>
-        </div>
-      )}
+            <div class="space-y-3">
+              <div class="flex gap-2">
+                <div class="flex-1 bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm font-mono break-all line-clamp-2">
+                  {ticket()}
+                </div>
+                <button
+                  onClick={copyTicket}
+                  class="p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all group active:scale-90"
+                >
+                  <TbOutlineCopy size={24} class="text-white/60 group-hover:text-white" />
+                </button>
+              </div>
+              <p class="text-xs text-white/30 text-center">
+                Send this secret ticket to someone to authorize download.
+              </p>
+            </div>
+          </Motion.div>
+        </Show>
+      </Presence>
     </div>
   );
 }
