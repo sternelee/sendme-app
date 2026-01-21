@@ -42,11 +42,16 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
         val mimeTypes = args.allowedTypes
         val mode = args.mode
 
-        // Use ACTION_OPEN_DOCUMENT for "open" mode (provides persistent access)
-        // Use ACTION_GET_CONTENT for "import" mode (simpler, one-time access)
-        val intent = if (mode == "open" || mimeTypes != null && mimeTypes.isNotEmpty()) {
-            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        // ACTION_OPEN_DOCUMENT: provides persistent URI access, returns document:// URIs
+        // ACTION_GET_CONTENT: one-time access, may return content:// or file:// URIs
+        val intent = when (mode) {
+            "open" -> Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
+                // Request persistable URI permissions for long-term access
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                )
                 type = if (mimeTypes != null && mimeTypes.isNotEmpty()) mimeTypes[0] else "*/*"
                 if (mimeTypes != null && mimeTypes.size > 1) {
                     putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
@@ -57,8 +62,15 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
             }
-        } else {
-            Intent(Intent.ACTION_GET_CONTENT).apply {
+            "import" -> Intent(Intent.ACTION_GET_CONTENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = if (mimeTypes != null && mimeTypes.isNotEmpty()) mimeTypes[0] else "*/*"
+                if (mimeTypes != null && mimeTypes.size > 1) {
+                    putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
+                }
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
+            }
+            else -> Intent(Intent.ACTION_GET_CONTENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "*/*"
                 putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)

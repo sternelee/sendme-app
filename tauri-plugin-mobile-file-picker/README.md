@@ -143,18 +143,54 @@ await releaseAccess({ uris: [file.uri] });
 
 ### Android
 
-- Uses Storage Access Framework (SAF) for file access
+**File Picking:**
+- Uses Storage Access Framework (SAF) with `ACTION_OPEN_DOCUMENT` or `ACTION_GET_CONTENT`
 - Returns `content://` URIs that require ContentResolver to read
-- Supports persistable URI permissions for long-term access
-- Handles virtual files (Google Docs, Sheets, etc.)
-- Virtual files can be converted to standard formats (PDF, DOCX, etc.)
+- **Mode `"open"`**: Uses `ACTION_OPEN_DOCUMENT` - provides persistent URI access, returns document URIs that can be granted persistable permissions
+- **Mode `"import"`**: Uses `ACTION_GET_CONTENT` - one-time access, may return various URI types (content://, file://, etc.)
+- Supports persistable URI permissions for long-term access (when `requestLongTermAccess: true`)
+- Handles virtual files (Google Docs, Sheets, etc.) with type conversion
+
+**Directory Picking:**
+- Uses `ACTION_OPEN_DOCUMENT_TREE` intent
+- Returns a tree URI that grants access to the entire directory subtree
+- Note: `startDirectory` option is not supported on Android (SAF limitation)
+
+**Virtual Files:**
+- Google Docs and other cloud-native files are "virtual" - they don't have a binary representation
+- Check `file.isVirtual` to detect virtual files
+- Use `file.convertibleToMimeTypes` to see available conversion formats
+- Use `convertVirtualAsType` parameter when reading to convert (e.g., Google Doc → PDF)
 
 ### iOS
 
-- Uses UIDocumentPickerViewController
-- Two modes: `import` (copy to app sandbox) and `open` (access in place)
-- Security-scoped URLs require explicit access/release
+**File Picking:**
+- Uses `UIDocumentPickerViewController`
+- **Mode `"import"`** (asCopy=true): Copies file to app's sandbox, one-time access
+- **Mode `"open"`** (asCopy=false): Access original file location, can use bookmarks for long-term access
+- Security-scoped URLs require explicit `startAccessingSecurityScopedResource()` / `stopAccessingSecurityScopedResource()`
 - Bookmarks provide persistent access across app launches
+
+**Directory Picking:**
+- Uses `UIDocumentPickerViewController` with `.folder` content type
+- Returns security-scoped URL for directory access
+- Note: `startDirectory` option is not supported on iOS (system picker limitation)
+
+**Long-term Access:**
+- When `requestLongTermAccess: true`, plugin creates bookmarks for files/directories
+- Bookmarks are base64-encoded data that can be stored and resolved later
+- Always call `releaseAccess()` when done to free security-scoped resources
+
+### Platform Behavior Differences
+
+| Feature | Android | iOS |
+|---------|---------|-----|
+| **Mode "import"** | `ACTION_GET_CONTENT` - various URI types | Copies file to app sandbox |
+| **Mode "open"** | `ACTION_OPEN_DOCUMENT` - persistent URI access | Access original file location |
+| **Long-term access** | Persistable URI permissions | Security-scoped bookmarks |
+| **URI format** | `content://` | `file://` (security-scoped) |
+| **Virtual files** | Supported with conversion | N/A (files are always concrete) |
+| **startDirectory** | Not supported (SAF limit) | Not supported (iOS limit) |
 
 ## Permissions
 

@@ -20,7 +20,12 @@ public class MobileFilePicker: NSObject {
 
         DispatchQueue.main.async {
             let documentPicker: UIDocumentPickerViewController
-            let asCopy = args?.mode != "open"
+
+            // Mode semantics:
+            // - "import" (asCopy=true): Copy file to app's sandbox, one-time access
+            // - "open" (asCopy=false): Access original file, can use bookmarks for long-term access
+            let mode = args?.mode ?? "import"
+            let asCopy = (mode != "open")
 
             if #available(iOS 14.0, *) {
                 if let types = args?.allowedUTTypes, !types.isEmpty {
@@ -29,8 +34,8 @@ public class MobileFilePicker: NSObject {
                     documentPicker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: asCopy)
                 }
             } else {
-                let mode: UIDocumentPickerMode = asCopy ? .import : .open
-                documentPicker = UIDocumentPickerViewController(documentTypes: ["public.data"], in: mode)
+                let pickerMode: UIDocumentPickerMode = asCopy ? .import : .open
+                documentPicker = UIDocumentPickerViewController(documentTypes: ["public.data"], in: pickerMode)
             }
 
             documentPicker.delegate = self
@@ -64,7 +69,7 @@ public class MobileFilePicker: NSObject {
             documentPicker.delegate = self
             documentPicker.modalPresentationStyle = .formSheet
 
-            // Store options for callback
+            // Store options for callback - needed for requestLongTermAccess handling
             objc_setAssociatedObject(documentPicker, &AssociatedKeys.directoryOptionsKey, args, .OBJC_ASSOCIATION_RETAIN)
 
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -272,12 +277,60 @@ extension MobileFilePicker: UIDocumentPickerDelegate {
             return
         }
 
+        // Check if this is a directory pick
+        let directoryOptions = objc_getAssociatedObject(controller, &AssociatedKeys.directoryOptionsKey) as? DirectoryPickerOptions
+        if directoryOptions != nil {
+            // Handle directory pick - return DirectoryInfo
+            guard let url = urls.first else {
+                invoke.reject("No directory selected")
+                return
+            }
+
+            let requestLongTermAccess = directoryOptions?.requestLongTermAccess ?? false
+            let shouldStopAccessing = url.startAccessingSecurityScopedResource()
+
+            defer {
+                // Don't stop accessing if we want long-term access
+                if shouldStopAccessing && !requestLongTermAccess {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                let resourceValues = try url.resourceValues(forKeys: [.nameKey])
+                let directoryName = resourceValues.name ?? url.lastPathComponent
+                let path = url.path
+
+                // Create bookmark if long-term access requested
+                var bookmark: String? = nil
+                if requestLongTermAccess {
+                    bookmark = self.createBookmark(for: url)
+                    if shouldStopAccessing {
+                        // Store for later release
+                        self.accessedUrls[url.absoluteString] = url
+                    }
+                }
+
+                let directoryInfo: [String: Any] = [
+                    "uri": url.absoluteString,
+                    "path": path,
+                    "name": directoryName,
+                    "bookmark": bookmark as Any
+                ]
+                invoke.resolve(directoryInfo)
+            } catch {
+                invoke.reject("Error reading directory: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        // Handle file pick - return array of FileInfo
         let options = objc_getAssociatedObject(controller, &AssociatedKeys.optionsKey) as? FilePickerOptions
         let requestLongTermAccess = options?.requestLongTermAccess ?? false
 
         let files = urls.compactMap { url -> FileInfo? in
             let shouldStopAccessing = url.startAccessingSecurityScopedResource()
-            
+
             defer {
                 // Don't stop accessing if we want long-term access
                 if shouldStopAccessing && !requestLongTermAccess {
@@ -289,10 +342,10 @@ extension MobileFilePicker: UIDocumentPickerDelegate {
                 let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey, .nameKey, .contentTypeKey])
                 let fileName = resourceValues.name ?? url.lastPathComponent
                 let fileSize = resourceValues.fileSize ?? 0
-                
+
                 var mimeType = "application/octet-stream"
                 var nativeType: String? = nil
-                
+
                 if #available(iOS 14.0, *) {
                     let utType: UTType? = resourceValues.contentType ?? UTType(filenameExtension: url.pathExtension)
                     mimeType = utType?.preferredMIMEType ?? mimeType
