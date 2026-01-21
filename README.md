@@ -62,7 +62,7 @@ cargo install sendme
 ```bash
 git clone https://github.com/sternelee/iroh-sendme.git
 cd iroh-sendme
-cargo build --release -p sendme
+cargo build --release -p cli
 # Binary will be at: target/release/sendme
 ```
 
@@ -288,7 +288,7 @@ cargo build
 
 # Build specific packages
 cargo build -p sendme-lib      # Library only
-cargo build -p sendme          # CLI only
+cargo build -p cli             # CLI only
 cargo build -p app             # Tauri backend only
 
 # Release builds
