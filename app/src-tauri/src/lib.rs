@@ -224,7 +224,7 @@ fn copy_files_to_content_uri_sync(
 
     // Find the FileUtils class once
     let class = env
-        .find_class("com/sendme/app/FileUtils")
+        .find_class("sendme/leechat/app/FileUtils")
         .map_err(|e| anyhow::anyhow!("Failed to find FileUtils class: {:?}", e))?;
 
     for (name, source_path) in files_to_copy {

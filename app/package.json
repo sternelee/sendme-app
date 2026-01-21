@@ -30,6 +30,8 @@
     "@tauri-apps/plugin-opener": "^2.5.3",
     "@tauri-apps/plugin-os": "^2.3.2",
     "clsx": "^2.1.1",
+    "kysely": "^0.28.10",
+    "kysely-d1": "^0.4.0",
     "lucide-solid": "^0.562.0",
     "qrcode": "^1.5.4",
     "solid-js": "^1.9.10",

@@ -5,11 +5,12 @@ fn main() {
     #[cfg(target_os = "android")]
     {
         let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
-        let android_gen_dir = out_dir.join("../../gen/android/app/src/main/java/com/sendme/app");
+        let android_gen_dir =
+            out_dir.join("../../gen/android/app/src/main/java/sendme/leechat/app");
 
         if let Ok(metadata) = std::fs::metadata(&android_gen_dir) {
             if metadata.is_dir() {
-                let source_dir = std::path::PathBuf::from("android-includes/com/sendme/app");
+                let source_dir = std::path::PathBuf::from("android-includes/sendme/leechat/app");
 
                 if let Ok(entries) = std::fs::read_dir(&source_dir) {
                     for entry in entries.flatten() {

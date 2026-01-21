@@ -1,0 +1,17 @@
+# Better Auth Configuration for Local Development
+# Copy this file to .dev.vars and update with your actual credentials
+
+# Better Auth Secret (generate a random string)
+BETTER_AUTH_SECRET=your-better-auth-secret-key-change-this-in-production
+
+# Better Auth URLs (for local development)
+BETTER_AUTH_URL=http://localhost:5173
+BETTER_AUTH_APP_URL=http://localhost:5173
+
+# GitHub OAuth (get from https://github.com/settings/developers)
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+
+# Google OAuth (get from https://console.cloud.google.com/apis/credentials)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret

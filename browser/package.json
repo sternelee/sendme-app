@@ -1,5 +1,5 @@
 {
-  "name": "sendme-browser-app",
+  "name": "sendme-app",
   "type": "module",
   "scripts": {
     "dev": "vinxi dev",
@@ -9,7 +9,12 @@
     "preview": "npm run build && wrangler dev",
     "cf-typegen": "wrangler types",
     "build:wasm": "cd ../browser-lib && cargo build --target=wasm32-unknown-unknown && wasm-bindgen ./target/wasm32-unknown-unknown/debug/sendme_browser.wasm --out-dir=../browser-app/public/wasm --weak-refs --target=web --debug",
-    "build:wasm:release": "cd ../browser-lib && cargo build --target=wasm32-unknown-unknown --release && wasm-bindgen ./target/wasm32-unknown-unknown/release/sendme_browser.wasm --out-dir=../browser-app/public/wasm --weak-refs --target=web"
+    "build:wasm:release": "cd ../browser-lib && cargo build --target=wasm32-unknown-unknown --release && wasm-bindgen ./target/wasm32-unknown-unknown/release/sendme_browser.wasm --out-dir=../browser-app/public/wasm --weak-refs --target=web",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "wrangler d1 migrations apply sendme-browser-db --local",
+    "db:migrate:prod": "wrangler d1 migrations apply sendme-browser-db",
+    "db:studio": "drizzle-kit studio",
+    "auth:gen": "better-auth gen"
   },
   "dependencies": {
     "@solid-primitives/autofocus": "^0.1.3",
@@ -19,16 +24,24 @@
     "@solid-primitives/transition-group": "^1.1.2",
     "@solidjs/router": "^0.15.0",
     "@solidjs/start": "^1.1.0",
+    "better-auth": "^1.4.17",
+    "drizzle-orm": "^0.45.1",
+    "kysely": "^0.28.10",
+    "kysely-d1": "^0.4.0",
     "solid-icons": "^1.2.0",
     "solid-js": "^1.9.5",
     "solid-motionone": "^1.0.4",
     "solid-toast": "^0.5.0",
     "vinxi": "^0.5.7",
     "vite-plugin-top-level-await": "^1.6.0",
-    "vite-plugin-wasm": "^3.5.0"
+    "vite-plugin-wasm": "^3.5.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@better-auth/cli": "^1.1.0",
+    "@cloudflare/workers-types": "^4.20250121.0",
     "@tailwindcss/vite": "^4.0.7",
+    "drizzle-kit": "^0.31.8",
     "tailwindcss": "^4.0.7",
     "wrangler": "^4.59.3"
   },

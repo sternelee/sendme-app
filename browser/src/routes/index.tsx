@@ -1,16 +1,22 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
 import { initWasm } from "../lib/commands";
+import { useAuth } from "../lib/contexts/user-better-auth";
 import SendTab from "../components/sendme/SendTab";
 import ReceiveTab from "../components/sendme/ReceiveTab";
+import AuthModal from "../components/auth/AuthModal";
 import {
   TbOutlineSparkles,
   TbOutlineUpload,
   TbOutlineDownload,
+  TbOutlineUser,
+  TbOutlineLogout,
 } from "solid-icons/tb";
 
 export default function Home() {
   const [activeTab, setActiveTab] = createSignal<"send" | "receive">("send");
   const [isInitializing, setIsInitializing] = createSignal(true);
+
+  const auth = useAuth();
 
   onMount(async () => {
     try {
@@ -21,6 +27,15 @@ export default function Home() {
       setIsInitializing(false);
     }
   });
+
+  const handleLogout = async () => {
+    await auth.logout();
+  };
+
+  // Show auth modal if not authenticated
+  if (!auth.isLoading() && !auth.isAuthenticated()) {
+    return <AuthModal />;
+  }
 
   return (
     <div class="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-slate-900">
@@ -33,7 +48,7 @@ export default function Home() {
 
       {/* Header */}
       <header class="relative z-10 border-b border-white/10 backdrop-blur-xl bg-black/20">
-        <div class="container mx-auto px-4 py-4 flex items-center justify-center">
+        <div class="container mx-auto px-4 py-4 flex items-center justify-between">
           <a
             class="flex items-center gap-3 text-white hover:opacity-80 transition-opacity"
             href="https://iroh.computer"
@@ -45,6 +60,22 @@ export default function Home() {
             </div>
             <span class="text-xl font-bold">Sendme</span>
           </a>
+
+          <Show when={auth.isAuthenticated() && auth.user()}>
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 backdrop-blur-sm">
+                <TbOutlineUser size={16} class="text-white/70" />
+                <span class="text-sm text-white">{auth.user()?.name}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                class="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                title="Logout"
+              >
+                <TbOutlineLogout size={18} class="text-white/70" />
+              </button>
+            </div>
+          </Show>
         </div>
       </header>
 
@@ -65,20 +96,22 @@ export default function Home() {
             <div class="glass rounded-2xl p-1.5 mb-6 flex gap-1">
               <button
                 onClick={() => setActiveTab("send")}
-                class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all ${activeTab() === "send"
+                class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all ${
+                  activeTab() === "send"
                     ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg"
                     : "text-white/70 hover:text-white hover:bg-white/10"
-                  }`}
+                }`}
               >
                 <TbOutlineUpload size={18} />
                 Send
               </button>
               <button
                 onClick={() => setActiveTab("receive")}
-                class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all ${activeTab() === "receive"
+                class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all ${
+                  activeTab() === "receive"
                     ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg"
                     : "text-white/70 hover:text-white hover:bg-white/10"
-                  }`}
+                }`}
               >
                 <TbOutlineDownload size={18} />
                 Receive

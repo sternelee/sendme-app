@@ -81,7 +81,7 @@ export async function receiveFile(
  */
 export async function getEndpointId(): Promise<string> {
   const node = await getNode();
-  return await node.wait_for_ready(5000) ? node.endpoint_id() : "";
+  return (await node.wait_for_ready(5000)) ? node.endpoint_id() : "";
 }
 
 /**
