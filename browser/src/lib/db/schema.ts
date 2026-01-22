@@ -5,7 +5,6 @@
  */
 
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
-import { sql } from "drizzle-orm";
 
 /**
  * Users table - stores user account information
@@ -16,15 +15,18 @@ export const users = sqliteTable(
   "user",
   {
     id: text("id").primaryKey(),
+    name: text("name").notNull(),
     email: text("email").notNull().unique(),
     emailVerified: integer("emailVerified", { mode: "boolean" })
-      .notNull()
-      .default(false),
-    username: text("username").unique(),
-    name: text("name").notNull(),
+      .$defaultFn(() => false)
+      .notNull(),
     image: text("image"),
-    createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updatedAt").notNull().default(sql`(datetime('now'))`),
+    createdAt: integer("createdAt", { mode: "timestamp" })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    updatedAt: integer("updatedAt", { mode: "timestamp" })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
   },
   (table) => ({
     emailIdx: index("user_email_idx").on(table.email),
@@ -38,15 +40,23 @@ export const sessions = sqliteTable(
   "session",
   {
     id: text("id").primaryKey(),
+    expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: integer("createdAt", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull(),
+    ipAddress: text("ipAddress"),
+    userAgent: text("userAgent"),
     userId: text("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    expiresAt: text("expiresAt").notNull(),
-    token: text("token").notNull().unique(),
-    ipAddress: text("ipAddress"),
-    userAgent: text("userAgent"),
-    createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updatedAt").notNull().default(sql`(datetime('now'))`),
+    timezone: text("timezone"),
+    city: text("city"),
+    country: text("country"),
+    region: text("region"),
+    regionCode: text("regionCode"),
+    colo: text("colo"),
+    latitude: text("latitude"),
+    longitude: text("longitude"),
   },
   (table) => ({
     userIdIdx: index("session_userId_idx").on(table.userId),
@@ -62,18 +72,20 @@ export const accounts = sqliteTable(
   "account",
   {
     id: text("id").primaryKey(),
+    accountId: text("accountId").notNull(),
+    providerId: text("providerId").notNull(),
     userId: text("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    accountId: text("accountId").notNull(),
-    providerId: text("providerId").notNull(),
     accessToken: text("accessToken"),
     refreshToken: text("refreshToken"),
     idToken: text("idToken"),
-    expiresAt: text("expiresAt"),
+    accessTokenExpiresAt: integer("accessTokenExpiresAt", { mode: "timestamp" }),
+    refreshTokenExpiresAt: integer("refreshTokenExpiresAt", { mode: "timestamp" }),
+    scope: text("scope"),
     password: text("password"),
-    createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updatedAt").notNull().default(sql`(datetime('now'))`),
+    createdAt: integer("createdAt", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull(),
   },
   (table) => ({
     userIdIdx: index("account_userId_idx").on(table.userId),
@@ -87,22 +99,22 @@ export const accounts = sqliteTable(
 /**
  * Verification table - email verification and password reset
  */
-export const verification = sqliteTable(
-  "verification",
-  {
-    id: text("id").primaryKey(),
-    identifier: text("identifier").notNull(),
-    value: text("value").notNull(),
-    expiresAt: text("expiresAt").notNull(),
-    createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
-  },
-  (table) => ({
-    identifierIdx: index("verification_identifier_idx").on(table.identifier),
-  }),
-);
+export const verifications = sqliteTable("verification", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).$defaultFn(
+    () => /* @__PURE__ */ new Date(),
+  ),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).$defaultFn(
+    () => /* @__PURE__ */ new Date(),
+  ),
+});
 
 /**
  * Transfer history table - tracks user's file transfers
+ * Custom table for Sendme app
  */
 export const transfers = sqliteTable(
   "transfers",
@@ -117,13 +129,13 @@ export const transfers = sqliteTable(
     ticket: text("ticket"), // for send transfers
     status: text("status").notNull(), // 'pending', 'in_progress', 'completed', 'error', 'cancelled'
     errorMessage: text("error_message"),
-    createdAt: integer("created_at")
-      .notNull()
-      .default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at")
-      .notNull()
-      .default(sql`(unixepoch())`),
-    completedAt: integer("completed_at"), // Unix timestamp
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp" }),
   },
   (table) => ({
     userIdIdx: index("transfers_user_id_idx").on(table.userId),
@@ -139,13 +151,12 @@ export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
 export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
-export type Verification = typeof verification.$inferSelect;
-export type NewVerification = typeof verification.$inferInsert;
+export type Verification = typeof verifications.$inferSelect;
+export type NewVerification = typeof verifications.$inferInsert;
 export type Transfer = typeof transfers.$inferSelect;
 export type NewTransfer = typeof transfers.$inferInsert;
 
 // Re-export tables with singular names for better-auth compatibility
-// Note: verification is already singular, users/sessions/accounts need aliasing
 export const user = users;
 export const session = sessions;
 export const account = accounts;

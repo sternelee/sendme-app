@@ -1,13 +1,11 @@
 /**
  * Better Auth Configuration
  * Auth instance for SolidStart integration
- * Uses Drizzle ORM with Cloudflare D1
+ * Uses better-auth-cloudflare with Cloudflare D1
  */
 
-import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { drizzle } from "drizzle-orm/d1";
-import * as schema from "~/lib/db/schema";
+import type { IncomingRequestCfProperties } from "@cloudflare/workers-types";
+import { createAuth as createAuthInstance, type CloudflareBindings } from "../../better-auth.config";
 
 /**
  * Environment variables for Cloudflare Workers
@@ -26,36 +24,30 @@ export interface Env {
 
 /**
  * Get auth instance with Cloudflare bindings
+ * This is the runtime auth instance that connects to D1 database
  *
- * Note: better-auth's Drizzle adapter has issues with D1 date serialization.
- * As a workaround, we use database defaults for createdAt/updatedAt.
+ * @param d1Database - D1 database binding
+ * @param env - Environment variables (optional, will be inferred from bindings)
+ * @param cf - Cloudflare request properties (optional)
+ * @returns Better auth instance
  */
-export function getAuth(d1Database: D1Database, env: Env) {
-  // Create Drizzle instance with D1 binding
-  const db = drizzle(d1Database, { schema });
+export function getAuth(
+  d1Database: D1Database,
+  env?: Partial<Env>,
+  cf?: IncomingRequestCfProperties,
+) {
+  // Create Cloudflare bindings object from the D1 database and env
+  const bindings: CloudflareBindings = {
+    DB: d1Database,
+    SESSION_KV: env?.SESSION_KV as KVNamespace,
+    BETTER_AUTH_URL: env?.BETTER_AUTH_URL,
+    BETTER_AUTH_APP_URL: env?.BETTER_AUTH_APP_URL,
+    BETTER_AUTH_SECRET: env?.BETTER_AUTH_SECRET,
+    GITHUB_CLIENT_ID: env?.GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET: env?.GITHUB_CLIENT_SECRET,
+    GOOGLE_CLIENT_ID: env?.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: env?.GOOGLE_CLIENT_SECRET,
+  };
 
-  const baseURL = env.BETTER_AUTH_URL || env.BETTER_AUTH_APP_URL || "http://localhost:8788";
-  const useSecureCookies = baseURL.startsWith("https://");
-  console.log("[Auth] Initializing with baseURL:", baseURL);
-
-  return betterAuth({
-    database: drizzleAdapter(db, {
-      provider: "sqlite",
-      schema,
-    }),
-    baseURL: baseURL,
-    secret: env.BETTER_AUTH_SECRET || "fallback-secret-change-in-production",
-    emailAndPassword: {
-      enabled: true,
-      requireEmailVerification: false,
-    },
-    session: {
-      expiresIn: 60 * 60 * 24 * 30, // 30 days
-      updateAge: 60 * 60 * 24, // 1 day
-    },
-    advanced: {
-      cookiePrefix: "sendme",
-      useSecureCookies,
-    },
-  });
+  return createAuthInstance(bindings, cf);
 }

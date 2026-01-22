@@ -88,10 +88,15 @@ export default function Home() {
             <div class="flex items-center gap-4">
               <div class="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
                 <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <span class="text-xs font-medium text-white/80">{auth.user()?.name}</span>
+                <span class="text-xs font-medium text-white/80">
+                  {auth.user()?.name}
+                </span>
               </div>
               <Motion.button
-                hover={{ scale: 1.05, backgroundColor: "rgba(255, 255, 255, 0.15)" }}
+                hover={{
+                  scale: 1.05,
+                  backgroundColor: "rgba(255, 255, 255, 0.15)",
+                }}
                 press={{ scale: 0.95 }}
                 onClick={handleLogout}
                 class="p-2.5 rounded-xl bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors"
@@ -130,7 +135,7 @@ export default function Home() {
             >
               {/* Tabs */}
               <div class="glass rounded-2xl p-1.5 mb-8 flex gap-1 relative overflow-hidden">
-                <div 
+                <div
                   class="absolute top-1.5 bottom-1.5 transition-all duration-300 ease-out bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-lg shadow-purple-500/20"
                   style={{
                     left: activeTab() === "send" ? "6px" : "calc(50% + 2px)",
@@ -140,7 +145,9 @@ export default function Home() {
                 <button
                   onClick={() => setActiveTab("send")}
                   class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${
-                    activeTab() === "send" ? "text-white" : "text-white/50 hover:text-white/80"
+                    activeTab() === "send"
+                      ? "text-white"
+                      : "text-white/50 hover:text-white/80"
                   }`}
                 >
                   <TbOutlineUpload size={20} />
@@ -149,7 +156,9 @@ export default function Home() {
                 <button
                   onClick={() => setActiveTab("receive")}
                   class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${
-                    activeTab() === "receive" ? "text-white" : "text-white/50 hover:text-white/80"
+                    activeTab() === "receive"
+                      ? "text-white"
+                      : "text-white/50 hover:text-white/80"
                   }`}
                 >
                   <TbOutlineDownload size={20} />
@@ -160,17 +169,20 @@ export default function Home() {
               {/* Content area */}
               <div class="relative">
                 <Presence exitBeforeEnter>
-              <Motion.div
-                initial={{ opacity: 0, x: activeTab() === "send" ? -10 : 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: activeTab() === "send" ? 10 : -10 }}
-                transition={{ duration: 0.2 }}
-                class="glass rounded-3xl p-1 overflow-hidden"
-              >
-                <div class="p-8">
-                  {activeTab() === "send" ? <SendTab /> : <ReceiveTab />}
-                </div>
-              </Motion.div>
+                  <Motion.div
+                    initial={{
+                      opacity: 0,
+                      x: activeTab() === "send" ? -10 : 10,
+                    }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: activeTab() === "send" ? 10 : -10 }}
+                    transition={{ duration: 0.2 }}
+                    class="glass rounded-3xl p-1 overflow-hidden"
+                  >
+                    <div class="p-8">
+                      {activeTab() === "send" ? <SendTab /> : <ReceiveTab />}
+                    </div>
+                  </Motion.div>
                 </Presence>
               </div>
             </Motion.div>
@@ -178,7 +190,7 @@ export default function Home() {
         </Presence>
 
         {/* Footer */}
-        <Motion.footer 
+        <Motion.footer
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
@@ -186,7 +198,9 @@ export default function Home() {
         >
           <div class="flex items-center justify-center gap-4 mb-4">
             <div class="h-px w-8 bg-white/10" />
-            <span class="text-[10px] uppercase tracking-[0.2em] text-white/30 font-bold">Secure Protocol</span>
+            <span class="text-[10px] uppercase tracking-[0.2em] text-white/30 font-bold">
+              Secure Protocol
+            </span>
             <div class="h-px w-8 bg-white/10" />
           </div>
           <p class="text-sm text-white/40">
