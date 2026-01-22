@@ -107,6 +107,43 @@ impl SendmeNode {
         Ok(ticket.to_string())
     }
 
+    /// Import multiple files as a collection and create a ticket
+    ///
+    /// This creates a Collection containing all provided files and returns
+    /// a BlobTicket that can be shared with others for P2P file transfer.
+    /// Preserves directory structure through file paths.
+    pub async fn import_collection_and_create_ticket(
+        &self,
+        files: Vec<(String, Bytes)>,
+    ) -> Result<String> {
+        // 1. Import all blobs and collect their hashes
+        let mut collection_entries = Vec::new();
+        for (name, data) in files {
+            let tag = self.blobs.add_bytes(data).await?;
+            tracing::info!("Imported file: {} with hash: {}", name, tag.hash);
+            collection_entries.push((name, tag.hash));
+        }
+
+        // 2. Create a Collection from all files
+        let collection: Collection = collection_entries.into_iter().collect();
+        tracing::info!("Collection created with {} files", collection.iter().count());
+
+        // 3. Store the Collection
+        let collection_tag = collection.store(&self.blobs).await?;
+        let collection_hash = collection_tag.hash();
+        tracing::info!("Collection stored with hash: {}", collection_hash);
+
+        // 4. Wait for endpoint to be online
+        self.endpoint().online().await;
+        let addr = self.endpoint().addr();
+        tracing::info!("Creating ticket with addr: {:?}", addr);
+
+        // 5. Create a BlobTicket with HashSeq format (compatible with CLI/App)
+        let ticket = BlobTicket::new(addr, collection_hash, BlobFormat::HashSeq);
+
+        Ok(ticket.to_string())
+    }
+
     /// Get data by ticket string
     ///
     /// The ticket string contains both the peer's addressing information
@@ -185,6 +222,74 @@ impl SendmeNode {
         let bytes = self.blobs.get_bytes(*blob_hash).await?;
 
         Ok((filename.to_string(), bytes))
+    }
+
+    /// Get all files from a collection by ticket string
+    ///
+    /// Returns all files in the collection as a vector of (filename, data) tuples.
+    /// Useful for downloading folders/multiple files.
+    pub async fn get_collection(&self, ticket_str: String) -> Result<Vec<(String, Bytes)>> {
+        // Parse the ticket
+        let ticket: BlobTicket = ticket_str.parse()?;
+        let hash_and_format = ticket.hash_and_format();
+        let collection_hash = hash_and_format.hash;
+
+        // Check if we have the collection locally
+        let status = self.blobs.status(collection_hash).await?;
+        let has_local = matches!(status, BlobStatus::Complete { .. });
+
+        if !has_local {
+            // Download from remote peer using direct connection
+            tracing::info!("Collection not local, attempting remote fetch");
+            self.discovery.add_endpoint_info(ticket.addr().clone());
+
+            // Connect to the peer
+            let endpoint = self.router.endpoint();
+            let connection = endpoint
+                .connect(ticket.addr().clone(), iroh_blobs::ALPN)
+                .await?;
+
+            tracing::info!("Connected to peer, starting download");
+
+            // Get the local blob state
+            let local = self.blobs.remote().local(hash_and_format).await?;
+
+            // Execute get to download missing blobs
+            let get = self.blobs.remote().execute_get(connection, local.missing());
+            let mut stream = get.stream();
+
+            // Consume the stream to download all data
+            while let Some(item) = stream.next().await {
+                match item {
+                    iroh_blobs::api::remote::GetProgressItem::Progress(offset) => {
+                        tracing::debug!("Downloaded {} bytes", offset);
+                    }
+                    iroh_blobs::api::remote::GetProgressItem::Done(_stats) => {
+                        tracing::info!("Download complete");
+                        break;
+                    }
+                    iroh_blobs::api::remote::GetProgressItem::Error(cause) => {
+                        return Err(anyhow::anyhow!("Download failed: {:?}", cause));
+                    }
+                }
+            }
+        } else {
+            tracing::info!("Collection found locally");
+        }
+
+        // Load the Collection
+        let collection = Collection::load(collection_hash, &self.blobs).await?;
+        tracing::info!("Collection loaded with {} files", collection.iter().count());
+
+        // Get all files from the collection
+        let mut result = Vec::new();
+        for (filename, blob_hash) in collection.iter() {
+            tracing::info!("Fetching blob: {} ({})", filename, blob_hash);
+            let bytes = self.blobs.get_bytes(*blob_hash).await?;
+            result.push((filename.to_string(), bytes));
+        }
+
+        Ok(result)
     }
 
     /// Check if a blob exists and is complete

@@ -59,6 +59,33 @@ export async function sendFile(file: File): Promise<string> {
 }
 
 /**
+ * Send multiple files (from folder selection) and return the ticket
+ */
+export async function sendFiles(files: File[]): Promise<string> {
+  const node = await getNode();
+
+  // Wait for endpoint to be ready
+  const ready = await node.wait_for_ready(5000);
+  if (!ready) {
+    throw new Error("Endpoint not ready");
+  }
+
+  // Convert FileList to array of { name, data } objects
+  const fileData = await Promise.all(
+    files.map(async (file) => {
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      return { name: file.webkitRelativePath || file.name, data: uint8Array };
+    })
+  );
+
+  // Import collection and create ticket
+  const ticket = await node.import_collection_and_create_ticket(fileData);
+
+  return ticket;
+}
+
+/**
  * Receive a file from a ticket
  */
 export async function receiveFile(

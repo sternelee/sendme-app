@@ -94,6 +94,41 @@ impl SendmeNodeWasm {
         Ok(promise)
     }
 
+    /// Import multiple files as a collection and create a ticket
+    ///
+    /// Takes an array of file objects, each with { name: string, data: Uint8Array }
+    /// Returns a BlobTicket string for sharing the entire collection.
+    pub fn import_collection_and_create_ticket(
+        &self,
+        files: Array,
+    ) -> Result<js_sys::Promise, JsError> {
+        let node = self.0.clone();
+
+        let promise = future_to_promise(async move {
+            // Convert JS array of file objects to Vec<(String, Bytes)>
+            let mut file_list = Vec::new();
+            for i in 0..files.length() {
+                let file_obj = files.get(i);
+                if let Ok(name) = js_sys::Reflect::get(&file_obj, &JsValue::from("name")) {
+                    if let Ok(data) = js_sys::Reflect::get(&file_obj, &JsValue::from("data")) {
+                        let name_str = name.as_string().unwrap_or_default();
+                        let uint8_array = Uint8Array::from(data);
+                        let bytes = uint8array_to_bytes(&uint8_array);
+                        file_list.push((name_str, bytes));
+                    }
+                }
+            }
+
+            let ticket = node
+                .import_collection_and_create_ticket(file_list)
+                .await
+                .map_err(|e: anyhow::Error| JsError::new(&e.to_string()))?;
+            Ok(JsValue::from(ticket))
+        });
+
+        Ok(promise)
+    }
+
     /// Get data by ticket string
     ///
     /// The ticket string contains both the peer's addressing information
@@ -123,6 +158,41 @@ impl SendmeNodeWasm {
             .map_err(|e| JsError::new(&format!("Failed to set data: {:?}", e)))?;
 
             Ok(JsValue::from(obj))
+        });
+
+        Ok(promise)
+    }
+
+    /// Get all files from a collection by ticket string
+    ///
+    /// Returns a JS array of objects, each with { filename: string, data: Uint8Array }
+    pub fn get_collection(&self, ticket: String) -> Result<js_sys::Promise, JsError> {
+        let node = self.0.clone();
+
+        let promise = future_to_promise(async move {
+            let files = node
+                .get_collection(ticket)
+                .await
+                .map_err(|e: anyhow::Error| JsError::new(&e.to_string()))?;
+
+            // Create a JS array of file objects
+            let result = Array::new_with_length(files.len() as u32);
+            for (i, (filename, data)) in files.into_iter().enumerate() {
+                let obj = js_sys::Object::new();
+                js_sys::Reflect::set(&obj, &JsValue::from("filename"), &JsValue::from(filename))
+                    .map_err(|e| JsError::new(&format!("Failed to set filename: {:?}", e)))?;
+
+                js_sys::Reflect::set(
+                    &obj,
+                    &JsValue::from("data"),
+                    &JsValue::from(bytes_to_uint8array(&data)),
+                )
+                .map_err(|e| JsError::new(&format!("Failed to set data: {:?}", e)))?;
+
+                result.set(i as u32, JsValue::from(obj));
+            }
+
+            Ok(JsValue::from(result))
         });
 
         Ok(promise)

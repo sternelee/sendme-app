@@ -1,6 +1,6 @@
 import { createSignal, createMemo, Show } from "solid-js";
 import toast from "solid-toast";
-import { sendFile } from "../../lib/commands";
+import { sendFile, sendFiles } from "../../lib/commands";
 import { Motion, Presence } from "solid-motionone";
 import {
   TbOutlineUpload,
@@ -10,6 +10,7 @@ import {
   TbOutlineX,
   TbOutlineSparkles,
   TbOutlineDevices,
+  TbOutlineFolder,
 } from "solid-icons/tb";
 import DeviceListModal from "../devices/DeviceListModal";
 
@@ -28,31 +29,45 @@ interface Device {
   updatedAt: string;
 }
 
-interface SendTabProps { }
+interface SendTabProps {}
 
 export default function SendTab(_props: SendTabProps) {
   const [file, setFile] = createSignal<File | null>(null);
+  const [files, setFiles] = createSignal<File[]>([]);
+  const [isFolder, setIsFolder] = createSignal(false);
   const [ticket, setTicket] = createSignal<string>("");
   const [isSending, setIsSending] = createSignal(false);
   const [isDragging, setIsDragging] = createSignal(false);
   const [isDeviceModalOpen, setIsDeviceModalOpen] = createSignal(false);
   let fileInputRef: HTMLInputElement | undefined;
+  let folderInputRef: HTMLInputElement | undefined;
 
   const dropZoneClass = createMemo(() =>
     isDragging()
       ? "border-purple-500/50 bg-purple-500/10 scale-[1.02]"
-      : file()
+      : file() || files().length > 0
         ? "border-green-500/30 bg-green-500/5"
-        : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+        : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10",
   );
+
+  const hasSelection = createMemo(() => file() || files().length > 0);
 
   async function handleSend() {
     const currentFile = file();
-    if (!currentFile) return;
+    const currentFiles = files();
+
+    if (!currentFile && currentFiles.length === 0) return;
 
     setIsSending(true);
     try {
-      const result = await sendFile(currentFile);
+      let result: string;
+      if (isFolder() && currentFiles.length > 0) {
+        result = await sendFiles(currentFiles);
+      } else if (currentFile) {
+        result = await sendFile(currentFile);
+      } else {
+        throw new Error("No file or folder selected");
+      }
       setTicket(result);
       toast.success("Ticket ready to share!");
     } catch (error) {
@@ -67,6 +82,19 @@ export default function SendTab(_props: SendTabProps) {
     const target = event.target as HTMLInputElement;
     if (target.files && target.files[0]) {
       setFile(target.files[0]);
+      setIsFolder(false);
+      setFiles([]);
+      setTicket("");
+    }
+  }
+
+  function handleFolderSelect(event: Event) {
+    const target = event.target as HTMLInputElement;
+    if (target.files && target.files.length > 0) {
+      const fileList = Array.from(target.files);
+      setFiles(fileList);
+      setIsFolder(true);
+      setFile(null);
       setTicket("");
     }
   }
@@ -74,8 +102,19 @@ export default function SendTab(_props: SendTabProps) {
   function handleDrop(event: DragEvent) {
     event.preventDefault();
     setIsDragging(false);
-    if (event.dataTransfer?.files && event.dataTransfer.files[0]) {
-      setFile(event.dataTransfer.files[0]);
+    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+      const droppedFiles = Array.from(event.dataTransfer.files);
+      if (droppedFiles.length === 1 && !droppedFiles[0].webkitRelativePath) {
+        // Single file
+        setFile(droppedFiles[0]);
+        setIsFolder(false);
+        setFiles([]);
+      } else {
+        // Multiple files (folder or multiple files)
+        setFiles(droppedFiles);
+        setIsFolder(true);
+        setFile(null);
+      }
       setTicket("");
     }
   }
@@ -98,8 +137,14 @@ export default function SendTab(_props: SendTabProps) {
     fileInputRef?.click();
   }
 
+  function selectFolder() {
+    folderInputRef?.click();
+  }
+
   function resetFile() {
     setFile(null);
+    setFiles([]);
+    setIsFolder(false);
     setTicket("");
   }
 
@@ -115,14 +160,19 @@ export default function SendTab(_props: SendTabProps) {
   async function handleSendToDevice(device: Device) {
     try {
       const currentFile = file();
+      const currentFiles = files();
       const response = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           deviceId: device.deviceId,
           ticket: ticket(),
-          filename: currentFile?.name,
-          fileSize: currentFile?.size,
+          filename: isFolder()
+            ? currentFiles[0]?.webkitRelativePath?.split("/")[0] || "Folder"
+            : currentFile?.name,
+          fileSize: isFolder()
+            ? currentFiles.reduce((acc, f) => acc + f.size, 0)
+            : currentFile?.size,
         }),
       });
 
@@ -154,7 +204,7 @@ export default function SendTab(_props: SendTabProps) {
       <div class="relative group">
         <Presence exitBeforeEnter>
           <Show
-            when={!file()}
+            when={!hasSelection()}
             fallback={
               <Motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -169,17 +219,44 @@ export default function SendTab(_props: SendTabProps) {
                     animate={{ scale: 1 }}
                     class="w-16 h-16 rounded-2xl bg-green-500/20 text-green-400 flex items-center justify-center relative"
                   >
-                    <TbOutlineFileText size={32} />
+                    <Show
+                      when={file()}
+                      fallback={<TbOutlineFolder size={32} />}
+                    >
+                      <TbOutlineFileText size={32} />
+                    </Show>
                     <button
-                      onClick={(e) => { e.stopPropagation(); resetFile(); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        resetFile();
+                      }}
                       class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white/60 flex items-center justify-center backdrop-blur-md border border-white/10"
                     >
                       <TbOutlineX size={12} />
                     </button>
                   </Motion.div>
                   <div class="max-w-xs">
-                    <p class="font-semibold text-white truncate px-4">{file()!.name}</p>
-                    <p class="text-xs text-white/40 mt-1">{formatFileSize(file()!.size)}</p>
+                    <Show
+                      when={file()}
+                      fallback={
+                        <>
+                          <p class="font-semibold text-white">
+                            {files().length} files selected
+                          </p>
+                          <p class="text-xs text-white/40 mt-1">
+                            {files()[0]?.webkitRelativePath?.split("/")[0] ||
+                              "Folder"}
+                          </p>
+                        </>
+                      }
+                    >
+                      <p class="font-semibold text-white truncate px-4">
+                        {file()!.name}
+                      </p>
+                      <p class="text-xs text-white/40 mt-1">
+                        {formatFileSize(file()!.size)}
+                      </p>
+                    </Show>
                   </div>
                 </div>
               </Motion.div>
@@ -190,11 +267,10 @@ export default function SendTab(_props: SendTabProps) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              class={`relative border-2 border-dashed rounded-3xl p-10 text-center transition-all duration-300 cursor-pointer overflow-hidden ${dropZoneClass()}`}
+              class={`relative border-2 border-dashed rounded-3xl p-10 text-center transition-all duration-300 overflow-hidden ${dropZoneClass()}`}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
-              onClick={selectFile}
             >
               <input
                 ref={fileInputRef}
@@ -202,14 +278,37 @@ export default function SendTab(_props: SendTabProps) {
                 class="hidden"
                 onChange={handleFileSelect}
               />
+              <input
+                ref={folderInputRef}
+                type="file"
+                {...({ webkitdirectory: true, directory: true } as any)}
+                class="hidden"
+                onChange={handleFolderSelect}
+              />
               <div class="flex flex-col items-center gap-5 py-4">
                 <div class="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-purple-500/20 group-hover:text-purple-400 transition-all duration-500">
-                  <TbOutlineUpload size={32} class="opacity-50 group-hover:opacity-100" />
+                  <TbOutlineUpload
+                    size={32}
+                    class="opacity-50 group-hover:opacity-100"
+                  />
                 </div>
-                <div>
-                  <p class="text-white/80 font-medium mb-1">Click to browse or drop file</p>
-                  <p class="text-white/40 text-sm">Maximum file size: 1GB</p>
+                <div class="flex gap-3">
+                  <button
+                    onClick={selectFile}
+                    class="px-6 py-3 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-xl text-white font-medium transition-all hover:scale-105 active:scale-95"
+                  >
+                    Choose File
+                  </button>
+                  <button
+                    onClick={selectFolder}
+                    class="px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white/80 font-medium transition-all hover:scale-105 active:scale-95"
+                  >
+                    Choose Folder
+                  </button>
                 </div>
+                <p class="text-white/40 text-sm">
+                  or drag & drop files or folders
+                </p>
               </div>
             </Motion.div>
           </Show>
@@ -217,7 +316,7 @@ export default function SendTab(_props: SendTabProps) {
       </div>
 
       {/* Action Button */}
-      <Show when={file() && !ticket()}>
+      <Show when={hasSelection() && !ticket()}>
         <Motion.button
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -254,12 +353,14 @@ export default function SendTab(_props: SendTabProps) {
                 </div>
                 <span class="font-bold text-white">Target Locked</span>
               </div>
-              <span class="text-[10px] font-black uppercase tracking-widest text-white/20">Ticket Type: P2P</span>
+              <span class="text-[10px] font-black uppercase tracking-widest text-white/20">
+                Ticket Type: P2P
+              </span>
             </div>
 
             <div class="space-y-3">
               <div class="flex gap-2">
-                <div class="flex-1 bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm font-mono break-all line-clamp-2">
+                <div class="flex-1 bg-black/40 border border-white/10 rounded-2xl px-5 py-3.5 text-white text-sm font-mono break-all line-clamp-2 max-h-14.5">
                   {ticket()}
                 </div>
                 <button
@@ -267,14 +368,20 @@ export default function SendTab(_props: SendTabProps) {
                   class="p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all group active:scale-90"
                   title="Copy ticket"
                 >
-                  <TbOutlineCopy size={24} class="text-white/60 group-hover:text-white" />
+                  <TbOutlineCopy
+                    size={24}
+                    class="text-white/60 group-hover:text-white"
+                  />
                 </button>
                 <button
                   onClick={() => setIsDeviceModalOpen(true)}
                   class="p-4 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-2xl transition-all group active:scale-90"
                   title="Send to your device"
                 >
-                  <TbOutlineDevices size={24} class="text-purple-400 group-hover:text-purple-300" />
+                  <TbOutlineDevices
+                    size={24}
+                    class="text-purple-400 group-hover:text-purple-300"
+                  />
                 </button>
               </div>
               <p class="text-xs text-white/30 text-center">
