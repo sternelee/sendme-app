@@ -28,7 +28,7 @@ export const { signIn, signUp, signOut, useSession } = authClient;
 export function signInWithSocial(provider: "github" | "google") {
   return signIn.social({
     provider,
-    callbackURL: "/",
+    callbackURL: "/app",
   });
 }
 
@@ -39,7 +39,7 @@ export function signInWithEmail(email: string, password: string) {
   return signIn.email({
     email,
     password,
-    callbackURL: "/",
+    callbackURL: "/app",
   });
 }
 
@@ -53,6 +53,6 @@ export function signUpWithEmail(data: {
 }) {
   return signUp.email({
     ...data,
-    callbackURL: "/",
+    callbackURL: "/app",
   });
 }
