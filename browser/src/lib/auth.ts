@@ -5,7 +5,10 @@
  */
 
 import type { IncomingRequestCfProperties } from "@cloudflare/workers-types";
-import { createAuth as createAuthInstance, type CloudflareBindings } from "../../better-auth.config";
+import {
+  createAuth as createAuthInstance,
+  type CloudflareBindings,
+} from "../../better-auth.config";
 
 /**
  * Environment variables for Cloudflare Workers
