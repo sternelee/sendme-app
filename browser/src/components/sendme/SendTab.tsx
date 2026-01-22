@@ -9,21 +9,39 @@ import {
   TbOutlineFileText,
   TbOutlineX,
   TbOutlineSparkles,
+  TbOutlineDevices,
 } from "solid-icons/tb";
+import DeviceListModal from "../devices/DeviceListModal";
 
-interface SendTabProps {}
+interface Device {
+  id: string;
+  userId: string;
+  platform: string;
+  deviceId: string;
+  name: string;
+  ipAddress: string | null;
+  hostname: string | null;
+  userAgent: string | null;
+  online: boolean;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SendTabProps { }
 
 export default function SendTab(_props: SendTabProps) {
   const [file, setFile] = createSignal<File | null>(null);
   const [ticket, setTicket] = createSignal<string>("");
   const [isSending, setIsSending] = createSignal(false);
   const [isDragging, setIsDragging] = createSignal(false);
+  const [isDeviceModalOpen, setIsDeviceModalOpen] = createSignal(false);
   let fileInputRef: HTMLInputElement | undefined;
 
   const dropZoneClass = createMemo(() =>
     isDragging()
       ? "border-purple-500/50 bg-purple-500/10 scale-[1.02]"
-      : file() 
+      : file()
         ? "border-green-500/30 bg-green-500/5"
         : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
   );
@@ -91,6 +109,35 @@ export default function SendTab(_props: SendTabProps) {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   }
 
+  /**
+   * Handle sending ticket to a device
+   */
+  async function handleSendToDevice(device: Device) {
+    try {
+      const currentFile = file();
+      const response = await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: device.deviceId,
+          ticket: ticket(),
+          filename: currentFile?.name,
+          fileSize: currentFile?.size,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send ticket");
+      }
+
+      toast.success(`Ticket sent to ${device.name}!`);
+      setIsDeviceModalOpen(false);
+    } catch (error) {
+      console.error("Failed to send ticket:", error);
+      toast.error("Failed to send ticket: " + (error as Error).message);
+    }
+  }
+
   return (
     <div class="space-y-8">
       {/* Header Info */}
@@ -106,8 +153,8 @@ export default function SendTab(_props: SendTabProps) {
       {/* Main Action Area */}
       <div class="relative group">
         <Presence exitBeforeEnter>
-          <Show 
-            when={!file()} 
+          <Show
+            when={!file()}
             fallback={
               <Motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -117,13 +164,13 @@ export default function SendTab(_props: SendTabProps) {
                 class={`relative border-2 border-dashed rounded-3xl p-10 text-center transition-all duration-300 overflow-hidden ${dropZoneClass()}`}
               >
                 <div class="flex flex-col items-center gap-4 py-2">
-                  <Motion.div 
+                  <Motion.div
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
                     class="w-16 h-16 rounded-2xl bg-green-500/20 text-green-400 flex items-center justify-center relative"
                   >
                     <TbOutlineFileText size={32} />
-                    <button 
+                    <button
                       onClick={(e) => { e.stopPropagation(); resetFile(); }}
                       class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white/60 flex items-center justify-center backdrop-blur-md border border-white/10"
                     >
@@ -139,9 +186,9 @@ export default function SendTab(_props: SendTabProps) {
             }
           >
             <Motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               class={`relative border-2 border-dashed rounded-3xl p-10 text-center transition-all duration-300 cursor-pointer overflow-hidden ${dropZoneClass()}`}
               onDrop={handleDrop}
@@ -218,8 +265,16 @@ export default function SendTab(_props: SendTabProps) {
                 <button
                   onClick={copyTicket}
                   class="p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all group active:scale-90"
+                  title="Copy ticket"
                 >
                   <TbOutlineCopy size={24} class="text-white/60 group-hover:text-white" />
+                </button>
+                <button
+                  onClick={() => setIsDeviceModalOpen(true)}
+                  class="p-4 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-2xl transition-all group active:scale-90"
+                  title="Send to your device"
+                >
+                  <TbOutlineDevices size={24} class="text-purple-400 group-hover:text-purple-300" />
                 </button>
               </div>
               <p class="text-xs text-white/30 text-center">
@@ -229,6 +284,15 @@ export default function SendTab(_props: SendTabProps) {
           </Motion.div>
         </Show>
       </Presence>
+
+      {/* Device List Modal */}
+      <DeviceListModal
+        isOpen={isDeviceModalOpen()}
+        onClose={() => setIsDeviceModalOpen(false)}
+        ticket={ticket()}
+        showSendButton={true}
+        onSendToDevice={handleSendToDevice}
+      />
     </div>
   );
 }

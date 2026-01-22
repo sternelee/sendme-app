@@ -4,6 +4,7 @@ import { useAuth } from "../lib/contexts/user-better-auth";
 import SendTab from "../components/sendme/SendTab";
 import ReceiveTab from "../components/sendme/ReceiveTab";
 import AuthModal from "../components/auth/AuthModal";
+import DeviceListModal from "../components/devices/DeviceListModal";
 import { Motion, Presence } from "solid-motionone";
 import {
   TbOutlineSparkles,
@@ -11,12 +12,14 @@ import {
   TbOutlineDownload,
   TbOutlineUser,
   TbOutlineLogout,
+  TbOutlineDevices,
 } from "solid-icons/tb";
 
 export default function Home() {
   const [activeTab, setActiveTab] = createSignal<"send" | "receive">("send");
   const [isInitializing, setIsInitializing] = createSignal(true);
   const [mousePos, setMousePos] = createSignal({ x: 0, y: 0 });
+  const [isDeviceModalOpen, setIsDeviceModalOpen] = createSignal(false);
 
   const auth = useAuth();
 
@@ -53,7 +56,6 @@ export default function Home() {
             x: mousePos().x * 0.05,
             y: mousePos().y * 0.05,
           }}
-          transition={{ type: "spring", stiffness: 50, damping: 20 }}
           class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[120px]"
         />
         <Motion.div
@@ -61,7 +63,6 @@ export default function Home() {
             x: mousePos().x * -0.03,
             y: mousePos().y * -0.03,
           }}
-          transition={{ type: "spring", stiffness: 50, damping: 20 }}
           class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[120px]"
         />
         <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,transparent_0%,rgba(18,14,38,0.4)_100%)]" />
@@ -98,6 +99,18 @@ export default function Home() {
                   backgroundColor: "rgba(255, 255, 255, 0.15)",
                 }}
                 press={{ scale: 0.95 }}
+                onClick={() => setIsDeviceModalOpen(true)}
+                class="p-2.5 rounded-xl bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors"
+                title="Devices"
+              >
+                <TbOutlineDevices size={20} />
+              </Motion.button>
+              <Motion.button
+                hover={{
+                  scale: 1.05,
+                  backgroundColor: "rgba(255, 255, 255, 0.15)",
+                }}
+                press={{ scale: 0.95 }}
                 onClick={handleLogout}
                 class="p-2.5 rounded-xl bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors"
                 title="Logout"
@@ -128,8 +141,8 @@ export default function Home() {
             </Motion.div>
           ) : (
             <Motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
               class="w-full max-w-xl"
             >
@@ -144,22 +157,20 @@ export default function Home() {
                 />
                 <button
                   onClick={() => setActiveTab("send")}
-                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${
-                    activeTab() === "send"
-                      ? "text-white"
-                      : "text-white/50 hover:text-white/80"
-                  }`}
+                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${activeTab() === "send"
+                    ? "text-white"
+                    : "text-white/50 hover:text-white/80"
+                    }`}
                 >
                   <TbOutlineUpload size={20} />
                   Send
                 </button>
                 <button
                   onClick={() => setActiveTab("receive")}
-                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${
-                    activeTab() === "receive"
-                      ? "text-white"
-                      : "text-white/50 hover:text-white/80"
-                  }`}
+                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${activeTab() === "receive"
+                    ? "text-white"
+                    : "text-white/50 hover:text-white/80"
+                    }`}
                 >
                   <TbOutlineDownload size={20} />
                   Receive
@@ -180,7 +191,7 @@ export default function Home() {
                     class="glass rounded-3xl p-1 overflow-hidden"
                   >
                     <div class="p-8">
-                      {activeTab() === "send" ? <SendTab /> : <ReceiveTab />}
+                      {activeTab() === "send" ? <SendTab /> : <ReceiveTab isActive={true} />}
                     </div>
                   </Motion.div>
                 </Presence>
@@ -216,6 +227,12 @@ export default function Home() {
           </p>
         </Motion.footer>
       </main>
+
+      {/* Device List Modal */}
+      <DeviceListModal
+        isOpen={isDeviceModalOpen()}
+        onClose={() => setIsDeviceModalOpen(false)}
+      />
     </div>
   );
 }

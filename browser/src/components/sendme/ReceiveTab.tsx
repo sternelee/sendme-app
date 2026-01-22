@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, For } from "solid-js";
 import toast from "solid-toast";
 import { receiveFile, downloadFile } from "../../lib/commands";
 import { Motion, Presence } from "solid-motionone";
@@ -9,11 +9,16 @@ import {
   TbOutlineClipboard,
   TbOutlineFileDownload,
   TbOutlineShieldLock,
+  TbOutlineSparkles,
+  TbOutlineDeviceMobile,
 } from "solid-icons/tb";
+import { useTicketPolling } from "~/lib/composables/useTicketPolling";
 
-interface ReceiveTabProps {}
+interface ReceiveTabProps {
+  isActive?: boolean;
+}
 
-export default function ReceiveTab(_props: ReceiveTabProps) {
+export default function ReceiveTab(props: ReceiveTabProps) {
   const [ticket, setTicket] = createSignal<string>("");
   const [isReceiving, setIsReceiving] = createSignal(false);
   const [receivedFile, setReceivedFile] = createSignal<{
@@ -21,6 +26,9 @@ export default function ReceiveTab(_props: ReceiveTabProps) {
     data: Uint8Array;
   } | null>(null);
   const [error, setError] = createSignal<string>("");
+
+  // Only poll when this tab is active
+  const { tickets } = useTicketPolling(() => props.isActive || false);
 
   async function handleReceive() {
     const ticketValue = ticket().trim();
@@ -63,6 +71,14 @@ export default function ReceiveTab(_props: ReceiveTabProps) {
     }
   }
 
+  /**
+   * Use ticket from incoming tickets list
+   */
+  function useIncomingTicket(ticketStr: string, filename?: string | null) {
+    setTicket(ticketStr);
+    toast.success(`Ticket from ${filename || "another device"} loaded!`);
+  }
+
   function formatFileSize(data: Uint8Array): string {
     const size = data.length;
     if (size < 1024) return size + " B";
@@ -81,6 +97,56 @@ export default function ReceiveTab(_props: ReceiveTabProps) {
           Enter a secure ticket to establish a P2P connection.
         </p>
       </div>
+
+      {/* Incoming Tickets Section */}
+      <Presence>
+        <Show when={tickets().length > 0}>
+          <Motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            class="glass rounded-2xl p-4 border-purple-500/20 bg-purple-500/5 space-y-3"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 text-purple-400">
+                <TbOutlineSparkles size={18} />
+                <span class="text-sm font-semibold">
+                  {tickets().length} Incoming Ticket{tickets().length > 1 ? "s" : ""}
+                </span>
+              </div>
+            </div>
+            <div class="space-y-2 max-h-40 overflow-y-auto">
+              <For each={tickets()}>
+                {(incomingTicket) => (
+                  <Motion.div
+                    initial={{ opacity: 0, x: -5 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    class="flex items-center gap-3 p-3 rounded-xl bg-black/40 border border-white/10 hover:border-purple-500/30 transition-all group cursor-pointer"
+                    onClick={() => useIncomingTicket(incomingTicket.ticket, incomingTicket.filename)}
+                  >
+                    <div class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center flex-shrink-0">
+                      <TbOutlineDeviceMobile size={16} />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm text-white font-medium truncate">
+                        {incomingTicket.filename || "Unnamed file"}
+                      </p>
+                      <p class="text-xs text-white/40">
+                        {incomingTicket.fileSize
+                          ? `${(incomingTicket.fileSize / 1024 / 1024).toFixed(2)} MB`
+                          : "Unknown size"}
+                      </p>
+                    </div>
+                    <div class="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <TbOutlineCheck size={16} class="text-purple-400" />
+                    </div>
+                  </Motion.div>
+                )}
+              </For>
+            </div>
+          </Motion.div>
+        </Show>
+      </Presence>
 
       {/* Ticket input */}
       <div class="space-y-5">

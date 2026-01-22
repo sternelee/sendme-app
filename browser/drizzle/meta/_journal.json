@@ -8,6 +8,20 @@
       "when": 1769048232015,
       "tag": "0000_oval_archangel",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1769058345767,
+      "tag": "0001_thankful_abomination",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1769059350869,
+      "tag": "0002_watery_justin_hammer",
+      "breakpoints": true
     }
   ]
 }
