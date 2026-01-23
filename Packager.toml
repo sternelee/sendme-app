@@ -1,0 +1,17 @@
+[cli binaries]
+name = "pisend"
+path = "cli/src/main.rs"
+
+[cli.config]
+formats = ["tar.gz", "zip"]
+
+[cli.config.metadata]
+description = "A CLI tool to send directories over the network with NAT hole punching"
+long_description = """
+PiSend is a Rust CLI tool for sending files and directories over the internet
+using the iroh networking library. Provides P2P file transfer with NAT hole
+punching, blake3 verified streaming, and resumable downloads.
+"""
+homepage = "https://github.com/cloudplay/pisendcli"
+authors = ["cloudplay"]
+identifier = "dev.cloudplay.pisend"
