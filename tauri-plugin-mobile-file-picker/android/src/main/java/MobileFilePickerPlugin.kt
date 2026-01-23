@@ -160,7 +160,7 @@ class MobileFilePickerPlugin(private val activity: Activity) : Plugin(activity) 
             }
 
             // Create a unique subdirectory to avoid conflicts
-            val uniqueDir = File(destDir, ".sendme-${UUID.randomUUID()}")
+            val uniqueDir = File(destDir, ".pisend-${UUID.randomUUID()}")
             uniqueDir.mkdirs()
 
             // Get filename

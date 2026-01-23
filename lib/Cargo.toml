@@ -1,5 +1,5 @@
 [package]
-name = "sendme-lib"
+name = "pisend-lib"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

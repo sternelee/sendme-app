@@ -146,7 +146,7 @@ public class MobileFilePicker: NSObject {
                 }
 
                 // Create unique subdirectory
-                let uniqueDir = destDir.appendingPathComponent(".sendme-\(UUID().uuidString)")
+                let uniqueDir = destDir.appendingPathComponent(".pisend-\(UUID().uuidString)")
                 try FileManager.default.createDirectory(at: uniqueDir, withIntermediateDirectories: true)
 
                 // Determine filename

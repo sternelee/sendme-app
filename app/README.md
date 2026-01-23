@@ -1,6 +1,6 @@
 # Tauri + SolidJS + TypeScript
 
-This Tauri desktop application provides a modern GUI for Sendme file transfers, built with SolidJS and TypeScript.
+This Tauri desktop application provides a modern GUI for PiSend file transfers, built with SolidJS and TypeScript.
 
 ## Recommended IDE Setup
 
@@ -20,7 +20,7 @@ This Tauri desktop application provides a modern GUI for Sendme file transfers, 
 ## CLI
 
 ```bash
-cargo install sendme
+cargo install pisend
 ```
 
 ## Desktop App
@@ -42,7 +42,7 @@ See [Mobile Development](#mobile-development) below.
 ### Send side
 
 ```bash
-sendme send <file or directory>
+pisend send <file or directory>
 ```
 
 This will create a temporary [iroh](https://crates.io/crates/iroh) node that
@@ -55,7 +55,7 @@ will delete the temporary directory.
 ### Receive side
 
 ```bash
-sendme receive <ticket>
+pisend receive <ticket>
 ```
 
 This will download the data and create a file or directory named like the source
@@ -67,7 +67,7 @@ directory.
 
 On completion, it will delete the temp directory.
 
-All temp directories start with `.sendme-`.
+All temp directories start with `.pisend-`.
 
 ## Desktop App Usage
 

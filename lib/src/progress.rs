@@ -1,4 +1,4 @@
-//! Progress reporting abstractions for the sendme library.
+//! Progress reporting abstractions for the pisend library.
 
 use iroh_blobs::Hash;
 use serde::{Deserialize, Serialize};

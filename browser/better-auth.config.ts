@@ -91,7 +91,7 @@ function createAuth(
           updateAge: 60 * 60 * 24, // 1 day
         },
         advanced: {
-          cookiePrefix: "sendme",
+          cookiePrefix: "pisend",
           useSecureCookies,
         },
         account: {

@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "sendme-app",
+  "name": "pisend-app",
   "compatibility_date": "2026-01-16",
   "observability": {
     "enabled": true,
@@ -14,7 +14,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "sendme-db",
+      "database_name": "pisend-db",
       "database_id": "4419bd4c-8798-4ff3-b2ca-6d4ea3345be9",
       "migrations_dir": "./drizzle",
     },
@@ -27,8 +27,8 @@
   "env": {
     "production": {
       "vars": {
-        "BETTER_AUTH_URL": "https://sendme.leeapp.dev",
-        "BETTER_AUTH_APP_URL": "https://sendme.leeapp.dev",
+        "BETTER_AUTH_URL": "https://pisend.leeapp.dev",
+        "BETTER_AUTH_APP_URL": "https://pisend.leeapp.dev",
         "BETTER_AUTH_SECRET": "123456789",
       },
     },

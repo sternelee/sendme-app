@@ -6,11 +6,11 @@ fn main() {
     {
         let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
         let android_gen_dir =
-            out_dir.join("../../gen/android/app/src/main/java/sendme/leechat/app");
+            out_dir.join("../../gen/android/app/src/main/java/pisend/leechat/app");
 
         if let Ok(metadata) = std::fs::metadata(&android_gen_dir) {
             if metadata.is_dir() {
-                let source_dir = std::path::PathBuf::from("android-includes/sendme/leechat/app");
+                let source_dir = std::path::PathBuf::from("android-includes/pisend/leechat/app");
 
                 if let Ok(entries) = std::fs::read_dir(&source_dir) {
                     for entry in entries.flatten() {

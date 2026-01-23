@@ -400,7 +400,7 @@ export default function Home() {
   const shareText = (text: string) => {
     if (navigator.share) {
       navigator.share({
-        title: 'Sendme Ticket',
+        title: 'PiSend Ticket',
         text: text,
       })
       .then(() => console.log('Successful share'))
@@ -520,7 +520,7 @@ export default function Home() {
               </div>
               <div>
                 <h1 class="text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-linear-to-r from-white to-white/60">
-                  Sendme
+                  PiSend
                 </h1>
                 <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">Secure P2P Node</p>
               </div>
