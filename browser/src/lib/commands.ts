@@ -13,7 +13,7 @@ export async function initWasm(): Promise<void> {
   if (wasmModule) return;
 
   try {
-    wasmModule = await import("../wasm/sendme_browser.js");
+    wasmModule = await import("../wasm/pisend_browser.js");
     await wasmModule.default();
   } catch (error) {
     console.error("Failed to initialize WASM:", error);

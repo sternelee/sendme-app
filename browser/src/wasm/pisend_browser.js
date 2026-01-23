@@ -262,28 +262,28 @@ export function start() {
     wasm.start();
 }
 
-function wasm_bindgen__convert__closures_____invoke__h44fc901b135b92a5(arg0, arg1) {
-    wasm.wasm_bindgen__convert__closures_____invoke__h44fc901b135b92a5(arg0, arg1);
-}
-
-function wasm_bindgen__convert__closures_____invoke__he122138ce352108b(arg0, arg1, arg2) {
-    wasm.wasm_bindgen__convert__closures_____invoke__he122138ce352108b(arg0, arg1, arg2);
-}
-
-function wasm_bindgen__convert__closures_____invoke__hcdf9b85af93f8677(arg0, arg1, arg2) {
-    wasm.wasm_bindgen__convert__closures_____invoke__hcdf9b85af93f8677(arg0, arg1, arg2);
-}
-
-function wasm_bindgen__convert__closures_____invoke__hbaf6bc06b9501df5(arg0, arg1) {
-    wasm.wasm_bindgen__convert__closures_____invoke__hbaf6bc06b9501df5(arg0, arg1);
-}
-
 function wasm_bindgen__convert__closures_____invoke__h9e7843c39390d7bb(arg0, arg1, arg2) {
     wasm.wasm_bindgen__convert__closures_____invoke__h9e7843c39390d7bb(arg0, arg1, arg2);
 }
 
 function wasm_bindgen__convert__closures_____invoke__h7ce47d23204ebab9(arg0, arg1) {
     wasm.wasm_bindgen__convert__closures_____invoke__h7ce47d23204ebab9(arg0, arg1);
+}
+
+function wasm_bindgen__convert__closures_____invoke__h44fc901b135b92a5(arg0, arg1) {
+    wasm.wasm_bindgen__convert__closures_____invoke__h44fc901b135b92a5(arg0, arg1);
+}
+
+function wasm_bindgen__convert__closures_____invoke__hcdf9b85af93f8677(arg0, arg1, arg2) {
+    wasm.wasm_bindgen__convert__closures_____invoke__hcdf9b85af93f8677(arg0, arg1, arg2);
+}
+
+function wasm_bindgen__convert__closures_____invoke__he122138ce352108b(arg0, arg1, arg2) {
+    wasm.wasm_bindgen__convert__closures_____invoke__he122138ce352108b(arg0, arg1, arg2);
+}
+
+function wasm_bindgen__convert__closures_____invoke__hbaf6bc06b9501df5(arg0, arg1) {
+    wasm.wasm_bindgen__convert__closures_____invoke__hbaf6bc06b9501df5(arg0, arg1);
 }
 
 function wasm_bindgen__convert__closures_____invoke__ha50f102c68d5f044(arg0, arg1, arg2, arg3) {
@@ -1317,7 +1317,7 @@ async function __wbg_init(module_or_path) {
     }
 
     if (typeof module_or_path === 'undefined') {
-        module_or_path = new URL('sendme_browser_bg.wasm', import.meta.url);
+        module_or_path = new URL('pisend_browser_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

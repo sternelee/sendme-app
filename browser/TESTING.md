@@ -26,7 +26,7 @@ export CC=/opt/homebrew/opt/llvm/bin/clang
 cargo build --target=wasm32-unknown-unknown
 
 # Generate bindings
-wasm-bindgen ./target/wasm32-unknown-unknown/debug/sendme_browser.wasm \
+wasm-bindgen ./target/wasm32-unknown-unknown/debug/pisend_browser.wasm \
   --out-dir=public/wasm --weak-refs --target=web --debug
 
 # Or use the npm script (sets CC automatically)

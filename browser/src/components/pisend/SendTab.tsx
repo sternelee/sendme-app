@@ -30,7 +30,7 @@ interface Device {
   updatedAt: string;
 }
 
-interface SendTabProps {}
+interface SendTabProps { }
 
 export default function SendTab(_props: SendTabProps) {
   const auth = useAuth();

@@ -158,22 +158,20 @@ export default function AppPage() {
                   />
                   <button
                     onClick={() => setActiveTab("send")}
-                    class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${
-                      activeTab() === "send"
+                    class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${activeTab() === "send"
                         ? "text-white"
                         : "text-white/50 hover:text-white/80"
-                    }`}
+                      }`}
                   >
                     <TbOutlineUpload size={20} />
                     Send
                   </button>
                   <button
                     onClick={() => setActiveTab("receive")}
-                    class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${
-                      activeTab() === "receive"
+                    class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${activeTab() === "receive"
                         ? "text-white"
                         : "text-white/50 hover:text-white/80"
-                    }`}
+                      }`}
                   >
                     <TbOutlineDownload size={20} />
                     Receive

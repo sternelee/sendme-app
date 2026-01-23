@@ -224,7 +224,7 @@ pnpm run serve           # Serve demo locally
 #### JavaScript API
 
 ```javascript
-import init, { SendmeNodeWasm } from "./wasm/sendme_browser.js";
+import init, { SendmeNodeWasm } from "./wasm/pisend_browser.js";
 
 await init();
 const node = await SendmeNodeWasm.spawn();

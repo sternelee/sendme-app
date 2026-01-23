@@ -260,11 +260,11 @@ adb shell getprop ro.product.model           # 设备型号
 adb shell dumpsys package com.pisend.app | grep versionName
 
 # 3. 完整日志 (在操作时运行)
-adb logcat > ~/sendme_debug_full.log
+adb logcat > ~/pisend_debug_full.log
 # 在手机上操作，然后 Ctrl+C 停止
 
 # 4. 查看最近的崩溃
-adb shell dumpsys dropbox --print > ~/sendme_crash.log
+adb shell dumpsys dropbox --print > ~/pisend_crash.log
 ```
 
 将这些日志和以下信息一起提供：

@@ -52,8 +52,8 @@ self.endpoint().online().await;
 
 **package.json 修复:**
 ```diff
-- "../target/wasm32-unknown-unknown/debug/sendme_browser.wasm"
-+ "./target/wasm32-unknown-unknown/debug/sendme_browser.wasm"
+- "../target/wasm32-unknown-unknown/debug/pisend_browser.wasm"
++ "./target/wasm32-unknown-unknown/debug/pisend_browser.wasm"
 ```
 
 现在构建脚本从正确的位置读取 WASM 文件（browser 有自己的 target 目录）。

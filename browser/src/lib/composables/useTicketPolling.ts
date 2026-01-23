@@ -27,10 +27,10 @@ export interface Ticket {
  * Get current device ID from localStorage
  */
 function getCurrentDeviceId(): string {
-  let deviceId = localStorage.getItem("sendme_device_id");
+  let deviceId = localStorage.getItem("pisend_device_id");
   if (!deviceId) {
     deviceId = crypto.randomUUID();
-    localStorage.setItem("sendme_device_id", deviceId);
+    localStorage.setItem("pisend_device_id", deviceId);
   }
   return deviceId;
 }
