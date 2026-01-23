@@ -1,37 +1,31 @@
 name: Release CLI
+
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  CN_APPLICATION: 'cloudplay/pisendcli'
-
 jobs:
-  draft:
-    runs-on: ubuntu-latest
-    environment: production
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: create draft release
-        uses: crabnebula-dev/cloud-release@v0
-        with:
-          command: release draft ${{ env.CN_APPLICATION }} --framework packager
-          api-key: ${{ secrets.CN_API_KEY }}
-
   build:
-    needs: draft
-
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
 
     runs-on: ${{ matrix.os }}
-    environment: production
 
     steps:
       - uses: actions/checkout@v4
@@ -41,33 +35,50 @@ jobs:
         with:
           toolchain: stable
           cache: true
+          target: ${{ matrix.target }}
 
-      - name: install cargo packager
-        run: cargo install cargo-packager --locked
+      - name: Build CLI
+        run: cargo build --release -p cli --target ${{ matrix.target }}
 
-      - name: build packager app
-        run: cargo packager --release
+      - name: Prepare archive (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../pisend-${{ matrix.target }}.tar.gz pisend
 
-      - name: Move assets to workdir
-        run: mv target/release/* .
+      - name: Prepare archive (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a ../../../pisend-${{ matrix.target }}.zip pisend.exe
+        shell: pwsh
 
-      - name: upload assets
-        uses: crabnebula-dev/cloud-release@v0
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          command: release upload ${{ env.CN_APPLICATION }} --framework packager
-          api-key: ${{ secrets.CN_API_KEY }}
+          name: pisend-${{ matrix.target }}
+          path: pisend-${{ matrix.target }}.*
 
-  publish:
+  release:
     needs: build
-
     runs-on: ubuntu-latest
-    environment: production
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: publish release
-        uses: crabnebula-dev/cloud-release@v0
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          command: release publish ${{ env.CN_APPLICATION }} --framework packager
-          api-key: ${{ secrets.CN_API_KEY }}
+          path: artifacts
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v$(cargo pkgid -p cli | sed 's/.*#//' \
+            || echo "0.0.1") \
+            --title "PiSend CLI v$(cargo pkgid -p cli | sed 's/.*#//' \
+            || echo "0.0.1")" \
+            --repo ${{ github.repository }} \
+            --generate-notes \
+            artifacts/*/*
