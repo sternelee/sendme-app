@@ -1,4 +1,4 @@
-# Sendme
+# PiSend
 
 <div align="center">
 
@@ -17,7 +17,7 @@ A powerful, secure file transfer tool built with [iroh](https://crates.io/crates
 
 ## 📖 Overview
 
-Sendme is a complete file transfer solution that works across **CLI**, **Desktop (Tauri)**, **Mobile (iOS/Android)**, and **Web (WASM)**. Built on the [iroh](https://crates.io/crates/iroh) networking library, it provides truly peer-to-peer file transfer with automatic NAT hole punching, relay fallback, and blake3 verified streaming.
+PiSend is a complete file transfer solution that works across **CLI**, **Desktop (Tauri)**, **Mobile (iOS/Android)**, and **Web (WASM)**. Built on the [iroh](https://crates.io/crates/iroh) networking library, it provides truly peer-to-peer file transfer with automatic NAT hole punching, relay fallback, and blake3 verified streaming.
 
 **Key Highlights:**
 - 🔒 **Secure**: End-to-end encryption with TLS, blake3 hash verification
@@ -55,29 +55,29 @@ Sendme is a complete file transfer solution that works across **CLI**, **Desktop
 
 #### From crates.io (coming soon)
 ```bash
-cargo install sendme
+cargo install pisend
 ```
 
 #### Build from source
 ```bash
-git clone https://github.com/sternelee/iroh-sendme.git
-cd iroh-sendme
+git clone https://github.com/sternelee/iroh-pisend.git
+cd iroh-pisend
 cargo build --release -p cli
-# Binary will be at: target/release/sendme
+# Binary will be at: target/release/pisend
 ```
 
 ### Desktop Application
 
 #### Pre-built Releases
-Download the latest release for your platform from the [Releases](https://github.com/sternelee/iroh-sendme/releases) page:
+Download the latest release for your platform from the [Releases](https://github.com/sternelee/iroh-pisend/releases) page:
 - **Windows**: `.msi` installer
 - **macOS**: `.dmg` or `.app` bundle
 - **Linux**: `.deb`, `.rpm`, or `.AppImage`
 
 #### Build from source
 ```bash
-git clone https://github.com/sternelee/iroh-sendme.git
-cd iroh-sendme/app
+git clone https://github.com/sternelee/iroh-pisend.git
+cd iroh-pisend/app
 pnpm install
 pnpm run tauri build
 ```
@@ -103,8 +103,8 @@ pnpm run tauri android build
 The CLI provides an interactive TUI (Terminal User Interface) for file transfers:
 
 ```bash
-# Simply run sendme to open the TUI
-sendme
+# Simply run pisend to open the TUI
+pisend
 ```
 
 **TUI Controls:**
@@ -114,9 +114,9 @@ sendme
 - View transfer progress and history in real-time
 
 **Example workflow:**
-1. **Sender**: Run `sendme`, enter path to file/directory, get ticket
+1. **Sender**: Run `pisend`, enter path to file/directory, get ticket
 2. Share the ticket with recipient (copy/paste, QR code, etc.)
-3. **Receiver**: Run `sendme`, paste ticket, files download automatically
+3. **Receiver**: Run `pisend`, paste ticket, files download automatically
 
 ### Desktop Application
 
@@ -143,10 +143,10 @@ Launch the desktop app and use the intuitive GUI:
 
 ### Library Usage
 
-Integrate Sendme into your Rust project:
+Integrate PiSend into your Rust project:
 
 ```rust
-use sendme_lib::{send_with_progress, receive_with_progress, CommonConfig, SendArgs, ReceiveArgs};
+use pisend_lib::{send_with_progress, receive_with_progress, CommonConfig, SendArgs, ReceiveArgs};
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -192,8 +192,8 @@ Open `http://localhost:8080` to use the web interface.
 This is a Cargo workspace with multiple components:
 
 ```
-iroh-sendme/
-├── lib/                    # Core library (sendme-lib)
+iroh-pisend/
+├── lib/                    # Core library (pisend-lib)
 │   ├── send.rs            # Send/host functionality
 │   ├── receive.rs         # Receive/download functionality
 │   ├── import.rs          # File import into iroh-blobs
@@ -222,14 +222,14 @@ iroh-sendme/
 
 ### Component Descriptions
 
-#### **sendme-lib** - Core Library
+#### **pisend-lib** - Core Library
 The heart of the application, providing:
 - **Send Flow**: Endpoint creation → File import → Blob storage → Ticket generation → Router keep-alive
 - **Receive Flow**: Ticket parsing → Connection → Download with progress → Export to filesystem
 - **Progress Tracking**: Real-time event streaming via channels
 - **Import/Export**: Parallel file operations with configurable workers
 
-#### **sendme** - CLI Tool
+#### **pisend** - CLI Tool
 - Interactive TUI built with ratatui
 - Send/Receive tabs with real-time progress
 - Transfer history tracking
@@ -237,7 +237,7 @@ The heart of the application, providing:
 
 #### **app** - Desktop/Mobile Application
 - **Frontend**: SolidJS + TypeScript + Tailwind CSS v4
-- **Backend**: Tauri commands wrapping sendme-lib
+- **Backend**: Tauri commands wrapping pisend-lib
 - **Features**: QR codes, clipboard, notifications, file pickers, theme switching
 - **Mobile**: iOS and Android support with native APIs
 
@@ -287,7 +287,7 @@ The heart of the application, providing:
 cargo build
 
 # Build specific packages
-cargo build -p sendme-lib      # Library only
+cargo build -p pisend-lib      # Library only
 cargo build -p cli             # CLI only
 cargo build -p app             # Tauri backend only
 
@@ -328,7 +328,7 @@ pnpm run serve
 cargo test --workspace
 
 # Run specific test suites
-cargo test -p sendme-lib       # Library tests
+cargo test -p pisend-lib       # Library tests
 cargo test --test cli          # CLI integration tests
 
 # Run with verbose output
@@ -378,4 +378,4 @@ Built with:
 - [ratatui](https://github.com/ratatui-org/ratatui) - Terminal UI
 - [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS framework
 
-Original project by [n0-computer](https://github.com/n0-computer/sendme), forked and enhanced with desktop/mobile support.
+Original project by [n0-computer](https://github.com/n0-computer/pisend), forked and enhanced with desktop/mobile support.

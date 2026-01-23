@@ -1,4 +1,4 @@
-//! WebAssembly bindings for sendme
+//! WebAssembly bindings for pisend
 //!
 //! This module exports SendmeNode functions to JavaScript via wasm-bindgen.
 
@@ -25,7 +25,7 @@ fn start() {
         .with_ansi(false)
         .init();
 
-    tracing::info!("Sendme WASM module initialized");
+    tracing::info!("PiSend WASM module initialized");
 }
 
 /// SendmeNode wrapper for JavaScript
@@ -34,7 +34,7 @@ pub struct SendmeNodeWasm(SendmeNode);
 
 #[wasm_bindgen]
 impl SendmeNodeWasm {
-    /// Create a new sendme node
+    /// Create a new pisend node
     pub async fn spawn() -> Result<SendmeNodeWasm, JsError> {
         let node = SendmeNode::spawn()
             .await

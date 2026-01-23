@@ -577,7 +577,7 @@ export class SendmeNodeWasm {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Create a new sendme node
+     * Create a new pisend node
      * @returns {Promise<SendmeNodeWasm>}
      */
     static spawn() {

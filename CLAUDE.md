@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Sendme is a Rust CLI tool for sending files and directories over the internet using the [iroh](https://crates.io/crates/iroh) networking library. It provides P2P file transfer with NAT hole punching, blake3 verified streaming, and resumable downloads.
+PiSend is a Rust CLI tool for sending files and directories over the internet using the [iroh](https://crates.io/crates/iroh) networking library. It provides P2P file transfer with NAT hole punching, blake3 verified streaming, and resumable downloads.
 
 **This is a fork** that adds a Tauri desktop application with a modern SolidJS + Tailwind CSS v4 frontend.
 
@@ -23,14 +23,14 @@ Note: The project scripts use `pnpm` internally regardless of whether you use Bu
 ### Rust Workspace (CLI + Lib + App Backend)
 
 - `cargo build` - Build all workspace members
-- `cargo build -p sendme-lib` - Build only the library
-- `cargo build -p sendme` - Build only the CLI
+- `cargo build -p pisend-lib` - Build only the library
+- `cargo build -p pisend` - Build only the CLI
 - `cargo build -p app` - Build only the Tauri app backend
 - `cargo build --release` - Build optimized release binaries
 - `cargo test` - Run all tests
 - `cargo test --test cli` - Run CLI integration tests specifically
 - `cargo test --lib` - Run library unit tests only
-- `cargo test -p sendme-lib` - Run tests for the library crate only
+- `cargo test -p pisend-lib` - Run tests for the library crate only
 - `cargo fmt --all -- --check` - Check code formatting
 - `cargo clippy --locked --workspace --all-targets --all-features` - Run Clippy lints
 - `cargo fmt` - Format code
@@ -50,14 +50,14 @@ pnpm run tauri build      # Build complete desktop app
 This is a Cargo workspace with five members:
 
 ```
-iroh-sendme/
-├── lib/          # sendme-lib crate - core library
-├── cli/          # sendme CLI - original command-line interface
+iroh-pisend/
+├── lib/          # pisend-lib crate - core library
+├── cli/          # pisend CLI - original command-line interface
 ├── app/          # Tauri desktop application
 │   ├── src/          # SolidJS frontend
 │   ├── src-tauri/    # Rust backend (Tauri commands)
 │   └── package.json  # Frontend dependencies
-├── browser-lib/  # WebAssembly library crate (sendme-browser)
+├── browser-lib/  # WebAssembly library crate (pisend-browser)
 │   └── src/          # Rust WASM bindings
 ├── tauri-plugin-mobile-file-picker/  # Custom Tauri plugin for mobile file picking
 │   ├── src/          # Plugin implementation (desktop/mobile)
@@ -71,7 +71,7 @@ iroh-sendme/
 
 ## Architecture
 
-### Library (`sendme-lib`)
+### Library (`pisend-lib`)
 
 The core library (`lib/`) contains all transfer logic:
 
@@ -88,7 +88,7 @@ The core library (`lib/`) contains all transfer logic:
 
 1. Creates/loads secret key from `IROH_SECRET` env var or generates new one
 2. Builds iroh `Endpoint` with relay mode and optional DNS discovery
-3. Creates temp `.sendme-send-*` directory for blob storage
+3. Creates temp `.pisend-send-*` directory for blob storage
 4. Imports file/directory into `FsStore` (parallel, uses `num_cpus` workers)
 5. Creates `BlobsProtocol` provider with progress event streaming
 6. Generates `BlobTicket` (endpoint address + collection hash)
@@ -99,7 +99,7 @@ The core library (`lib/`) contains all transfer logic:
 
 1. Parses ticket to extract endpoint address and collection hash
 2. Creates iroh `Endpoint` for connecting
-3. Creates temp `.sendme-recv-*` directory for blob storage
+3. Creates temp `.pisend-recv-*` directory for blob storage
 4. Downloads collection via `execute_get()` with progress tracking
 5. Exports to current directory (or specified output directory)
 6. Cleans up temp directory
@@ -113,7 +113,7 @@ The core library (`lib/`) contains all transfer logic:
 
 #### Nearby Device Discovery (`nearby.rs`)
 
-The library supports discovering nearby Sendme devices on the local network using mDNS:
+The library supports discovering nearby PiSend devices on the local network using mDNS:
 
 - **`NearbyDiscovery`**: Manages mDNS discovery using `iroh::discovery::mdns::MdnsDiscovery`
 - Creates endpoint with `RelayMode::Disabled` for local-only discovery
@@ -124,12 +124,12 @@ The library supports discovering nearby Sendme devices on the local network usin
 Key types:
 - **`NearbyDevice`**: Discovered device info (node_id, name, addresses, last_seen, available)
 
-### CLI (`sendme`)
+### CLI (`pisend`)
 
-The original CLI (`cli/src/main.rs`) is a thin wrapper around `sendme-lib`:
+The original CLI (`cli/src/main.rs`) is a thin wrapper around `pisend-lib`:
 
 - Uses `clap` derive macros for argument parsing
-- Delegates to `sendme_lib::send` and `sendme_lib::receive`
+- Delegates to `pisend_lib::send` and `pisend_lib::receive`
 - Uses `indicatif` for multi-progress bars in terminal
 
 ### Tauri Desktop App
@@ -151,7 +151,7 @@ Key files:
 
 #### Backend (`app/src-tauri/src/`)
 
-- **`lib.rs`**: Tauri commands that wrap `sendme-lib` functions
+- **`lib.rs`**: Tauri commands that wrap `pisend-lib` functions
 - Uses `tokio::sync::RwLock<HashMap>` for transfer state management
 - Emits progress events to frontend via `app.emit("progress", update)`
 
@@ -177,7 +177,7 @@ Tauri Commands:
 - **`get_nearby_devices`**: Returns list of discovered nearby devices
 - **`stop_nearby_discovery`**: Stops mDNS discovery
 
-### Browser WASM Library (`sendme-browser` / `browser-lib`)
+### Browser WASM Library (`pisend-browser` / `browser-lib`)
 
 The `browser-lib` crate provides WebAssembly bindings for in-browser P2P file transfer:
 
@@ -305,7 +305,7 @@ Do NOT replace this with a sleep loop or the router will drop.
 
 ### Path Handling
 
-- All temp directories use `.sendme-*` prefix
+- All temp directories use `.pisend-*` prefix
 - `canonicalized_path_to_string()`: Platform-agnostic path conversion
 - Validates path components to prevent directory traversal
 
@@ -329,7 +329,7 @@ cargo test
 # Run specific test modules
 cargo test --test cli          # CLI integration tests
 cargo test --lib               # Library unit tests
-cargo test -p sendme-lib       # Library crate tests only
+cargo test -p pisend-lib       # Library crate tests only
 
 # Run tests with output
 cargo test -- --nocapture

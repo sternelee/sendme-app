@@ -4,9 +4,9 @@ This file provides guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-Sendme is a Rust CLI + Tauri desktop app for P2P file transfer using the [iroh](https://crates.io/crates/iroh) networking library. The Cargo workspace includes:
-- `lib/` - Core library (`sendme-lib`) with send/receive/nearby functionality
-- `cli/` - CLI binary (`sendme`) with ratatui TUI
+PiSend is a Rust CLI + Tauri desktop app for P2P file transfer using the [iroh](https://crates.io/crates/iroh) networking library. The Cargo workspace includes:
+- `lib/` - Core library (`pisend-lib`) with send/receive/nearby functionality
+- `cli/` - CLI binary (`pisend`) with ratatui TUI
 - `app/src-tauri/` - Tauri backend for desktop/mobile
 - `tauri-plugin-mobile-file-picker/` - Mobile file picker plugin
 - `browser/` - WASM build (excluded from workspace, build separately)
@@ -23,8 +23,8 @@ cargo build
 cargo build --release
 
 # Build specific packages
-cargo build -p sendme-lib      # Library only
-cargo build -p sendme          # CLI only (binary name: sendme)
+cargo build -p pisend-lib      # Library only
+cargo build -p pisend          # CLI only (binary name: pisend)
 cargo build -p app             # Tauri backend only
 
 # Format (REQUIRED before committing)
@@ -49,14 +49,14 @@ cargo test send_recv_file                    # Single test function
 cargo test send_recv_dir                     # Another test function
 
 # Test specific package
-cargo test -p sendme-lib                     # Library tests only
+cargo test -p pisend-lib                     # Library tests only
 cargo test -p cli                            # CLI tests only
 
 # Run integration tests only
 cargo test --test cli                        # tests/cli.rs
 
 # Run library unit tests only
-cargo test --lib -p sendme-lib
+cargo test --lib -p pisend-lib
 
 # Verbose output for debugging
 cargo test send_recv_file -- --nocapture
@@ -166,7 +166,7 @@ const isLoading = ref<boolean>(false);
 - **CI Environment**: `RUSTFLAGS: -Dwarnings` (all warnings are errors)
 - **CI Environment**: `IROH_FORCE_STAGING_RELAYS: 1` (use staging relays in tests)
 - **TypeScript**: Strict mode enabled, all code must pass `vue-tsc --noEmit`
-- **Path Handling**: All temp directories use `.sendme-*` prefix
+- **Path Handling**: All temp directories use `.pisend-*` prefix
 - **Nearby Discovery**: Uses mDNS, requires same WiFi network
 
 ## Common Pitfalls

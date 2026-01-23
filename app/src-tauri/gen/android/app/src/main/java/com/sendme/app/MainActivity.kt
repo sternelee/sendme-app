@@ -1,4 +1,4 @@
-package com.sendme.app
+package com.pisend.app
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
