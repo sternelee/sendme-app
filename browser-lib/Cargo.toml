@@ -1,6 +1,6 @@
 [package]
 name = "pisend-browser"
-version = "0.31.0"
+version = "0.0.1"
 edition = "2021"
 
 # Exclude this crate from the parent workspace to avoid WASM-incompatible dependencies

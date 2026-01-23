@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "app"
-version = "0.31.0"
+version = "0.0.1"
 dependencies = [
  "android_logger",
  "anyhow",
@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "cli"
-version = "0.31.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "console",
@@ -4802,7 +4802,7 @@ dependencies = [
 
 [[package]]
 name = "pisend-lib"
-version = "0.31.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "data-encoding",
