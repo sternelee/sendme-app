@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, onMount, Show, Switch, Match } from "solid-js";
 import { initWasm } from "../../lib/commands";
 import { useAuth } from "../../lib/contexts/user-better-auth";
 import SendTab from "../../components/sendme/SendTab";
@@ -118,87 +118,105 @@ export default function AppPage() {
 
       {/* Main content */}
       <main class="relative z-10 container mx-auto px-4 py-12 min-h-[calc(100vh-80px)] flex flex-col items-center">
-        <Presence>
-          {isInitializing() ? (
-            <Motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.1 }}
-              class="glass rounded-3xl p-12 text-center max-w-sm w-full mt-20"
-            >
-              <div class="relative w-16 h-16 mx-auto mb-6">
-                <div class="absolute inset-0 rounded-full border-4 border-purple-500/20" />
-                <div class="absolute inset-0 rounded-full border-4 border-t-purple-500 animate-spin" />
-              </div>
-              <h3 class="text-lg font-semibold mb-2">Powering Up</h3>
-              <p class="text-white/50 text-sm">Preparing secure P2P node...</p>
-            </Motion.div>
-          ) : (
-            <Motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              class="w-full max-w-xl"
-            >
-              {/* Tabs */}
-              <div class="glass rounded-2xl p-1.5 mb-8 flex gap-1 relative overflow-hidden">
-                <div
-                  class="absolute top-1.5 bottom-1.5 transition-all duration-300 ease-out bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-lg shadow-purple-500/20"
-                  style={{
-                    left: activeTab() === "send" ? "6px" : "calc(50% + 2px)",
-                    right: activeTab() === "send" ? "calc(50% + 2px)" : "6px",
-                  }}
-                />
-                <button
-                  onClick={() => setActiveTab("send")}
-                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${
-                    activeTab() === "send"
-                      ? "text-white"
-                      : "text-white/50 hover:text-white/80"
-                  }`}
-                >
-                  <TbOutlineUpload size={20} />
-                  Send
-                </button>
-                <button
-                  onClick={() => setActiveTab("receive")}
-                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${
-                    activeTab() === "receive"
-                      ? "text-white"
-                      : "text-white/50 hover:text-white/80"
-                  }`}
-                >
-                  <TbOutlineDownload size={20} />
-                  Receive
-                </button>
-              </div>
-
-              {/* Content area */}
-              <div class="relative">
-                <Presence exitBeforeEnter>
+        <div class="relative w-full max-w-xl min-h-[500px]">
+          <Presence>
+            {isInitializing() ? (
+              <Motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.1 }}
+                transition={{ duration: 0.2 }}
+                class="absolute inset-0 flex items-center justify-center"
+              >
+                <div class="glass rounded-3xl p-12 text-center max-w-sm w-full">
+                  <div class="relative w-16 h-16 mx-auto mb-6">
+                    <div class="absolute inset-0 rounded-full border-4 border-purple-500/20" />
+                    <div class="absolute inset-0 rounded-full border-4 border-t-purple-500 animate-spin" />
+                  </div>
+                  <h3 class="text-lg font-semibold mb-2">Powering Up</h3>
+                  <p class="text-white/50 text-sm">
+                    Preparing secure P2P node...
+                  </p>
+                </div>
+              </Motion.div>
+            ) : (
+              <Motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2 }}
+                class="absolute inset-0"
+              >
+                {/* Tabs */}
+                <div class="glass rounded-2xl p-1.5 mb-8 flex gap-1 relative overflow-hidden">
                   <Motion.div
-                    initial={{
-                      opacity: 0,
-                      x: activeTab() === "send" ? -10 : 10,
+                    animate={{
+                      left: activeTab() === "send" ? "6px" : "calc(50% + 2px)",
+                      right: activeTab() === "send" ? "calc(50% + 2px)" : "6px",
                     }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: activeTab() === "send" ? 10 : -10 }}
-                    transition={{ duration: 0.2 }}
-                    class="glass rounded-3xl p-1 overflow-hidden"
+                    transition={{ duration: 0.2, easing: "ease-out" }}
+                    class="absolute top-1.5 bottom-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-lg shadow-purple-500/20"
+                  />
+                  <button
+                    onClick={() => setActiveTab("send")}
+                    class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${
+                      activeTab() === "send"
+                        ? "text-white"
+                        : "text-white/50 hover:text-white/80"
+                    }`}
                   >
-                    <div class="p-8">
-                      {activeTab() === "send" ? (
-                        <SendTab />
-                      ) : (
-                        <ReceiveTab isActive={true} />
-                      )}
-                    </div>
-                  </Motion.div>
-                </Presence>
-              </div>
-            </Motion.div>
-          )}
-        </Presence>
+                    <TbOutlineUpload size={20} />
+                    Send
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("receive")}
+                    class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${
+                      activeTab() === "receive"
+                        ? "text-white"
+                        : "text-white/50 hover:text-white/80"
+                    }`}
+                  >
+                    <TbOutlineDownload size={20} />
+                    Receive
+                  </button>
+                </div>
+
+                {/* Content area */}
+                <div class="relative">
+                  <Presence exitBeforeEnter>
+                    <Switch fallback={null}>
+                      <Match when={activeTab() === "send"}>
+                        <Motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                          class="glass rounded-3xl p-1 overflow-hidden"
+                        >
+                          <div class="p-8">
+                            <SendTab />
+                          </div>
+                        </Motion.div>
+                      </Match>
+                      <Match when={activeTab() === "receive"}>
+                        <Motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                          class="glass rounded-3xl p-1 overflow-hidden"
+                        >
+                          <div class="p-8">
+                            <ReceiveTab isActive={true} />
+                          </div>
+                        </Motion.div>
+                      </Match>
+                    </Switch>
+                  </Presence>
+                </div>
+              </Motion.div>
+            )}
+          </Presence>
+        </div>
 
         {/* Footer */}
         <Motion.footer

@@ -1,6 +1,7 @@
 import { createSignal, createMemo, Show } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
+import { useAuth } from "../../lib/contexts/user-better-auth";
 import { Motion, Presence } from "solid-motionone";
 import {
   TbOutlineUpload,
@@ -32,6 +33,7 @@ interface Device {
 interface SendTabProps {}
 
 export default function SendTab(_props: SendTabProps) {
+  const auth = useAuth();
   const [file, setFile] = createSignal<File | null>(null);
   const [files, setFiles] = createSignal<File[]>([]);
   const [isFolder, setIsFolder] = createSignal(false);
@@ -318,8 +320,8 @@ export default function SendTab(_props: SendTabProps) {
       {/* Action Button */}
       <Show when={hasSelection() && !ticket()}>
         <Motion.button
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           hover={{ scale: 1.02 }}
           press={{ scale: 0.98 }}
           onClick={handleSend}
@@ -342,8 +344,8 @@ export default function SendTab(_props: SendTabProps) {
       <Presence>
         <Show when={ticket()}>
           <Motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
             class="glass rounded-3xl p-6 border-indigo-500/20 bg-indigo-500/5 space-y-5"
           >
             <div class="flex items-center justify-between">
@@ -373,16 +375,18 @@ export default function SendTab(_props: SendTabProps) {
                     class="text-white/60 group-hover:text-white"
                   />
                 </button>
-                <button
-                  onClick={() => setIsDeviceModalOpen(true)}
-                  class="p-4 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-2xl transition-all group active:scale-90"
-                  title="Send to your device"
-                >
-                  <TbOutlineDevices
-                    size={24}
-                    class="text-purple-400 group-hover:text-purple-300"
-                  />
-                </button>
+                <Show when={auth.isAuthenticated()}>
+                  <button
+                    onClick={() => setIsDeviceModalOpen(true)}
+                    class="p-4 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-2xl transition-all group active:scale-90"
+                    title="Send to your device"
+                  >
+                    <TbOutlineDevices
+                      size={24}
+                      class="text-purple-400 group-hover:text-purple-300"
+                    />
+                  </button>
+                </Show>
               </div>
               <p class="text-xs text-white/30 text-center">
                 Send this secret ticket to someone to authorize download.

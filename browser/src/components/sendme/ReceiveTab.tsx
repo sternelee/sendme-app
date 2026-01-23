@@ -102,16 +102,17 @@ export default function ReceiveTab(props: ReceiveTabProps) {
       <Presence>
         <Show when={tickets().length > 0}>
           <Motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             class="glass rounded-2xl p-4 border-purple-500/20 bg-purple-500/5 space-y-3"
           >
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2 text-purple-400">
                 <TbOutlineSparkles size={18} />
                 <span class="text-sm font-semibold">
-                  {tickets().length} Incoming Ticket{tickets().length > 1 ? "s" : ""}
+                  {tickets().length} Incoming Ticket
+                  {tickets().length > 1 ? "s" : ""}
                 </span>
               </div>
             </div>
@@ -119,10 +120,15 @@ export default function ReceiveTab(props: ReceiveTabProps) {
               <For each={tickets()}>
                 {(incomingTicket) => (
                   <Motion.div
-                    initial={{ opacity: 0, x: -5 }}
-                    animate={{ opacity: 1, x: 0 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
                     class="flex items-center gap-3 p-3 rounded-xl bg-black/40 border border-white/10 hover:border-purple-500/30 transition-all group cursor-pointer"
-                    onClick={() => useIncomingTicket(incomingTicket.ticket, incomingTicket.filename)}
+                    onClick={() =>
+                      useIncomingTicket(
+                        incomingTicket.ticket,
+                        incomingTicket.filename,
+                      )
+                    }
                   >
                     <div class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center flex-shrink-0">
                       <TbOutlineDeviceMobile size={16} />
@@ -201,9 +207,13 @@ export default function ReceiveTab(props: ReceiveTabProps) {
             class="glass rounded-2xl p-4 border-red-500/20 bg-red-500/5"
           >
             <div class="flex items-start gap-3 text-red-400">
-              <div class="mt-0.5"><TbOutlineAlertCircle size={18} /></div>
+              <div class="mt-0.5">
+                <TbOutlineAlertCircle size={18} />
+              </div>
               <div class="flex-1">
-                <p class="text-xs font-semibold uppercase tracking-wider opacity-50 mb-1">Authorization Error</p>
+                <p class="text-xs font-semibold uppercase tracking-wider opacity-50 mb-1">
+                  Authorization Error
+                </p>
                 <p class="text-sm text-white/80">{error()}</p>
               </div>
             </div>
