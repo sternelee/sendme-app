@@ -3,7 +3,6 @@ import { initWasm } from "../../lib/commands";
 import { useAuth } from "../../lib/contexts/user-better-auth";
 import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
-import AuthModal from "../../components/auth/AuthModal";
 import DeviceListModal from "../../components/devices/DeviceListModal";
 import { Motion, Presence } from "solid-motionone";
 import {
@@ -41,10 +40,6 @@ export default function AppPage() {
   const handleLogout = async () => {
     await auth.logout();
   };
-
-  if (!auth.isLoading() && !auth.isAuthenticated()) {
-    return <AuthModal />;
-  }
 
   return (
     <div class="min-h-screen bg-animate text-white selection:bg-purple-500/30">
@@ -156,20 +151,22 @@ export default function AppPage() {
                 />
                 <button
                   onClick={() => setActiveTab("send")}
-                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${activeTab() === "send"
-                    ? "text-white"
-                    : "text-white/50 hover:text-white/80"
-                    }`}
+                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${
+                    activeTab() === "send"
+                      ? "text-white"
+                      : "text-white/50 hover:text-white/80"
+                  }`}
                 >
                   <TbOutlineUpload size={20} />
                   Send
                 </button>
                 <button
                   onClick={() => setActiveTab("receive")}
-                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${activeTab() === "receive"
-                    ? "text-white"
-                    : "text-white/50 hover:text-white/80"
-                    }`}
+                  class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold transition-colors ${
+                    activeTab() === "receive"
+                      ? "text-white"
+                      : "text-white/50 hover:text-white/80"
+                  }`}
                 >
                   <TbOutlineDownload size={20} />
                   Receive
@@ -190,7 +187,11 @@ export default function AppPage() {
                     class="glass rounded-3xl p-1 overflow-hidden"
                   >
                     <div class="p-8">
-                      {activeTab() === "send" ? <SendTab /> : <ReceiveTab isActive={true} />}
+                      {activeTab() === "send" ? (
+                        <SendTab />
+                      ) : (
+                        <ReceiveTab isActive={true} />
+                      )}
                     </div>
                   </Motion.div>
                 </Presence>
@@ -228,10 +229,12 @@ export default function AppPage() {
       </main>
 
       {/* Device List Modal */}
-      <DeviceListModal
-        isOpen={isDeviceModalOpen()}
-        onClose={() => setIsDeviceModalOpen(false)}
-      />
+      <Show when={auth.isAuthenticated()}>
+        <DeviceListModal
+          isOpen={isDeviceModalOpen()}
+          onClose={() => setIsDeviceModalOpen(false)}
+        />
+      </Show>
     </div>
   );
 }
