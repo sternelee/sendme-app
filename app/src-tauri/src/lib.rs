@@ -381,6 +381,11 @@ pub fn run() {
             .plugin(tauri_plugin_sharesheet::init());
     }
 
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
     builder
         .setup(move |app| {
             // Store transfers in app state
@@ -1600,7 +1605,10 @@ fn pick_file(
     _allow_multiple: Option<bool>,
 ) -> Result<Vec<PickerFileInfo>, String> {
     // On iOS, use tauri-plugin-dialog directly from the frontend
-    Err("On iOS, use the dialog plugin directly via invoke('plugin:dialog|pick_file', ...)".to_string())
+    Err(
+        "On iOS, use the dialog plugin directly via invoke('plugin:dialog|pick_file', ...)"
+            .to_string(),
+    )
 }
 
 /// Pick a directory using the iOS dialog plugin
@@ -1611,7 +1619,10 @@ fn pick_directory(
     _start_directory: Option<String>,
 ) -> Result<PickerDirectoryInfo, String> {
     // On iOS, use tauri-plugin-dialog directly from the frontend
-    Err("On iOS, use the dialog plugin directly via invoke('plugin:dialog|pick_folder', ...)".to_string())
+    Err(
+        "On iOS, use the dialog plugin directly via invoke('plugin:dialog|pick_folder', ...)"
+            .to_string(),
+    )
 }
 
 /// Pick a file (desktop stub)
