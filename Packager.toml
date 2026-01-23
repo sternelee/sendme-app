@@ -1,11 +1,11 @@
-[cli binaries]
+[binaries]
 name = "pisend"
 path = "cli/src/main.rs"
 
-[cli.config]
+[config]
 formats = ["tar.gz", "zip"]
 
-[cli.config.metadata]
+[config.metadata]
 description = "A CLI tool to send directories over the network with NAT hole punching"
 long_description = """
 PiSend is a Rust CLI tool for sending files and directories over the internet
