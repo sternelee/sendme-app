@@ -142,6 +142,8 @@ pub struct Transfer {
     pub created_at: i64,
     /// Progress percentage (0-100).
     pub progress: u16,
+    /// File names in the collection (for receive transfers).
+    pub file_names: Vec<String>,
 }
 
 impl Transfer {
@@ -163,6 +165,7 @@ impl Transfer {
                 .unwrap_or_default()
                 .as_secs() as i64,
             progress: 0,
+            file_names: Vec::new(),
         }
     }
 
@@ -172,10 +175,11 @@ impl Transfer {
             ProgressEvent::Download(DownloadProgress::Metadata {
                 total_size,
                 file_count,
-                ..
+                names,
             }) => {
                 self.total_bytes = *total_size;
                 self.total_files = *file_count;
+                self.file_names = names.clone();
                 self.status = TransferStatus::Downloading;
             }
             ProgressEvent::Download(DownloadProgress::Downloading { offset, total }) => {

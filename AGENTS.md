@@ -4,14 +4,36 @@ This file provides guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-PiSend is a Rust CLI + Tauri desktop app for P2P file transfer using the [iroh](https://crates.io/crates/iroh) networking library. The Cargo workspace includes:
-- `lib/` - Core library (`pisend-lib`) with send/receive/nearby functionality
-- `cli/` - CLI binary (`pisend`) with ratatui TUI
-- `app/src-tauri/` - Tauri backend for desktop/mobile
-- `tauri-plugin-mobile-file-picker/` - Mobile file picker plugin
-- `browser/` - WASM build (excluded from workspace, build separately)
+PiSend is a **P2P file transfer system** built with [iroh](https://crates.io/crates/iroh) networking library, offering:
+- **CLI tool** (`pisend`) - Interactive TUI with ratatui
+- **Desktop app** (Tauri) - Windows/macOS/Linux with SolidJS + Tailwind CSS v4
+- **Mobile apps** - iOS & Android native
+- **WASM browser** - Experimental in-browser P2P (separate build)
 
-**Package Manager:** Use **pnpm** for all JavaScript/TypeScript operations (NOT npm or yarn).
+### Cargo Workspace Structure
+
+```
+iroh-pisend/
+├── lib/                    # pisend-lib - Core library (send/receive/nearby)
+├── cli/                    # pisend CLI - Binary using pisend-lib
+├── app/src-tauri/          # app - Tauri backend
+├── tauri-plugin-mobile-file-picker/  # Custom Tauri plugin
+└── browser-lib/            # pisend-browser - WASM bindings (separate workspace)
+```
+
+**Important**: `browser-lib` is excluded from the main workspace to avoid WASM-incompatible dependencies. Build separately.
+
+### pnpm Workspace Structure
+
+```yaml
+# pnpm-workspace.yaml
+packages:
+  - "app"                   # Tauri frontend
+  - "browser"               # Web demo (deprecated)
+  - "tauri-plugin-mobile-file-picker"  # Plugin frontend
+```
+
+**Package Manager**: Use **pnpm** for ALL JavaScript/TypeScript operations (NOT npm or yarn).
 
 ## Build, Lint, and Test Commands
 
@@ -26,6 +48,7 @@ cargo build --release
 cargo build -p pisend-lib      # Library only
 cargo build -p pisend          # CLI only (binary name: pisend)
 cargo build -p app             # Tauri backend only
+cargo build -p tauri-plugin-mobile-file-picker
 
 # Format (REQUIRED before committing)
 cargo fmt --all
@@ -60,6 +83,9 @@ cargo test --lib -p pisend-lib
 
 # Verbose output for debugging
 cargo test send_recv_file -- --nocapture
+
+# Run with staging relays (like CI)
+IROH_FORCE_STAGING_RELAYS=1 cargo test
 ```
 
 ### Tauri App Commands
@@ -67,23 +93,37 @@ cargo test send_recv_file -- --nocapture
 ```bash
 cd app
 pnpm install                       # Install dependencies
-pnpm run dev                       # Vite dev server
+pnpm run dev                       # Vinxi dev server on port 1420
 pnpm run tauri dev                 # Dev with hot reload
-pnpm run build                     # Build frontend (vue-tsc --noEmit && vite build)
+pnpm run build                     # Build frontend (vinxi build)
 pnpm run tauri build               # Build complete desktop app
 
-# Mobile builds
+# Mobile builds (Android)
 pnpm run tauri android build
+pnpm run tauri android build --target aarch64
+
+# Mobile builds (iOS, macOS only)
 pnpm run tauri ios build
+
+# Format frontend code
+pnpm run format                    # Prettier formatting
 ```
 
 ### Browser WASM Build (Separate - NOT in workspace)
 
 ```bash
-cd browser
-export CC=/opt/homebrew/opt/llvm/bin/clang  # macOS: Use LLVM Clang
+cd browser-lib
+# macOS: Use LLVM Clang (NOT Apple Clang)
+export CC=/opt/homebrew/opt/llvm/bin/clang
 cargo build --target=wasm32-unknown-unknown
-pnpm run build
+cargo build --target=wasm32-unknown-unknown --release
+
+# Or build from browser demo
+cd browser
+pnpm run build:wasm                # Debug build
+pnpm run build:wasm:release        # Release build
+pnpm run build                     # Full demo build
+pnpm run deploy                    # Deploy to Cloudflare
 ```
 
 ## Code Style Guidelines
@@ -91,6 +131,7 @@ pnpm run build
 ### Rust Import Order
 
 Use ordered groups with blank lines between:
+
 ```rust
 // 1. Standard library
 use std::{
@@ -144,20 +185,21 @@ tokio::sync::RwLock<HashMap<String, State>>
 std::future::pending::<()>().await
 ```
 
-### TypeScript/Vue Style
+### TypeScript/SolidJS Style
 
 ```typescript
 // External packages first, then local imports
 import { invoke } from "@tauri-apps/api/core";
-import { ref, computed } from "vue";
-import { send_file, type SendFileRequest } from "@/lib/commands";
+import { createSignal, createEffect } from "solid-js";
+import { send_file, type SendFileRequest } from "~/lib/commands";
 
-// Explicit types for refs
-const devices = ref<NearbyDevice[]>([]);
-const isLoading = ref<boolean>(false);
+// Explicit types for signals
+const [devices, setDevices] = createSignal<NearbyDevice[]>([]);
+const [isLoading, setIsLoading] = createSignal<boolean>(false);
 
-// Vue components use <script setup lang="ts">
-// Type event emits: defineEmits<{ close: [], update: [value: string] }>()
+// SolidJS components use function components with TSX
+// Props: type Props = { onClose: () => void; onUpdate: (value: string) => void }
+// Import paths use ~/* alias for src/ (configured in tsconfig.json)
 ```
 
 ## Important Details
@@ -165,18 +207,257 @@ const isLoading = ref<boolean>(false);
 - **MSRV**: 1.81 (Minimum Supported Rust Version)
 - **CI Environment**: `RUSTFLAGS: -Dwarnings` (all warnings are errors)
 - **CI Environment**: `IROH_FORCE_STAGING_RELAYS: 1` (use staging relays in tests)
-- **TypeScript**: Strict mode enabled, all code must pass `vue-tsc --noEmit`
+- **TypeScript**: Strict mode enabled (noUnusedLocals, noUnusedParameters, noFallthroughCasesInSwitch)
+- **Frontend Framework**: SolidJS (not Vue/React) with Vinxi bundler and Tailwind CSS v4
 - **Path Handling**: All temp directories use `.pisend-*` prefix
 - **Nearby Discovery**: Uses mDNS, requires same WiFi network
+- **Release Profile**: Optimized for size (`opt-level = "s"`, LTO, strip debug)
 
 ## Common Pitfalls
 
-1. **Router keep-alive**: Never remove `std::future::pending()` - critical for send functionality
-2. **Browser WASM**: Never add browser crate to workspace members (conflicts with native builds)
+1. **Router keep-alive**: Never remove `std::future::pending()` - critical for send functionality (lib/src/send.rs)
+2. **Browser WASM**: Never add `browser-lib` to workspace members (conflicts with native builds)
 3. **Tauri errors**: Convert Rust errors to String with descriptive messages for frontend
 4. **Path validation**: Always validate user paths (see `canonicalized_path_to_string`)
 5. **Android content URIs**: Handle `content://` URIs specially in Tauri (see `app/src-tauri/src/lib.rs`)
 6. **Tokio RwLock**: Use `tokio::sync::RwLock` for shared async state, not `std::sync::RwLock`
+7. **Android temp directories**: Use `args.common.temp_dir` instead of `std::env::current_dir()` (see ANDROID_FIX_SUMMARY.md)
+8. **Recursion limit**: If compilation fails with "recursion limit reached while expanding `log_info!`", add `#![recursion_limit = "256"]` to the top of `app/src-tauri/src/lib.rs`
+
+## Architecture Deep Dive
+
+### Core Library (`lib/`)
+
+All transfer logic lives here:
+
+- **`lib.rs`**: Public API exports, `get_or_create_secret()` function
+- **`send.rs`**: Send/host functionality - creates endpoint, imports files, serves data
+  - Uses `FsStore` for blob storage in `.pisend-send-*` temp directory
+  - Creates `BlobTicket` with endpoint address + collection hash
+  - Spawns router keep-alive task with `std::future::pending()` to stay alive
+- **`receive.rs`**: Receive/download functionality - connects to sender, downloads, exports files
+  - Uses temp `.pisend-recv-*` directory (respects `args.common.temp_dir`)
+  - Downloads via `execute_get()` with progress tracking
+- **`import.rs`**: File/directory import into iroh-blobs store (parallelized with `num_cpus` workers)
+- **`export.rs`**: Export from iroh-blobs store to filesystem
+- **`progress.rs`**: Progress event types and channels for real-time updates
+  - `ImportProgress`: Started/FileStarted/FileProgress/FileCompleted/Completed
+  - `ExportProgress`: Started/FileStarted/FileProgress/FileCompleted/Completed
+  - `DownloadProgress`: Connecting/GettingSizes/Downloading/Completed
+  - `ConnectionStatus`: ClientConnected/ConnectionClosed/RequestStarted/RequestProgress/RequestCompleted
+- **`types.rs`**: Common types (`AddrInfoOptions`, `CommonConfig`, `Format`, etc.)
+
+#### Send Flow
+
+1. Creates/loads secret key from `IROH_SECRET` env var or generates new one
+2. Builds iroh `Endpoint` with relay mode and optional DNS discovery
+3. Creates temp `.pisend-send-*` directory for blob storage
+4. Imports file/directory into `FsStore` (parallel, uses `num_cpus` workers)
+5. Creates `BlobsProtocol` provider with progress event streaming
+6. Generates `BlobTicket` (endpoint address + collection hash)
+7. Spawns router keep-alive task with `std::future::pending()` to stay alive
+8. Returns ticket for sharing
+
+#### Receive Flow
+
+1. Parses ticket to extract endpoint address and collection hash
+2. Creates iroh `Endpoint` for connecting
+3. Creates temp `.pisend-recv-*` directory (uses `args.common.temp_dir` if set)
+4. Downloads collection via `execute_get()` with progress tracking
+5. Exports to current directory (or specified output directory)
+6. Cleans up temp directory
+
+### CLI (`cli/`)
+
+Thin wrapper around `pisend-lib`:
+
+- Uses `clap` derive macros for argument parsing
+- Interactive TUI built with `ratatui`
+- Multi-progress bars with `indicatif`
+- Event loop with crossterm backend
+
+### Tauri Desktop/Mobile App (`app/`)
+
+#### Frontend (`app/src/`)
+
+- **SolidJS** with TypeScript (NOT React or Vue)
+- **Tailwind CSS v4** for styling
+- **Lucide Solid** for icons
+- **solid-sonner** for toast notifications
+- **Vinxi** bundler (port 1420 for dev)
+
+Key files:
+- **`routes/index.tsx`**: Main UI with Send/Receive tabs and transfers list
+- **`bindings.ts`**: Type-safe wrappers for Tauri commands
+- **`lib/utils.ts`**: Utility functions (formatFileSize, formatDate, etc.)
+
+#### Backend (`app/src-tauri/src/lib.rs`)
+
+Tauri commands that wrap `pisend-lib` functions:
+
+- **`send_file`**: Spawns send task, returns ticket string
+- **`receive_file`**: Spawns receive task, returns result JSON
+- **`cancel_transfer`**: Sends abort signal via oneshot channel
+- **`get_transfers`**: Returns list of all transfers
+- **`get_transfer_status`**: Returns status string for specific transfer
+- **`start_nearby_discovery`**: Starts mDNS discovery for local devices
+- **`get_nearby_devices`**: Returns list of discovered nearby devices
+- **`stop_nearby_discovery`**: Stops mDNS discovery
+
+Uses `tokio::sync::RwLock<HashMap>` for transfer state management.
+
+Emits progress events to frontend via `app.emit("progress", update)`.
+
+Registered Tauri Plugins:
+- `tauri_plugin_dialog` - File/folder dialogs
+- `tauri_plugin_clipboard_manager` - Clipboard access
+- `tauri_plugin_notification` - System notifications
+- `tauri_plugin_os` - Cross-platform OS info (hostname, device model, etc.)
+- `tauri_plugin_fs` - Filesystem access
+- `tauri_plugin_http` - HTTP requests
+- `mobile-file-picker` - **Custom plugin** for unified file/directory picking across desktop/mobile
+- `tauri_plugin_barcode_scanner` - QR code scanning (mobile only)
+- `tauri_plugin_sharesheet` - Native share sheets (mobile only)
+
+#### Platform-Specific Code
+
+- **Android**: Uses `log` crate for logging, handles `content://` URIs specially
+- **iOS**: Uses `tracing` for logging
+- **Desktop**: Uses `tracing` for logging
+
+### Custom Mobile File Picker Plugin (`tauri-plugin-mobile-file-picker/`)
+
+Provides unified file/directory picking across desktop and mobile:
+
+- **Desktop**: Uses `tauri_plugin_dialog` APIs
+- **Android**: Uses Storage Access Framework (SAF) with `ACTION_OPEN_DOCUMENT`/`ACTION_GET_CONTENT`
+  - Supports persistable URI permissions for long-term access
+  - Handles virtual files (Google Docs, etc.) with type conversion
+- **iOS**: Uses `UIDocumentPickerViewController`
+  - Security-scoped bookmarks for persistent access
+
+Commands: `pick_file`, `pick_directory`, `read_content`, `copy_to_local`, `write_content`, `release_access`
+
+See `tauri-plugin-mobile-file-picker/README.md` for full API documentation.
+
+### Browser WASM Library (`browser-lib/`)
+
+**Separate workspace** to avoid WASM-incompatible dependencies.
+
+Key implementation details:
+- Uses `iroh::Endpoint::builder().bind()` for WASM-compatible endpoint creation
+- Uses `MemStore` for in-memory blob storage
+- Custom `sleep_ms()` function with `web_sys::window().set_timeout()` (no `tokio::time::sleep`)
+- Uses `BlobFormat::HashSeq` (Collection) to preserve filenames
+- `wasm-bindgen` exports for JavaScript interop
+
+## Android Development
+
+### Building for Android
+
+```bash
+cd app
+pnpm run tauri android build
+pnpm run tauri android build --target aarch64
+```
+
+### Debugging Android
+
+```bash
+# Setup ADB
+export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
+
+# Connect device
+adb devices
+
+# View logs in real-time
+adb logcat | grep -i "pisend\|iroh\|rust"
+adb logcat | grep -E "ERROR|WARN|pisend"
+adb logcat > ~/android_debug.log
+```
+
+Key log points:
+- `receive_file called with ticket`
+- `Android: output_dir specified but ignored`
+- `Failed to change to output directory`
+- `Invalid ticket`
+- `Connection failed`
+- `Progress event: Connecting/Downloading`
+
+See `ANDROID_DEBUG_GUIDE.md` for full debugging workflow.
+
+### Android-Specific Issues
+
+See `ANDROID_FIX_SUMMARY.md` for details on:
+- Temp directory usage (`args.common.temp_dir` vs `current_dir()`)
+- Content URI handling (`content://` URIs)
+- Filename preservation across transfers
+
+## Testing
+
+### Unit Tests
+
+```bash
+cargo test --lib -p pisend-lib     # Library unit tests
+```
+
+### Integration Tests
+
+```bash
+cargo test --test cli              # CLI integration tests (tests/cli.rs)
+```
+
+Integration tests use `duct` for process spawning and `tempfile` for test directories.
+
+Key test cases:
+- `send_recv_file`: Send single file, parse ticket, receive and verify
+- `send_recv_dir`: Send directory, verify structure preserved
+
+### CI Environment
+
+GitHub Actions workflows:
+- `.github/workflows/release.yml` - Tauri desktop/mobile builds
+- `.github/workflows/release-cli.yml` - CLI binary releases
+
+CI uses:
+- `RUSTFLAGS: -Dwarnings` (warnings are errors)
+- `IROH_FORCE_STAGING_RELAYS: 1` (staging relays in tests)
+- `pnpm` version 9
+- Rust stable toolchain
+- Cross-platform builds (Linux, macOS, Windows, iOS, Android)
+
+## Key Data Structures
+
+### Library Types
+
+- **`Collection`**: Set of files (hash + name pairs) representing a directory tree
+- **`BlobTicket`**: Encodes endpoint address + hash for sharing (base32 string)
+- **`Store`/`FsStore`**: Content-addressed storage backend for blake3-verified data
+- **`Endpoint`**: iroh networking endpoint with NAT hole-punching and relay support
+
+### Frontend Types
+
+```typescript
+interface Transfer {
+  id: string;
+  transfer_type: "send" | "receive";
+  path: string;
+  status: string; // "initializing" | "serving" | "downloading" | "completed" | "error" | "cancelled"
+  created_at: number; // Unix timestamp
+}
+
+interface ProgressUpdate {
+  event_type: "import" | "export" | "download" | "connection";
+  data: ProgressData & { transfer_id: string };
+}
+```
+
+### Ticket Types
+
+- **`Id`**: Smallest ticket, requires DNS discovery
+- **`Relay`**: Uses relay server only
+- **`Addresses`**: Direct addresses only
+- **`RelayAndAddresses`**: Both relay and direct (default, most reliable)
 
 ## File References
 
@@ -185,17 +466,101 @@ Use `path:line` format for code references (e.g., `lib/src/send.rs:42`).
 ## Project Structure
 
 ```
-├── lib/src/           # Core library
-│   ├── lib.rs         # Public API exports
-│   ├── send.rs        # Send functionality
-│   ├── receive.rs     # Receive functionality
-│   ├── types.rs       # Core types (SendArgs, ReceiveArgs, etc.)
-│   └── progress.rs    # Progress reporting
-├── cli/src/           # CLI with TUI
-│   ├── main.rs        # Entry point
-│   └── tui/           # Ratatui TUI components
-├── app/               # Tauri desktop/mobile app
-│   ├── src/           # Vue frontend
-│   └── src-tauri/     # Rust backend
-└── tests/cli.rs       # Integration tests
+iroh-pisend/
+├── lib/src/                    # Core library
+│   ├── lib.rs                  # Public API exports
+│   ├── send.rs                 # Send functionality
+│   ├── receive.rs              # Receive functionality
+│   ├── import.rs               # File import to blob store
+│   ├── export.rs               # Blob store to filesystem
+│   ├── progress.rs             # Progress reporting
+│   └── types.rs                # Core types
+├── cli/src/                    # CLI with TUI
+│   ├── main.rs                 # Entry point
+│   └── tui/                    # Ratatui TUI components
+├── app/                        # Tauri desktop/mobile app
+│   ├── src/                    # SolidJS frontend
+│   │   ├── routes/index.tsx    # Main UI
+│   │   ├── bindings.ts         # Tauri command wrappers
+│   │   └── lib/utils.ts        # Utilities
+│   └── src-tauri/              # Rust backend
+│       └── src/lib.rs          # Tauri commands
+├── tauri-plugin-mobile-file-picker/  # Custom plugin
+│   ├── src/                    # Rust implementation
+│   ├── guest-js/               # TypeScript API
+│   └── android/                # Android-specific code
+├── browser-lib/                # WASM bindings (separate workspace)
+│   ├── src/lib.rs              # Main entry
+│   ├── src/node.rs             # SendmeNode implementation
+│   └── src/wasm.rs             # wasm-bindgen exports
+├── browser/                    # Web demo (deprecated)
+└── tests/cli.rs                # Integration tests
 ```
+
+## Environment Variables
+
+- **`IROH_SECRET`**: Hex-encoded 32-byte secret key for endpoint (optional, generates random if not set)
+- **`IROH_FORCE_STAGING_RELAYS`**: Set to `1` to use staging relays (used in CI tests)
+- **`RUST_LOG`**: Tracing level (e.g., `debug`, `info`, `warn`, `error`)
+
+## Release Process
+
+### CLI Binary
+
+```bash
+# Trigger workflow from GitHub UI: .github/workflows/release-cli.yml
+# Creates release with binaries for:
+# - x86_64-unknown-linux-gnu
+# - x86_64-apple-darwin
+# - aarch64-apple-darwin
+# - x86_64-pc-windows-msvc
+```
+
+### Tauri App
+
+```bash
+# Trigger workflow from GitHub UI: .github/workflows/release.yml
+# Uses CrabNebula Cloud for release management
+# Builds for:
+# - Windows (x86_64)
+# - macOS (x86_64 + aarch64)
+# - Linux (x86_64)
+```
+
+## Dependencies
+
+### Key Rust Crates
+
+- `iroh` 0.95 - Networking library
+- `iroh-blobs` 0.97 - Content-addressed blob storage
+- `tokio` 1.34 - Async runtime
+- `anyhow` - Error handling
+- `clap` - CLI argument parsing (CLI)
+- `ratatui` - Terminal UI (CLI)
+- `tauri` 2 - Desktop/mobile framework (App)
+- `wasm-bindgen` - WASM bindings (Browser)
+
+### Key JavaScript Dependencies
+
+- `solid-js` - Reactive UI framework
+- `@solidjs/router` - Routing
+- `@solidjs/start` - Meta-framework
+- `vinxi` - Bundler
+- `tailwindcss` 4 - Styling
+- `lucide-solid` - Icons
+- `solid-sonner` - Toasts
+
+## Performance Considerations
+
+- Parallel file import using `num_cpus` workers
+- Blake3 verified streaming (no need to hash entire file first)
+- Content-addressed storage for deduplication
+- NAT hole punching for direct connections (faster than relay)
+
+## Security Notes
+
+- All transfers use TLS encryption
+- Blake3 hash verification for all data
+- 256-bit node IDs for identity
+- No central server required (P2P)
+- Secure ticket-based sharing
