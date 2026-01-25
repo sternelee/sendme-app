@@ -122,7 +122,6 @@ export default function AppPage() {
           <Presence>
             {isInitializing() ? (
               <Motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.1 }}
                 transition={{ duration: 0.2 }}
@@ -141,7 +140,6 @@ export default function AppPage() {
               </Motion.div>
             ) : (
               <Motion.div
-                initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.2 }}
                 class="absolute inset-0"
@@ -159,8 +157,8 @@ export default function AppPage() {
                   <button
                     onClick={() => setActiveTab("send")}
                     class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${activeTab() === "send"
-                        ? "text-white"
-                        : "text-white/50 hover:text-white/80"
+                      ? "text-white"
+                      : "text-white/50 hover:text-white/80"
                       }`}
                   >
                     <TbOutlineUpload size={20} />
@@ -169,8 +167,8 @@ export default function AppPage() {
                   <button
                     onClick={() => setActiveTab("receive")}
                     class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${activeTab() === "receive"
-                        ? "text-white"
-                        : "text-white/50 hover:text-white/80"
+                      ? "text-white"
+                      : "text-white/50 hover:text-white/80"
                       }`}
                   >
                     <TbOutlineDownload size={20} />
@@ -184,7 +182,6 @@ export default function AppPage() {
                     <Switch fallback={null}>
                       <Match when={activeTab() === "send"}>
                         <Motion.div
-                          initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.2, easing: "ease-out" }}
@@ -197,7 +194,6 @@ export default function AppPage() {
                       </Match>
                       <Match when={activeTab() === "receive"}>
                         <Motion.div
-                          initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.2, easing: "ease-out" }}
@@ -218,7 +214,6 @@ export default function AppPage() {
 
         {/* Footer */}
         <Motion.footer
-          initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
           class="relative z-10 mt-auto py-12 text-center"
