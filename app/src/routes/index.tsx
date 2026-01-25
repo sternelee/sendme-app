@@ -606,7 +606,7 @@ export default function Home() {
               <Motion.div
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.2 }}
-                class="glass relative overflow-hidden rounded-3xl border border-white/10 shadow-2xl"
+                class="glass relative rounded-3xl border border-white/10 shadow-2xl"
               >
                 <div class="p-8">
                   {/* Tabs */}
@@ -710,7 +710,7 @@ export default function Home() {
                                     />
                                   </button>
                                   <Show when={showTicketPopover()}>
-                                    <div class="glass animate-in fade-in zoom-in-95 absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-white/10 p-2 shadow-2xl duration-200">
+                                    <div class="glass animate-in fade-in absolute left-0 z-50 mt-1 w-full overflow-hidden rounded-2xl border border-white/10 p-2 shadow-2xl duration-200">
                                       <For each={ticketTypes}>
                                         {(type) => (
                                           <button
