@@ -118,7 +118,7 @@ export default function AppPage() {
 
       {/* Main content */}
       <main class="relative z-10 container mx-auto px-4 py-12 min-h-[calc(100vh-80px)] flex flex-col items-center">
-        <div class="relative w-full max-w-xl min-h-[500px]">
+        <div class="relative w-full max-w-xl min-h-[600px]">
           <Presence>
             {isInitializing() ? (
               <Motion.div
