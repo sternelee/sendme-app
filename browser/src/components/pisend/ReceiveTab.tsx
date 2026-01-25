@@ -80,6 +80,9 @@ export default function ReceiveTab(props: ReceiveTabProps) {
   }
 
   function formatFileSize(data: Uint8Array): string {
+    if (!data || typeof data.length !== "number") {
+      return "Unknown size";
+    }
     const size = data.length;
     if (size < 1024) return size + " B";
     if (size < 1024 * 1024) return (size / 1024).toFixed(1) + " KB";
@@ -102,7 +105,6 @@ export default function ReceiveTab(props: ReceiveTabProps) {
       <Presence>
         <Show when={tickets().length > 0}>
           <Motion.div
-            initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             class="glass rounded-2xl p-4 border-purple-500/20 bg-purple-500/5 space-y-3"
@@ -120,7 +122,6 @@ export default function ReceiveTab(props: ReceiveTabProps) {
               <For each={tickets()}>
                 {(incomingTicket) => (
                   <Motion.div
-                    initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     class="flex items-center gap-3 p-3 rounded-xl bg-black/40 border border-white/10 hover:border-purple-500/30 transition-all group cursor-pointer"
                     onClick={() =>

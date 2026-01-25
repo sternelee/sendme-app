@@ -94,12 +94,16 @@ export async function receiveFile(
   const node = await getNode();
 
   // Get data from ticket
+  // result is { filename: string, data: Uint8Array }
   const result = await node.get(ticket);
 
-  // result is [filename, Uint8Array]
+  if (!result || !result.filename || !result.data) {
+    throw new Error("Invalid response from WASM: missing filename or data");
+  }
+
   return {
-    filename: result[0],
-    data: result[1],
+    filename: result.filename,
+    data: result.data,
   };
 }
 
