@@ -67,7 +67,11 @@ iroh-pisend/
     └── package.json  # Build scripts for demo
 ```
 
-**Note**: The `browser/` directory is deprecated. The WASM bindings have been extracted to `browser-lib/` for better workspace organization.
+**Important Workspace Notes:**
+
+- The `browser/` directory is deprecated. The WASM bindings have been extracted to `browser-lib/` for better workspace organization.
+- **`browser-lib` is NOT a member of the main Cargo workspace** - it has its own `[workspace]` section in `Cargo.toml` to isolate WASM-specific dependencies (like avoiding `mio` which isn't WASM-compatible).
+- Build `browser-lib` separately: `cargo build --target=wasm32-unknown-unknown --manifest-path=browser-lib/Cargo.toml`
 
 ## Architecture
 
@@ -99,10 +103,12 @@ The core library (`lib/`) contains all transfer logic:
 
 1. Parses ticket to extract endpoint address and collection hash
 2. Creates iroh `Endpoint` for connecting
-3. Creates temp `.pisend-recv-*` directory for blob storage
+3. Creates temp `.pisend-recv-*` directory (uses `args.common.temp_dir` if set - critical for Android)
 4. Downloads collection via `execute_get()` with progress tracking
-5. Exports to current directory (or specified output directory)
+5. Exports to current directory (or specified output directory) **preserving original filenames**
 6. Cleans up temp directory
+
+**Filename Preservation**: The library uses `BlobFormat::HashSeq` (Collection) which preserves directory structure and filenames across transfers. This ensures files arrive with their original names intact.
 
 #### Progress Events
 
@@ -278,6 +284,40 @@ The Tauri app backend (`app/src-tauri/src/lib.rs`) defines platform-specific log
 
 Note: The non-Android variants of these macros are currently stubs that recursively call themselves - they should be fixed to actually call the underlying `log` macros.
 
+### Android Temp Directory (CRITICAL)
+
+**This is a common source of bugs on Android.**
+
+Android apps run in a sandbox and cannot write to arbitrary directories. Always use `args.common.temp_dir` instead of `std::env::current_dir()`:
+
+```rust
+// CORRECT: Use temp_dir from config
+let base_dir = args.common.temp_dir.as_ref().cloned()
+    .unwrap_or_else(|| std::env::current_dir()?);
+
+// WRONG: Never use current_dir() on Android
+let iroh_data_dir = std::env::current_dir()?.join(dir_name);
+```
+
+**In Tauri backend**, always provide `temp_dir`:
+```rust
+let temp_dir = app.path().temp_dir()?;
+let args = ReceiveArgs {
+    ticket,
+    common: CommonConfig {
+        temp_dir: Some(temp_dir),  // CRITICAL for Android
+        // ...
+    },
+};
+```
+
+**Why this matters:**
+- Android's `current_dir()` may point to read-only directories
+- `app.path().temp_dir()` returns app's cache directory (writable)
+- Without this, file export fails with "Read-only file system" error
+
+See `ANDROID_FIX_SUMMARY.md` for full debugging guide.
+
 ### Router Keep-Alive
 
 Critical: The sender's router must stay alive to serve incoming connections. This is done by:
@@ -336,7 +376,50 @@ cargo test -- --nocapture
 
 # Run specific test
 cargo test test_name
+
+# Run with staging relays (like CI)
+IROH_FORCE_STAGING_RELAYS=1 cargo test
 ```
+
+### CI Environment Variables
+
+When running tests in CI or reproducing CI failures:
+- `RUSTFLAGS=-Dwarnings` - All warnings are treated as errors
+- `IROH_FORCE_STAGING_RELAYS=1` - Use staging relay servers instead of production
+
+## Debugging
+
+### Android Debugging
+
+Android development has special debugging considerations:
+
+```bash
+# Setup ADB
+export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
+
+# View logs in real-time
+adb logcat | grep -E "pisend|iroh|rust"
+
+# Save logs to file
+adb logcat > ~/android_debug.log
+
+# Key log points to watch for:
+# - "receive_file called with ticket"
+# - "Android: output_dir specified but ignored"
+# - "Failed to change to output directory"
+# - "Invalid ticket"
+# - "Connection failed"
+# - Progress events: "Connecting"/"Downloading"
+```
+
+See `ANDROID_DEBUG_GUIDE.md` for complete debugging workflow.
+
+### Common Issues
+
+1. **"Recursion limit reached" errors**: Add `#![recursion_limit = "256"]` to top of `app/src-tauri/src/lib.rs`
+2. **Android "Read-only file system"**: Ensure `args.common.temp_dir` is set correctly (see Android Temp Directory section above)
+3. **Router dropping connections**: Never remove `std::future::pending()` from send tasks
+4. **WASM build failures on macOS**: Use `export CC=/opt/homebrew/opt/llvm/bin/clang` for WASM builds
 
 ## Mobile Development
 
@@ -369,3 +452,23 @@ The `tauri-plugin-mobile-file-picker` is a custom workspace member that provides
 - **Desktop**: Uses `tauri_plugin_dialog` APIs
 - **Mobile**: Uses platform-native file pickers
 - Commands: `pick_file`, `pick_directory`, `ping`
+
+## Environment Variables
+
+### Rust/iroh
+
+- **`IROH_SECRET`**: Hex-encoded 32-byte secret key for endpoint identity (optional, generates random if not set)
+- **`IROH_FORCE_STAGING_RELAYS`**: Set to `1` to use staging relay servers (used in CI tests)
+- **`RUST_LOG`**: Logging level (e.g., `debug`, `info`, `warn`, `error`)
+
+### Build/CI
+
+- **`RUSTFLAGS`**: Compiler flags; CI uses `-Dwarnings` to treat warnings as errors
+- **`CC`**: For WASM builds on macOS, set to `/opt/homebrew/opt/llvm/bin/clang` (llvm.org Clang, NOT Apple Clang)
+
+## Additional Documentation
+
+- **`AGENTS.md`**: Comprehensive guide for AI coding agents with detailed workflows and code style guidelines
+- **`ANDROID_DEBUG_GUIDE.md`**: Step-by-step Android debugging workflow
+- **`ANDROID_FIX_SUMMARY.md`**: Details on Android temp directory fixes
+- **`ANDROID_FILENAME_PRESERVATION.md`**: Android-specific filename handling notes
