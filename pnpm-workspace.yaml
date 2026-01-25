@@ -1,4 +1,3 @@
 packages:
   - "app"
   - "browser"
-  - "tauri-plugin-mobile-file-picker"

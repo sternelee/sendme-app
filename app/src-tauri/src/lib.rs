@@ -9,14 +9,10 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 // Mobile file picker type aliases
-// On Android, these alias to the plugin types
-// On desktop/iOS, we define local stubs
-#[cfg(target_os = "android")]
-pub use tauri_plugin_mobile_file_picker::{
-    DirectoryInfo as PickerDirectoryInfo, FileInfo as PickerFileInfo,
-};
+// On Android, we use tauri-plugin-android-fs which returns FileUri
+// On desktop/iOS, we define local stubs for compatibility
 
-#[cfg(not(target_os = "android"))]
+/// File information returned by the picker (cross-platform)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PickerFileInfo {
@@ -27,7 +23,7 @@ pub struct PickerFileInfo {
     pub mime_type: String,
 }
 
-#[cfg(not(target_os = "android"))]
+/// Directory information returned by the picker (cross-platform)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PickerDirectoryInfo {
@@ -183,22 +179,50 @@ async fn copy_files_to_content_uri(
     log_info!("Starting copy to content URI: {}", content_uri);
     log_info!("Files to copy: {}", collection.len());
 
+    // Extract the tree URI part from the content URI
+    // Android SAF may return URIs in format: content://.../tree/.../document/...
+    // We need only the tree part for DocumentFile.fromTreeUri()
+    let tree_uri = extract_tree_uri_from_content_uri(content_uri);
+    log_info!("Extracted tree URI: {}", tree_uri);
+
     // Collect file info to copy
     let files_to_copy: Vec<(String, std::path::PathBuf)> = collection
         .iter()
         .map(|(name, _hash)| (name.to_string(), temp_dir.join(name)))
         .collect();
 
-    let content_uri = content_uri.to_string();
-
     // Run JNI operations in a blocking thread to avoid issues with async runtime
     let result = tokio::task::spawn_blocking(move || {
-        copy_files_to_content_uri_sync(&content_uri, &files_to_copy)
+        copy_files_to_content_uri_sync(&tree_uri, &files_to_copy)
     })
     .await
     .map_err(|e| anyhow::anyhow!("Task join error: {:?}", e))??;
 
     Ok(result)
+}
+
+/// Extract the tree URI part from a potentially compound content URI.
+///
+/// Android SAF may return URIs in these formats:
+/// - Simple tree: content://.../tree/primary%3ADownload
+/// - Compound: content://.../tree/primary%3ADownload/document/primary%3ADownload
+///
+/// We only need the tree part for DocumentFile.fromTreeUri().
+#[cfg(target_os = "android")]
+fn extract_tree_uri_from_content_uri(content_uri: &str) -> String {
+    // Check if the URI contains /document/ after the tree part
+    if let Some(tree_end) = content_uri.find("/tree/") {
+        if let Some(doc_start) = content_uri.find("/document/") {
+            // Found both /tree/ and /document/, extract only up to /document/
+            if doc_start > tree_end {
+                let tree_uri = &content_uri[..doc_start];
+                log_info!("Compound URI detected, extracted tree part: {}", tree_uri);
+                return tree_uri.to_string();
+            }
+        }
+    }
+    // No /document/ part found, return as-is
+    content_uri.to_string()
 }
 
 /// Synchronous version of copy_files_to_content_uri for use in spawn_blocking
@@ -371,7 +395,12 @@ pub fn run() {
 
     #[cfg(target_os = "android")]
     {
-        builder = builder.plugin(tauri_plugin_mobile_file_picker::init());
+        builder = builder.plugin(tauri_plugin_android_fs::init());
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        builder = builder.plugin(tauri_plugin_fs_ios::init());
     }
 
     #[cfg(mobile)]
@@ -693,8 +722,9 @@ async fn receive_file(
         if output_dir.starts_with("content://") {
             log_info!("Detected content URI as output_dir: {}", output_dir);
             log_info!("Will export to temp_dir first, then copy to content URI");
-            // Export to temp directory first, we'll copy to content URI later
-            (None, Some(output_dir.clone()))
+            // Export to temp directory first, then copy to content URI later
+            // IMPORTANT: export_dir must be Some(temp_dir) so files are written to temp
+            (Some(temp_dir.clone()), Some(output_dir.clone()))
         } else {
             log_info!("Using user-provided output_dir: {:?}", output_dir);
             (Some(std::path::PathBuf::from(output_dir)), None)
@@ -716,7 +746,31 @@ async fn receive_file(
         }
     };
 
-    #[cfg(not(target_os = "android"))]
+    // On iOS, always use the Documents directory when no output_dir is provided
+    #[cfg(target_os = "ios")]
+    let (export_dir, _content_uri_output): (Option<std::path::PathBuf>, Option<String>) = {
+        use tauri_plugin_fs_ios::FsIosExt;
+
+        if let Some(ref output_dir) = request.output_dir {
+            log_info!("Using user-provided output_dir: {:?}", output_dir);
+            (Some(std::path::PathBuf::from(output_dir)), None)
+        } else {
+            log_info!("ℹ️  iOS: No output_dir provided, using Documents directory...");
+            let fs_ios = app.fs_ios();
+            match fs_ios.current_dir() {
+                Ok(dir) => {
+                    log_info!("✅ iOS Documents directory: {}", dir);
+                    (Some(std::path::PathBuf::from(dir)), None)
+                }
+                Err(e) => {
+                    log_error!("Failed to get Documents directory: {}, falling back to temp_dir", e);
+                    (None, None)
+                }
+            }
+        }
+    };
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let (export_dir, _content_uri_output): (Option<std::path::PathBuf>, Option<String>) = (
         request
             .output_dir
@@ -1344,16 +1398,19 @@ fn get_default_download_folder(app: AppHandle) -> Result<String, String> {
     log_info!("📁 GET_DEFAULT_DOWNLOAD_FOLDER (iOS)");
     log_info!("═══════════════════════════════════════════════════");
 
-    // On iOS, use the Documents directory
-    log_info!("📋 Getting Documents directory...");
-    let path = app.path().document_dir().map_err(|e| {
+    // On iOS, use tauri-plugin-fs-ios to get the Documents directory
+    use tauri_plugin_fs_ios::FsIosExt;
+
+    log_info!("📋 Getting Documents directory via fs-ios...");
+    let fs_ios = app.fs_ios();
+    let docs_path = fs_ios.current_dir().map_err(|e| {
         let err_msg = format!("Failed to get Documents directory: {}", e);
         log_error!("❌ {}", err_msg);
         err_msg
     })?;
 
-    log_info!("✅ Documents directory: {:?}", path);
-    Ok(path.to_string_lossy().to_string())
+    log_info!("✅ Documents directory: {}", docs_path);
+    Ok(docs_path)
 }
 
 #[tauri::command]
@@ -1443,6 +1500,56 @@ async fn open_received_file(
         Ok(())
     }
 
+    // On iOS, use opener plugin with Documents directory
+    #[cfg(target_os = "ios")]
+    {
+        use tauri_plugin_fs_ios::FsIosExt;
+
+        log_info!("🍎 iOS platform detected, using Documents directory");
+
+        let fs_ios = app.fs_ios();
+        let docs_dir = fs_ios.current_dir()
+            .map_err(|e| format!("Failed to get Documents directory: {}", e))?;
+
+        log_info!("Documents directory: {:?}", docs_dir);
+
+        // Find the file to open
+        let file_to_open = if let Some(ref fname) = filename {
+            let file_path = std::path::PathBuf::from(&docs_dir).join(fname);
+            if !file_path.exists() {
+                return Err(format!("File not found: {}", fname));
+            }
+            file_path
+        } else {
+            // No filename specified, find the first file in Documents directory
+            let entries = std::fs::read_dir(&docs_dir)
+                .map_err(|e| format!("Failed to read Documents directory: {}", e))?;
+
+            entries
+                .filter_map(Result::ok)
+                .map(|e| e.path())
+                .find(|p| {
+                    p.is_file()
+                        && !p
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .starts_with('.')
+                })
+                .ok_or("No files found in Documents directory".to_string())?
+        };
+
+        let file_path_str = file_to_open.to_str().ok_or("Invalid file path")?;
+        log_info!("Opening file: {:?}", file_path_str);
+
+        // Use opener plugin to open the file
+        tauri_plugin_opener::open_path(&file_to_open, None::<&str>)
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+
+        log_info!("✅ File opened successfully");
+        Ok(())
+    }
+
     // On desktop, use opener plugin
     #[cfg(not(target_os = "android"))]
     {
@@ -1511,7 +1618,38 @@ async fn list_received_files(app: AppHandle) -> Result<Vec<String>, String> {
         Ok(files)
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
+    {
+        // Use Documents directory on iOS
+        use tauri_plugin_fs_ios::FsIosExt;
+
+        let fs_ios = app.fs_ios();
+        let docs_dir = fs_ios.current_dir().map_err(|e| format!("Failed to get Documents directory: {}", e))?;
+
+        log_info!("Documents directory: {:?}", docs_dir);
+
+        let entries = std::fs::read_dir(&docs_dir)
+            .map_err(|e| format!("Failed to read Documents directory: {}", e))?;
+
+        let files: Vec<String> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                p.is_file()
+                    && !p
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .starts_with('.')
+            })
+            .filter_map(|p| p.to_str().map(String::from))
+            .collect();
+
+        log_info!("Found {} files", files.len());
+        Ok(files)
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         // Use temp directory on other platforms
         let temp_dir = app
@@ -1551,24 +1689,82 @@ async fn list_received_files(app: AppHandle) -> Result<Vec<String>, String> {
 /// Only available on mobile platforms (Android/iOS).
 #[tauri::command]
 #[cfg(target_os = "android")]
-fn pick_file(
+async fn pick_file(
     app: AppHandle,
     allowed_types: Option<Vec<String>>,
     allow_multiple: Option<bool>,
 ) -> Result<Vec<PickerFileInfo>, String> {
-    use tauri_plugin_mobile_file_picker::{FilePickerOptions, MobileFilePickerExt};
+    use tauri_plugin_android_fs::{AndroidFsExt, FileUri};
 
-    let picker = app.mobile_file_picker();
-    let options = FilePickerOptions {
-        allowed_types,
-        allow_multiple: allow_multiple.unwrap_or(false),
-        mode: Default::default(),
-        request_long_term_access: false,
-    };
+    let api = app.android_fs_async();
+    let allow_multiple = allow_multiple.unwrap_or(false);
 
-    picker
-        .pick_file(options)
-        .map_err(|e: tauri_plugin_mobile_file_picker::Error| e.to_string())
+    // Build MIME types filter - default to all files if none specified
+    let mime_types: Vec<&str> = allowed_types
+        .as_ref()
+        .map(|types| types.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_else(|| vec!["*/*"]);
+
+    log_info!("📁 Opening file picker...");
+    log_info!("  - MIME types: {:?}", mime_types);
+    log_info!("  - Allow multiple: {}", allow_multiple);
+
+    // Use the file picker API
+    let selected_uris = api
+        .file_picker()
+        .pick_files(None, &mime_types, false)
+        .await
+        .map_err(|e| format!("File picker failed: {}", e))?;
+
+    if selected_uris.is_empty() {
+        log_info!("📁 File picker cancelled");
+        return Ok(vec![]);
+    }
+
+    log_info!("✅ Selected {} files", selected_uris.len());
+
+    // Convert FileUri results to PickerFileInfo
+    // Note: We convert to FilePath to get the URI string representation
+    let mut results = Vec::new();
+    for uri in selected_uris {
+        // Convert FileUri to tauri_plugin_fs::FilePath to get string representation
+        use tauri_plugin_fs::FilePath;
+        let file_path: FilePath = uri.clone().into();
+        let uri_str = file_path.to_string();
+        log_info!("  - URI: {}", uri_str);
+
+        // Get file metadata
+        let name = api
+            .get_name(&uri)
+            .await
+            .map_err(|e| format!("Failed to get file name: {}", e))?;
+
+        let mime_type = api
+            .get_mime_type(&uri)
+            .await
+            .map_err(|e| format!("Failed to get MIME type: {}", e))?;
+
+        // Get file size by opening the file
+        let size = api
+            .open_file_readable(&uri)
+            .await
+            .map_err(|e| format!("Failed to open file: {}", e))?
+            .metadata()
+            .map_err(|e| format!("Failed to get file metadata: {}", e))?
+            .len();
+
+        log_info!("    Name: {}, MIME: {}, Size: {}", name, mime_type, size);
+
+        results.push(PickerFileInfo {
+            uri: uri_str.clone(),
+            path: uri_str,
+            name,
+            size: size as i64,
+            mime_type,
+        });
+    }
+
+    Ok(results)
 }
 
 /// Pick a directory using the native mobile directory picker
@@ -1579,49 +1775,108 @@ fn pick_file(
 /// Only available on mobile platforms (Android/iOS).
 #[tauri::command]
 #[cfg(target_os = "android")]
-fn pick_directory(
+async fn pick_directory(
     app: AppHandle,
     start_directory: Option<String>,
 ) -> Result<PickerDirectoryInfo, String> {
-    use tauri_plugin_mobile_file_picker::{DirectoryPickerOptions, MobileFilePickerExt};
+    use tauri_plugin_android_fs::{AndroidFsExt, FileUri};
 
-    let picker = app.mobile_file_picker();
-    let options = DirectoryPickerOptions {
-        start_directory,
-        request_long_term_access: false,
-    };
+    let api = app.android_fs_async();
 
-    picker
-        .pick_directory(options)
-        .map_err(|e: tauri_plugin_mobile_file_picker::Error| e.to_string())
+    log_info!("📂 Opening directory picker...");
+
+    // Use the directory picker API
+    let selected_uri = api
+        .file_picker()
+        .pick_dir(None, false)
+        .await
+        .map_err(|e| format!("Directory picker failed: {}", e))?;
+
+    match selected_uri {
+        Some(uri) => {
+            // Convert FileUri to tauri_plugin_fs::FilePath to get string representation
+            use tauri_plugin_fs::FilePath;
+            let file_path: FilePath = uri.clone().into();
+            let uri_str = file_path.to_string();
+            log_info!("✅ Selected directory: {}", uri_str);
+
+            // Take persistable URI permission for long-term access
+            if let Err(e) = api.take_persistable_uri_permission(&uri).await {
+                log_warn!("Failed to take persistable URI permission: {}", e);
+            }
+
+            // Try to get the directory name from the URI
+            // The URI format is typically: content://com.android.externalstorage.documents/tree/primary%3ADownload
+            let name = uri_str
+                .rsplit("%3A")
+                .next()
+                .or_else(|| uri_str.rsplit('/').next())
+                .unwrap_or("Selected Directory")
+                .to_string();
+
+            log_info!("  - Name: {}", name);
+
+            Ok(PickerDirectoryInfo {
+                uri: uri_str.clone(),
+                path: uri_str,
+                name,
+            })
+        }
+        None => {
+            log_info!("📂 Directory picker cancelled");
+            Err("Directory picker cancelled".to_string())
+        }
+    }
 }
 
 /// Pick a file using the iOS dialog plugin
+///
+/// On iOS, file picking is done via the system document picker.
+/// Files are automatically saved to the app's Documents directory.
 #[tauri::command]
 #[cfg(target_os = "ios")]
-fn pick_file(
-    _app: AppHandle,
-    _allowed_types: Option<Vec<String>>,
+async fn pick_file(
+    app: AppHandle,
+    allowed_types: Option<Vec<String>>,
     _allow_multiple: Option<bool>,
 ) -> Result<Vec<PickerFileInfo>, String> {
-    // On iOS, use tauri-plugin-dialog directly from the frontend
-    Err(
-        "On iOS, use the dialog plugin directly via invoke('plugin:dialog|pick_file', ...)"
-            .to_string(),
-    )
+    use tauri_plugin_fs_ios::FsIosExt;
+
+    log_info!("📁 iOS file picker - files will be saved to Documents directory");
+
+    // On iOS, we can't pick files from outside the app's sandbox
+    // Instead, we return information about the Documents directory
+    // where received files are automatically saved
+    let fs_ios = app.fs_ios();
+    let docs_path = fs_ios.current_dir().map_err(|e| e.to_string())?;
+
+    log_info!("📂 Documents directory: {}", docs_path);
+
+    // Return a placeholder file info indicating files should be accessed via Documents
+    Ok(vec![PickerFileInfo {
+        uri: format!("file://{}", docs_path),
+        path: docs_path.clone(),
+        name: "Documents Directory".to_string(),
+        size: 0,
+        mime_type: "application/directory".to_string(),
+    }])
 }
 
-/// Pick a directory using the iOS dialog plugin
+/// Pick a directory using the iOS - NOT SUPPORTED
+///
+/// iOS does not support directory picking.
+/// All received files are automatically saved to the app's Documents directory.
 #[tauri::command]
 #[cfg(target_os = "ios")]
 fn pick_directory(
     _app: AppHandle,
     _start_directory: Option<String>,
 ) -> Result<PickerDirectoryInfo, String> {
-    // On iOS, use tauri-plugin-dialog directly from the frontend
+    log_info!("❌ iOS does not support directory picking");
+    log_info!("ℹ️  Files are automatically saved to the Documents directory");
+
     Err(
-        "On iOS, use the dialog plugin directly via invoke('plugin:dialog|pick_folder', ...)"
-            .to_string(),
+        "iOS does not support directory picking. Received files are automatically saved to the app's Documents directory.".to_string()
     )
 }
 

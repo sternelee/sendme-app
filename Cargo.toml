@@ -1,5 +1,5 @@
 [workspace]
-members = ["lib", "cli", "app/src-tauri", "tauri-plugin-mobile-file-picker"]
+members = ["lib", "cli", "app/src-tauri"]
 resolver = "2"
 
 # Note: browser-lib crate is a separate workspace to avoid WASM-incompatible

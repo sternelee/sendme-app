@@ -14,7 +14,9 @@
       "Bash(cargo tree:*)",
       "WebSearch",
       "Bash(pnpm tauri android build:*)",
-      "Bash(pnpm run tauri:*)"
+      "Bash(pnpm run tauri:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo clean:*)"
     ]
   }
 }

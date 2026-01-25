@@ -17,7 +17,6 @@ iroh-pisend/
 ├── lib/                    # pisend-lib - Core library (send/receive/nearby)
 ├── cli/                    # pisend CLI - Binary using pisend-lib
 ├── app/src-tauri/          # app - Tauri backend
-├── tauri-plugin-mobile-file-picker/  # Custom Tauri plugin
 └── browser-lib/            # pisend-browser - WASM bindings (separate workspace)
 ```
 
@@ -30,8 +29,9 @@ iroh-pisend/
 packages:
   - "app"                   # Tauri frontend
   - "browser"               # Web demo (deprecated)
-  - "tauri-plugin-mobile-file-picker"  # Plugin frontend
 ```
+
+**Note**: The pnpm-workspace.yaml references a non-existent `tauri-plugin-mobile-file-picker` package (legacy reference from previous architecture).
 
 **Package Manager**: Use **pnpm** for ALL JavaScript/TypeScript operations (NOT npm or yarn).
 
@@ -48,7 +48,6 @@ cargo build --release
 cargo build -p pisend-lib      # Library only
 cargo build -p pisend          # CLI only (binary name: pisend)
 cargo build -p app             # Tauri backend only
-cargo build -p tauri-plugin-mobile-file-picker
 
 # Format (REQUIRED before committing)
 cargo fmt --all
@@ -223,6 +222,8 @@ const [isLoading, setIsLoading] = createSignal<boolean>(false);
 6. **Tokio RwLock**: Use `tokio::sync::RwLock` for shared async state, not `std::sync::RwLock`
 7. **Android temp directories**: Use `args.common.temp_dir` instead of `std::env::current_dir()` (see ANDROID_FIX_SUMMARY.md)
 8. **Recursion limit**: If compilation fails with "recursion limit reached while expanding `log_info!`", add `#![recursion_limit = "256"]` to the top of `app/src-tauri/src/lib.rs`
+9. **Android JNI**: Always use `push_local_frame()`/`pop_local_frame()` when making JNI calls in loops to prevent local reference overflow
+10. **pnpm workspace**: `pnpm-workspace.yaml` references non-existent `tauri-plugin-mobile-file-picker` (legacy reference, can be ignored)
 
 ## Architecture Deep Dive
 
@@ -309,36 +310,91 @@ Uses `tokio::sync::RwLock<HashMap>` for transfer state management.
 Emits progress events to frontend via `app.emit("progress", update)`.
 
 Registered Tauri Plugins:
-- `tauri_plugin_dialog` - File/folder dialogs
+- `tauri_plugin_dialog` - File/folder dialogs (desktop)
 - `tauri_plugin_clipboard_manager` - Clipboard access
 - `tauri_plugin_notification` - System notifications
 - `tauri_plugin_os` - Cross-platform OS info (hostname, device model, etc.)
-- `tauri_plugin_fs` - Filesystem access
+- `tauri_plugin_fs` - Filesystem access (desktop)
 - `tauri_plugin_http` - HTTP requests
-- `mobile-file-picker` - **Custom plugin** for unified file/directory picking across desktop/mobile
-- `tauri_plugin_barcode_scanner` - QR code scanning (mobile only)
-- `tauri_plugin_sharesheet` - Native share sheets (mobile only)
+- `tauri_plugin_android_fs` - Android file/directory picker with SAF support (Android only)
+- `tauri_plugin_fs_ios` - iOS Documents directory access (iOS only)
+- `tauri_plugin_barcode_scanner` - QR code scanning (mobile only, both iOS/Android)
+- `tauri_plugin_sharesheet` - Native share sheets (mobile only, both iOS/Android)
+- `tauri_plugin_opener` - Open files with default apps
+- `tauri_plugin_updater` - Auto-updater (desktop only, not mobile)
 
 #### Platform-Specific Code
 
-- **Android**: Uses `log` crate for logging, handles `content://` URIs specially
-- **iOS**: Uses `tracing` for logging
-- **Desktop**: Uses `tracing` for logging
+- **Android**: 
+  - Uses `log` crate for logging (via `android_logger`)
+  - Handles `content://` URIs specially with `tauri_plugin_android_fs`
+  - Custom JNI integration via `android.rs` module:
+    - `open_file_with_intent()`: Opens files using Android Intent system
+    - `find_received_files()`: Lists downloaded files in app directory
+  - Kotlin utilities in `FileUtils.kt`:
+    - `writeFileToContentUri()`: Writes files to SAF tree URIs
+    - MIME type detection for proper file creation
+    - DocumentFile API for reliable tree URI handling
+- **iOS**: 
+  - Uses `tracing` for logging
+  - All received files go to Documents directory (no directory picker)
+- **Desktop**: 
+  - Uses `tracing` for logging
+  - Standard file dialogs via `tauri_plugin_dialog`
 
-### Custom Mobile File Picker Plugin (`tauri-plugin-mobile-file-picker/`)
+### Mobile File Picker Implementation
 
-Provides unified file/directory picking across desktop and mobile:
+File picking is handled differently across platforms:
 
-- **Desktop**: Uses `tauri_plugin_dialog` APIs
-- **Android**: Uses Storage Access Framework (SAF) with `ACTION_OPEN_DOCUMENT`/`ACTION_GET_CONTENT`
+- **Desktop**: Uses `tauri_plugin_dialog` for standard file/folder dialogs
+- **Android**: Uses `tauri_plugin_android_fs` (official crate) for Storage Access Framework (SAF) integration
   - Supports persistable URI permissions for long-term access
-  - Handles virtual files (Google Docs, etc.) with type conversion
-- **iOS**: Uses `UIDocumentPickerViewController`
-  - Security-scoped bookmarks for persistent access
+  - Handles `content://` URIs from document provider
+  - Custom `FileUtils.kt` (in `app/src-tauri/gen/android/app/src/main/java/pisend/leechat/app/`) provides:
+    - `writeFileToContentUri()`: Writes file data to content URI directories
+    - MIME type detection for proper file creation
+- **iOS**: Uses `tauri_plugin_fs_ios` for iOS Documents directory access
+  - All received files automatically saved to app's Documents directory
+  - No directory picker support (iOS limitation)
 
-Commands: `pick_file`, `pick_directory`, `read_content`, `copy_to_local`, `write_content`, `release_access`
+**Key Android APIs**:
+```rust
+let api = app.android_fs_async();
+// Pick files
+let uris = api.file_picker().pick_files(None, &["*/*"], false).await?;
+// Pick directory (returns tree URI)
+let uri = api.file_picker().pick_dir(None, false).await?;
+// Get file metadata
+let name = api.get_name(&uri).await?;
+let size = api.get_size(&uri).await?;
+// Read file
+let file = api.open_file_readable(&uri).await?;
+```
 
-See `tauri-plugin-mobile-file-picker/README.md` for full API documentation.
+**Android JNI Integration**:
+The Rust backend calls into Kotlin code for advanced operations:
+```rust
+// JNI call to FileUtils.writeFileToContentUri
+// From app/src-tauri/src/lib.rs around line 240-320
+let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }?;
+let mut env = vm.attach_current_thread()?;
+let class = env.find_class("pisend/leechat/app/FileUtils")?;
+
+// Call static method: writeFileToContentUri(Context, String, String, byte[]) -> boolean
+env.call_static_method(
+    &class,
+    "writeFileToContentUri",
+    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;[B)Z",
+    &[context, dir_uri, filename, byte_array]
+)?;
+```
+
+**Key JNI Pattern**: Always use local frames when making JNI calls in loops to prevent local reference overflow:
+```rust
+env.push_local_frame(16)?;
+// ... JNI calls here ...
+env.pop_local_frame(&JObject::null())?;
+```
 
 ### Browser WASM Library (`browser-lib/`)
 
@@ -474,6 +530,7 @@ iroh-pisend/
 │   ├── import.rs               # File import to blob store
 │   ├── export.rs               # Blob store to filesystem
 │   ├── progress.rs             # Progress reporting
+│   ├── nearby.rs               # mDNS local device discovery
 │   └── types.rs                # Core types
 ├── cli/src/                    # CLI with TUI
 │   ├── main.rs                 # Entry point
@@ -484,11 +541,12 @@ iroh-pisend/
 │   │   ├── bindings.ts         # Tauri command wrappers
 │   │   └── lib/utils.ts        # Utilities
 │   └── src-tauri/              # Rust backend
-│       └── src/lib.rs          # Tauri commands
-├── tauri-plugin-mobile-file-picker/  # Custom plugin
-│   ├── src/                    # Rust implementation
-│   ├── guest-js/               # TypeScript API
-│   └── android/                # Android-specific code
+│       ├── src/
+│       │   ├── lib.rs          # Tauri commands
+│       │   └── android.rs      # Android JNI helpers
+│       └── gen/android/app/src/main/java/pisend/leechat/app/
+│           ├── FileUtils.kt    # Android file operations
+│           └── MainActivity.kt # Android activity
 ├── browser-lib/                # WASM bindings (separate workspace)
 │   ├── src/lib.rs              # Main entry
 │   ├── src/node.rs             # SendmeNode implementation

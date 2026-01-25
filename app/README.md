@@ -131,6 +131,8 @@ cd app && pnpm run tauri dev
 # Android dev
 cd app && pnpm run tauri android dev
 
+cp /Users/sternelee/www/github/iroh-sendme/app/src-tauri/android-includes/pisend/leechat/app/FileUtils.kt /Users/sternelee/www/github/iroh-sendme/app/src-tauri/gen/android/app/src/main/java/pisend/leechat/app/ && ls -la /Users/sternelee/www/github/iroh-sendme/app/src-tauri/gen/android/app/src/main/java/pisend/leechat/app/
+
 # iOS dev (macOS only)
 cd app && pnpm run tauri ios dev
 ```

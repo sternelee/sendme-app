@@ -47,7 +47,7 @@ pnpm run tauri build      # Build complete desktop app
 
 ## Workspace Structure
 
-This is a Cargo workspace with five members:
+This is a Cargo workspace with three members:
 
 ```
 iroh-pisend/
@@ -57,15 +57,12 @@ iroh-pisend/
 │   ├── src/          # SolidJS frontend
 │   ├── src-tauri/    # Rust backend (Tauri commands)
 │   └── package.json  # Frontend dependencies
-├── browser-lib/  # WebAssembly library crate (pisend-browser)
-│   └── src/          # Rust WASM bindings
-├── tauri-plugin-mobile-file-picker/  # Custom Tauri plugin for mobile file picking
-│   ├── src/          # Plugin implementation (desktop/mobile)
-│   └── examples/     # Example usage
-└── browser/      # Legacy web demo (deprecated, uses browser-lib)
-    ├── public/       # Web demo HTML
-    └── package.json  # Build scripts for demo
+└── browser-lib/  # WebAssembly library crate (pisend-browser, separate workspace)
+    └── src/          # Rust WASM bindings
 ```
+
+**Additional Directories:**
+- **`browser/`**: Legacy web demo (deprecated, uses browser-lib)
 
 **Important Workspace Notes:**
 
@@ -168,7 +165,8 @@ Registered Tauri Plugins:
 - `tauri_plugin_os` - Cross-platform OS info (hostname, device model, etc.)
 - `tauri_plugin_fs` - Filesystem access
 - `tauri_plugin_http` - HTTP requests
-- `mobile-file-picker` - **Custom plugin** for unified file/directory picking across desktop/mobile
+- `tauri_plugin_android_fs` - **Android file/directory picker** (Android only)
+- `tauri_plugin_fs_ios` - **iOS Documents directory access** (iOS only)
 - `tauri_plugin_barcode_scanner` - QR code scanning (mobile, commented out)
 - `tauri_plugin_sharesheet` - Native share sheets (mobile, commented out)
 
@@ -445,13 +443,63 @@ pnpm run tauri android build  # Build Android APK
 pnpm run tauri ios build      # Build iOS app
 ```
 
-### Custom Mobile File Picker Plugin
+### Mobile File Picker
 
-The `tauri-plugin-mobile-file-picker` is a custom workspace member that provides unified file/directory picking:
+The app uses platform-specific plugins for file/directory operations:
 
-- **Desktop**: Uses `tauri_plugin_dialog` APIs
-- **Mobile**: Uses platform-native file pickers
-- Commands: `pick_file`, `pick_directory`, `ping`
+#### Android: `tauri_plugin_android_fs` (Official Crate)
+
+- **File Picking**: Opens native file picker, returns list of selected files with metadata
+- **Directory Picking**: Opens directory picker, returns selected directory URI
+- **Persistable Permissions**: Automatically takes persistable URI permissions for long-term access
+
+**Key Android API:**
+```rust
+let api = app.android_fs_async();
+
+// Pick files
+let uris = api.file_picker().pick_files(None, &["*/*"], false).await?;
+
+// Pick directory
+let uri = api.file_picker().pick_dir(None, false).await?;
+
+// Get file metadata
+let name = api.get_name(&uri).await?;
+let mime_type = api.get_mime_type(&uri).await?;
+
+// Open file for reading
+let file = api.open_file_readable(&uri).await?;
+```
+
+#### iOS: `tauri_plugin_fs_ios` + Documents Directory
+
+**Important**: iOS does NOT support directory picking. All received files are automatically saved to the app's **Documents directory**.
+
+- **File Picking**: Returns Documents directory info (files accessed via Documents)
+- **Directory Picking**: NOT SUPPORTED - all received files go to Documents
+- **File Operations**: Uses `tauri_plugin_fs_ios` for Documents directory access
+
+**Key iOS API:**
+```rust
+let fs_ios = app.fs_ios();
+
+// Get Documents directory path
+let docs_path = fs_ios.current_dir()?;
+
+// For received files: automatically saved to Documents
+// List files in Documents
+let entries = std::fs::read_dir(&docs_path)?;
+```
+
+**iOS File Flow:**
+1. Receiving files → Automatically saved to Documents directory
+2. `get_default_download_folder()` → Returns Documents path
+3. `list_received_files()` → Lists files in Documents
+4. `open_received_file()` → Opens files from Documents
+
+#### Desktop: `tauri_plugin_dialog`
+
+Standard file/folder dialogs via `tauri_plugin_dialog`.
 
 ## Environment Variables
 

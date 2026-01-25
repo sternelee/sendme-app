@@ -237,6 +237,7 @@ export default function Home() {
     try {
       if (isMobile()) {
         const result = await pick_directory();
+        console.log("output_dir=", result);
         handleSetReceiveOutputDir(result.uri);
       } else {
         const selected = await open({
