@@ -96,7 +96,7 @@ export class SendmeNodeWasm {
    */
   get(ticket: string): Promise<any>;
   /**
-   * Create a new pisend node
+   * Create a new sendmd node
    */
   static spawn(): Promise<SendmeNodeWasm>;
   /**

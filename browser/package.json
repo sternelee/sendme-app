@@ -1,5 +1,5 @@
 {
-  "name": "pisend-app",
+  "name": "sendmd-app",
   "type": "module",
   "scripts": {
     "dev": "vinxi dev",
@@ -13,8 +13,8 @@
     "build:wasm": "cd ../browser-lib && cargo build --target=wasm32-unknown-unknown && wasm-bindgen ./target/wasm32-unknown-unknown/debug/pisend_browser.wasm --out-dir=../browser/src/wasm --weak-refs --target=web --debug",
     "build:wasm:release": "cd ../browser-lib && cargo build --target=wasm32-unknown-unknown --release && wasm-bindgen ./target/wasm32-unknown-unknown/release/pisend_browser.wasm --out-dir=../browser/src/wasm --weak-refs --target=web",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "wrangler d1 migrations apply pisend-db --local",
-    "db:migrate:prod": "wrangler d1 migrations apply pisend-db",
+    "db:migrate": "wrangler d1 migrations apply sendmd-db --local",
+    "db:migrate:prod": "wrangler d1 migrations apply sendmd-db",
     "db:studio": "drizzle-kit studio",
     "auth:gen": "better-auth gen"
   },

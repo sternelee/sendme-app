@@ -1,5 +1,5 @@
 /**
- * Database connection and utilities for PiSend Browser App
+ * Database connection and utilities for Sendmd Browser App
  * Uses Drizzle ORM with Cloudflare D1
  */
 

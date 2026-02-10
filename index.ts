@@ -1,1 +1,1 @@
-console.log("Hello via pisend!");
+console.log("Hello via sendmd!");

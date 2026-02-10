@@ -10,7 +10,7 @@ Receive failed: error exporting xxx: Read-only file system (os error 30)
 ## 根本原因
 
 ### 问题 1: 临时目录使用错误
-`lib/src/receive.rs` 中创建 `.pisend-recv-*` 目录时，忽略了 `args.common.temp_dir` 参数，总是使用 `std::env::current_dir()`：
+`lib/src/receive.rs` 中创建 `.sendmd-recv-*` 目录时，忽略了 `args.common.temp_dir` 参数，总是使用 `std::env::current_dir()`：
 
 ```rust
 // 错误代码
@@ -38,7 +38,7 @@ let root = std::env::current_dir()?;
 let base_dir = args.common.temp_dir.as_ref().cloned()
     .unwrap_or_else(|| std::env::current_dir()?);
 
-let dir_name = format!(".pisend-recv-{}", ticket.hash().to_hex());
+let dir_name = format!(".sendmd-recv-{}", ticket.hash().to_hex());
 let iroh_data_dir = base_dir.join(&dir_name);
 
 // 添加权限检查
@@ -100,8 +100,8 @@ let args = ReceiveArgs {
 ## 修复后的文件流程
 
 ```
-temp_dir (Android: /data/data/com.pisend.app/cache/)
-  ├── .pisend-recv-xxxx/       # 临时下载存储
+temp_dir (Android: /data/data/com.sendmd.app/cache/)
+  ├── .sendmd-recv-xxxx/       # 临时下载存储
   │   └── [blobs 数据]
   └── [接收的文件]              # 导出到这里
 ```

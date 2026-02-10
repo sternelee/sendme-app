@@ -1,4 +1,4 @@
-package pisend.leechat.app
+package sendmd.leechat.app
 
 import android.content.Context
 import android.net.Uri
@@ -38,21 +38,52 @@ object FileUtils {
 
             Log.d(TAG, "DocumentTree name: ${documentTree.name}, canWrite: ${documentTree.canWrite()}")
 
+            if (!documentTree.canWrite()) {
+                Log.e(TAG, "DocumentTree is not writable: $dirUri")
+                return false
+            }
+
+            // Handle subdirectory paths (e.g., "subdir/file.txt")
+            // Split the fileName by '/' and create intermediate directories
+            val parts = fileName.split("/")
+            val actualFileName = parts.last()
+            var targetDir: DocumentFile = documentTree
+
+            // Create intermediate directories if needed
+            if (parts.size > 1) {
+                for (dirName in parts.dropLast(1)) {
+                    if (dirName.isEmpty()) continue
+                    val existingDir = targetDir.findFile(dirName)
+                    targetDir = if (existingDir != null && existingDir.isDirectory) {
+                        Log.d(TAG, "Using existing subdirectory: $dirName")
+                        existingDir
+                    } else {
+                        val newDir = targetDir.createDirectory(dirName)
+                        if (newDir == null) {
+                            Log.e(TAG, "Failed to create subdirectory: $dirName in ${targetDir.uri}")
+                            return false
+                        }
+                        Log.d(TAG, "Created subdirectory: $dirName")
+                        newDir
+                    }
+                }
+            }
+
             // Check if file already exists, if so delete it
-            val existingFile = documentTree.findFile(fileName)
+            val existingFile = targetDir.findFile(actualFileName)
             if (existingFile != null) {
-                Log.d(TAG, "File already exists, deleting: $fileName")
+                Log.d(TAG, "File already exists, deleting: $actualFileName")
                 existingFile.delete()
             }
 
             // Determine MIME type
-            val mimeType = getMimeType(fileName)
+            val mimeType = getMimeType(actualFileName)
             Log.d(TAG, "Creating file with MIME type: $mimeType")
 
-            // Create new file in the directory
-            val newFile = documentTree.createFile(mimeType, fileName)
+            // Create new file in the target directory
+            val newFile = targetDir.createFile(mimeType, actualFileName)
             if (newFile == null) {
-                Log.e(TAG, "Failed to create file: $fileName in ${documentTree.uri}")
+                Log.e(TAG, "Failed to create file: $actualFileName in ${targetDir.uri}")
                 return false
             }
 
@@ -68,6 +99,12 @@ object FileUtils {
                 Log.e(TAG, "Failed to open output stream for ${newFile.uri}")
                 false
             }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception - URI permission may have expired: $dirUri", e)
+            false
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "Invalid URI argument: $dirUri", e)
+            false
         } catch (e: Exception) {
             Log.e(TAG, "Error writing file to content URI", e)
             e.printStackTrace()

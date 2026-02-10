@@ -1,5 +1,5 @@
 /**
- * WASM integration layer for PiSend browser functionality
+ * WASM integration layer for Sendmd browser functionality
  * Wraps the WASM module for file sending and receiving
  */
 
@@ -22,7 +22,7 @@ export async function initWasm(): Promise<void> {
 }
 
 /**
- * Initialize or get the PiSend node instance
+ * Initialize or get the Sendmd node instance
  */
 async function getNode(): Promise<any> {
   if (!wasmModule) {

@@ -46,7 +46,7 @@ pub fn render_receive_tab(f: &mut Frame, app: &App, area: Rect) {
     let input_style = Style::default().fg(Color::White).bg(Color::DarkGray);
     let input_text = if app.receive_input_ticket.is_empty() {
         vec![Line::from(Span::styled(
-            "Paste ticket here... (e.g., pisend receive <ticket>)",
+            "Paste ticket here... (e.g., sendmd receive <ticket>)",
             Style::default().fg(Color::DarkGray),
         ))]
     } else {
@@ -86,7 +86,7 @@ pub fn render_receive_tab(f: &mut Frame, app: &App, area: Rect) {
                 "Ticket format:",
                 Style::default().fg(Color::Yellow),
             )]),
-            Line::from("  pisend receive <base32-encoded-ticket>"),
+            Line::from("  sendmd receive <base32-encoded-ticket>"),
             Line::from(""),
             Line::from("The ticket contains connection information"),
             Line::from("and the hash of the files to receive."),

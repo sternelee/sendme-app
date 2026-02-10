@@ -1,8 +1,8 @@
 import { createSignal, onMount, Show, Switch, Match } from "solid-js";
 import { initWasm } from "../../lib/commands";
 import { useAuth } from "../../lib/contexts/user-better-auth";
-import SendTab from "../../components/pisend/SendTab";
-import ReceiveTab from "../../components/pisend/ReceiveTab";
+import SendTab from "../../components/sendmd/SendTab";
+import ReceiveTab from "../../components/sendmd/ReceiveTab";
 import DeviceListModal from "../../components/devices/DeviceListModal";
 import { Motion, Presence } from "solid-motionone";
 import {
@@ -75,7 +75,7 @@ export default function AppPage() {
               <TbOutlineSparkles size={22} class="text-white" />
             </div>
             <span class="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
-              PiSend
+              Sendmd
             </span>
           </Motion.a>
 

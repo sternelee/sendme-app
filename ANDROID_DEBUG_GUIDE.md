@@ -42,18 +42,18 @@ adb devices
 打开一个新的终端窗口，运行：
 
 ```bash
-# 方法1: 查看所有 pisend 相关日志
-adb logcat | grep -i "pisend\|iroh\|rust"
+# 方法1: 查看所有 sendmd 相关日志
+adb logcat | grep -i "sendmd\|iroh\|rust"
 
 # 方法2: 只看错误和警告
-adb logcat | grep -E "ERROR|WARN|pisend"
+adb logcat | grep -E "ERROR|WARN|sendmd"
 
 # 方法3: 查看所有日志并保存到文件
 adb logcat > ~/android_debug.log
 ```
 
 **保持这个终端窗口打开**，然后在手机上操作：
-1. 打开 PiSend 应用
+1. 打开 Sendmd 应用
 2. 尝试接收文件
 3. 观察日志输出
 
@@ -63,21 +63,21 @@ adb logcat > ~/android_debug.log
 
 #### 4.1 接收启动
 ```
-INFO  pisend: receive_file called with ticket: ...
+INFO  sendmd: receive_file called with ticket: ...
 ```
 
 #### 4.2 目录切换（可能的失败点）
 ```
-WARN  pisend: Android: output_dir specified but ignored
+WARN  sendmd: Android: output_dir specified but ignored
 ```
 或
 ```
-ERROR pisend: Failed to change to output directory
+ERROR sendmd: Failed to change to output directory
 ```
 
 #### 4.3 Ticket 解析
 ```
-ERROR pisend: Invalid ticket: ...
+ERROR sendmd: Invalid ticket: ...
 ```
 
 #### 4.4 网络连接
@@ -88,8 +88,8 @@ ERROR iroh: Connection failed: ...
 
 #### 4.5 进度事件
 ```
-DEBUG pisend: Progress event: Connecting
-DEBUG pisend: Progress event: Downloading
+DEBUG sendmd: Progress event: Connecting
+DEBUG sendmd: Progress event: Downloading
 ```
 
 ### 5. 检查当前构建
@@ -176,7 +176,7 @@ tracing::info!("Calling pisend_lib::receive_with_progress...");
 
 1. 在电脑上打开 Chrome
 2. 访问 `chrome://inspect`
-3. 找到你的设备和 PiSend 应用
+3. 找到你的设备和 Sendmd 应用
 4. 点击 "inspect"
 5. 查看 Console 标签
 
@@ -219,13 +219,13 @@ adb logcat | grep "receive_with_progress"
 解决方法：
 ```bash
 # 完全卸载应用
-adb uninstall com.pisend.app
+adb uninstall com.sendmd.app
 
 # 重新安装
 adb install src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
 
 # 清除应用数据
-adb shell pm clear com.pisend.app
+adb shell pm clear com.sendmd.app
 ```
 
 #### 问题3: set_current_dir 错误
@@ -257,7 +257,7 @@ adb shell getprop ro.build.version.release  # Android 版本
 adb shell getprop ro.product.model           # 设备型号
 
 # 2. 应用版本
-adb shell dumpsys package com.pisend.app | grep versionName
+adb shell dumpsys package com.sendmd.app | grep versionName
 
 # 3. 完整日志 (在操作时运行)
 adb logcat > ~/pisend_debug_full.log
@@ -304,7 +304,7 @@ adb shell dumpsys dropbox --print > ~/pisend_crash.log
 ```bash
 #!/bin/bash
 
-echo "=== PiSend Android Debug ==="
+echo "=== Sendmd Android Debug ==="
 echo ""
 
 echo "1. 检查设备连接..."
@@ -319,7 +319,7 @@ echo "3. 开始监控日志 (Ctrl+C 停止)..."
 echo "   现在请在手机上操作..."
 echo ""
 
-adb logcat | grep --line-buffered -E "pisend|iroh|ERROR|WARN" | while read line; do
+adb logcat | grep --line-buffered -E "sendmd|iroh|ERROR|WARN" | while read line; do
     echo "[$(date '+%H:%M:%S')] $line"
 done
 ```

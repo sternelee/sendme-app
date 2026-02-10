@@ -225,6 +225,17 @@ fn extract_tree_uri_from_content_uri(content_uri: &str) -> String {
     content_uri.to_string()
 }
 
+/// Helper function to check and clear JNI exceptions
+#[cfg(target_os = "android")]
+fn check_and_clear_jni_exception(env: &mut jni::AttachGuard) -> Option<String> {
+    if env.exception_check().unwrap_or(false) {
+        env.exception_clear().ok()?;
+        Some("JNI exception occurred".to_string())
+    } else {
+        None
+    }
+}
+
 /// Synchronous version of copy_files_to_content_uri for use in spawn_blocking
 #[cfg(target_os = "android")]
 fn copy_files_to_content_uri_sync(
@@ -246,13 +257,29 @@ fn copy_files_to_content_uri_sync(
     let activity_raw = ctx.context() as jni::sys::jobject;
     let activity = unsafe { JObject::from_raw(activity_raw) };
 
-    // Find the FileUtils class once
-    let class = env
-        .find_class("pisend/leechat/app/FileUtils")
-        .map_err(|e| anyhow::anyhow!("Failed to find FileUtils class: {:?}", e))?;
+    // Find the FileUtils class once - check for exceptions after
+    let class = match env.find_class("sendmd/leechat/app/FileUtils") {
+        Ok(c) => c,
+        Err(e) => {
+            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                return Err(anyhow::anyhow!("Failed to find FileUtils class: {} (JNI: {})", e, msg));
+            }
+            return Err(anyhow::anyhow!("Failed to find FileUtils class: {:?}", e));
+        }
+    };
+    
+    // Check for any pending exception after find_class
+    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+        return Err(anyhow::anyhow!("JNI exception after finding FileUtils class: {}", msg));
+    }
 
     for (name, source_path) in files_to_copy {
         log_info!("Reading file from: {:?}", source_path);
+
+        if !source_path.exists() {
+            log_error!("Source file does not exist: {:?}", source_path);
+            anyhow::bail!("Source file does not exist: {:?}", source_path);
+        }
 
         let content = std::fs::read(source_path).map_err(|e| {
             log_error!("Failed to read file {:?}: {}", source_path, e);
@@ -262,45 +289,96 @@ fn copy_files_to_content_uri_sync(
         log_info!("Writing {} ({} bytes) to content URI", name, content.len());
 
         // Push a local frame to manage JNI local references
-        env.push_local_frame(16)
-            .map_err(|e| anyhow::anyhow!("Failed to push local frame: {:?}", e))?;
+        if let Err(e) = env.push_local_frame(16) {
+            check_and_clear_jni_exception(&mut env);
+            return Err(anyhow::anyhow!("Failed to push local frame: {:?}", e));
+        }
 
         let result = (|| -> anyhow::Result<()> {
             // Convert content to Java byte array
-            let byte_array = env
-                .byte_array_from_slice(&content)
-                .map_err(|e| anyhow::anyhow!("Failed to create byte array: {:?}", e))?;
+            let byte_array = match env.byte_array_from_slice(&content) {
+                Ok(arr) => arr,
+                Err(e) => {
+                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                        anyhow::bail!("Failed to create byte array: {} (JNI: {})", e, msg);
+                    }
+                    anyhow::bail!("Failed to create byte array: {:?}", e);
+                }
+            };
+            
+            // Check for exception after byte_array_from_slice
+            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                anyhow::bail!("JNI exception after creating byte array: {}", msg);
+            }
 
             // Create JObject wrappers
-            let dir_uri_jstring = env
-                .new_string(content_uri)
-                .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?;
-            let file_name_jstring = env
-                .new_string(name)
-                .map_err(|e| anyhow::anyhow!("Failed to create string: {:?}", e))?;
+            let dir_uri_jstring = match env.new_string(content_uri) {
+                Ok(s) => s,
+                Err(e) => {
+                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                        anyhow::bail!("Failed to create dir URI string: {} (JNI: {})", e, msg);
+                    }
+                    anyhow::bail!("Failed to create dir URI string: {:?}", e);
+                }
+            };
+            
+            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                anyhow::bail!("JNI exception after creating dir URI string: {}", msg);
+            }
+
+            let file_name_jstring = match env.new_string(name) {
+                Ok(s) => s,
+                Err(e) => {
+                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                        anyhow::bail!("Failed to create filename string: {} (JNI: {})", e, msg);
+                    }
+                    anyhow::bail!("Failed to create filename string: {:?}", e);
+                }
+            };
+            
+            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                anyhow::bail!("JNI exception after creating filename string: {}", msg);
+            }
 
             // Call static method with context parameter
-            let call_result = env
-                .call_static_method(
-                    &class,
-                    "writeFileToContentUri",
-                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;[B)Z",
-                    &[
-                        JValue::Object(&activity),
-                        JValue::Object(&JObject::from(dir_uri_jstring)),
-                        JValue::Object(&JObject::from(file_name_jstring)),
-                        JValue::Object(&JObject::from(byte_array)),
-                    ],
-                )
-                .map_err(|e| anyhow::anyhow!("Failed to call writeFileToContentUri: {:?}", e))?;
+            let call_result = match env.call_static_method(
+                &class,
+                "writeFileToContentUri",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;[B)Z",
+                &[
+                    JValue::Object(&activity),
+                    JValue::Object(&JObject::from(dir_uri_jstring)),
+                    JValue::Object(&JObject::from(file_name_jstring)),
+                    JValue::Object(&JObject::from(byte_array)),
+                ],
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                        anyhow::bail!("Failed to call writeFileToContentUri: {} (JNI: {})", e, msg);
+                    }
+                    anyhow::bail!("Failed to call writeFileToContentUri: {:?}", e);
+                }
+            };
+            
+            // Check for Java exception thrown by the method (even if call_static_method returned Ok)
+            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                anyhow::bail!("Java exception in writeFileToContentUri: {}", msg);
+            }
 
             // Extract the boolean result
-            let success = call_result
-                .z()
-                .map_err(|e| anyhow::anyhow!("Failed to extract boolean: {:?}", e))?;
+            let success = match call_result.z() {
+                Ok(b) => b,
+                Err(e) => {
+                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
+                        anyhow::bail!("Failed to extract boolean result: {} (JNI: {})", e, msg);
+                    }
+                    anyhow::bail!("Failed to extract boolean result: {:?}", e);
+                }
+            };
 
             if !success {
-                anyhow::bail!("Failed to write file {} to content URI", name);
+                anyhow::bail!("writeFileToContentUri returned false for file {}", name);
             }
 
             log_info!("✅ Copied {} to content URI", name);
@@ -308,16 +386,20 @@ fn copy_files_to_content_uri_sync(
         })();
 
         // Pop the local frame (passing null since we don't need to return an object)
+        // Ignore errors here as we're cleaning up
         unsafe {
-            env.pop_local_frame(&JObject::null())
-                .map_err(|e| anyhow::anyhow!("Failed to pop local frame: {:?}", e))?;
+            let _ = env.pop_local_frame(&JObject::null());
         }
 
         // Propagate any error from inside the frame
-        result?;
+        if let Err(e) = result {
+            return Err(e);
+        }
 
-        // Clean up the temp file
-        std::fs::remove_file(source_path).ok();
+        // Clean up the temp file only on success
+        if let Err(e) = std::fs::remove_file(source_path) {
+            log_warn!("Failed to remove temp file {:?}: {}", source_path, e);
+        }
     }
 
     Ok(())
@@ -371,7 +453,7 @@ pub fn run() {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Debug)
-                .with_tag("pisend"),
+                .with_tag("sendmd"),
         );
     }
 
@@ -1091,11 +1173,11 @@ async fn clear_transfers(transfers: tauri::State<'_, Transfers>) -> Result<(), S
     }
     drop(transfers_guard);
 
-    // Clean up temporary pisend directories
+    // Clean up temporary sendmd directories
     let temp_dirs = std::fs::read_dir(".")
         .map_err(|e| e.to_string())?
         .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.file_name().to_string_lossy().starts_with(".pisend-"))
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(".sendmd-"))
         .filter(|entry| entry.path().is_dir())
         .map(|entry| entry.path())
         .collect::<Vec<_>>();

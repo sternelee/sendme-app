@@ -69,7 +69,7 @@ async fn receive_internal(
 
     tracing::info!("📁 Using base directory for temp storage: {:?}", base_dir);
 
-    let dir_name = format!(".pisend-recv-{}", ticket.hash().to_hex());
+    let dir_name = format!(".sendmd-recv-{}", ticket.hash().to_hex());
     let iroh_data_dir = base_dir.join(&dir_name);
 
     tracing::info!("📂 Creating/loading FsStore at: {:?}", iroh_data_dir);

@@ -7,7 +7,7 @@
 
     <!-- Network access permissions for P2P functionality -->
     <key>NSLocalNetworkUsageDescription</key>
-    <string>PiSend needs local network access to establish P2P connections and share terminal sessions</string>
+    <string>Sendmd needs local network access to establish P2P connections and share terminal sessions</string>
 
     <key>NSBonjourServices</key>
     <array>

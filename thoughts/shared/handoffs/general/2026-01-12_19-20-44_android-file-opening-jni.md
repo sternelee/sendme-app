@@ -4,7 +4,7 @@ session_name: general
 researcher: claude
 git_commit: 12fdd27a982009c340f1b94eb390c2c5cbac1f78
 branch: main
-repository: iroh-pisend
+repository: iroh-sendmd
 topic: "Android File Opening via JNI Implementation"
 tags: [android, jni, file-provider, mediastore, scoped-storage]
 status: blocked
@@ -34,7 +34,7 @@ turn_span_id:
 ## Critical References
 
 - `app/src-tauri/src/android.rs:10-46` - JNI call to MainActivity.openFile
-- `app/src-tauri/gen/android/app/src/main/java/com/pisend/app/MainActivity.kt:30-77` - Kotlin openFile implementation
+- `app/src-tauri/gen/android/app/src/main/java/com/sendmd/app/MainActivity.kt:30-77` - Kotlin openFile implementation
 - `lib/src/types.rs:168-176` - ReceiveArgs with export_dir parameter
 - `lib/src/receive.rs:252-255` - Using export_dir for file export
 
@@ -50,7 +50,7 @@ turn_span_id:
 - `app/src-tauri/src/lib.rs:684-701` - On Android, use Downloads directory as export_dir
 - `app/src-tauri/src/lib.rs:1624-1646` - open_received_file uses Downloads directory
 - `app/src-tauri/src/lib.rs:1726-1733` - list_received_files uses Downloads directory
-- `app/src-tauri/gen/android/app/src/main/java/com/pisend/app/MainActivity.kt` - Added openFile() method with MediaStore API
+- `app/src-tauri/gen/android/app/src/main/java/com/sendmd/app/MainActivity.kt` - Added openFile() method with MediaStore API
 
 ### Frontend Changes
 - `app/src/App.vue` - Added click handlers to file names, calls `open_received_file`
@@ -106,12 +106,12 @@ turn_span_id:
 - `cli/src/main.rs` - CLI export_dir handling
 - `app/src-tauri/src/lib.rs` - Android file location changes
 - `app/src-tauri/src/android.rs` - JNI call to MainActivity
-- `app/src-tauri/gen/android/app/src/main/java/com/pisend/app/MainActivity.kt` - openFile() implementation
+- `app/src-tauri/gen/android/app/src/main/java/com/sendmd/app/MainActivity.kt` - openFile() implementation
 - `app/src/App.vue` - Click handlers
 - `app/src/lib/commands.ts` - Command wrappers
 
 ### Build Artifacts
-- APK: `/Users/sternelee/www/github/iroh-pisend/app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`
+- APK: `/Users/sternelee/www/github/iroh-sendmd/app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`
 
 ## Action Items & Next Steps
 
@@ -135,7 +135,7 @@ turn_span_id:
 ## Other Notes
 
 ### File Paths Summary
-- **Blob storage (temp)**: `/data/user/0/com.pisend.app/cache/.pisend-recv-*`
+- **Blob storage (temp)**: `/data/user/0/com.sendmd.app/cache/.sendmd-recv-*`
 - **Final files**: `/storage/emulated/0/Download/`
 - **FileProvider config**: `app/src-tauri/gen/android/app/src/main/res/xml/file_paths.xml`
 
@@ -155,5 +155,5 @@ May need to add:
 aapt dump xmltree app-universal-release.apk AndroidManifest.xml
 
 # View logcat
-adb logcat | grep -E "(SendmeMainActivity|pisend|AndroidRuntime)"
+adb logcat | grep -E "(SendmeMainActivity|sendmd|AndroidRuntime)"
 ```

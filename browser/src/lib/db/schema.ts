@@ -1,5 +1,5 @@
 /**
- * Database schema for PiSend Browser App
+ * Database schema for Sendmd Browser App
  * Uses Drizzle ORM with Cloudflare D1 (SQLite)
  * Compatible with better-auth for OAuth support
  */
@@ -118,7 +118,7 @@ export const verifications = sqliteTable("verification", {
 
 /**
  * Transfer history table - tracks user's file transfers
- * Custom table for PiSend app
+ * Custom table for Sendmd app
  */
 export const transfers = sqliteTable(
   "transfers",

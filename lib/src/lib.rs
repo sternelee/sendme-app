@@ -1,4 +1,4 @@
-//! PiSend library - Core file transfer logic using iroh networking.
+//! Sendmd library - Core file transfer logic using iroh networking.
 //!
 //! This library provides the core functionality for sending and receiving files
 //! over the internet with NAT hole punching and blake3 verified streaming.

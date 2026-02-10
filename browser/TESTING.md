@@ -69,8 +69,8 @@ The server will start on a random port (e.g., `http://localhost:49667`).
 **Steps**:
 1. From terminal, send a file using CLI:
    ```bash
-   cd /path/to/iroh-pisend
-   cargo run --bin pisend send test-file.txt
+   cd /path/to/iroh-sendmd
+   cargo run --bin sendmd send test-file.txt
    ```
    
 2. Copy the ticket from CLI output (starts with `blob:`)
@@ -104,8 +104,8 @@ The server will start on a random port (e.g., `http://localhost:49667`).
 
 2. From terminal, receive the file:
    ```bash
-   cd /path/to/iroh-pisend
-   cargo run --bin pisend receive <paste-ticket-here>
+   cd /path/to/iroh-sendmd
+   cargo run --bin sendmd receive <paste-ticket-here>
    ```
 
 3. Verify:
@@ -218,7 +218,7 @@ DevTools → Network tab shows:
 ### CLI Debug Mode
 Run CLI with verbose logging:
 ```bash
-RUST_LOG=debug cargo run --bin pisend send test.txt
+RUST_LOG=debug cargo run --bin sendmd send test.txt
 ```
 
 ### Common Issues

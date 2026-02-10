@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PiSend is a Rust CLI tool for sending files and directories over the internet using the [iroh](https://crates.io/crates/iroh) networking library. It provides P2P file transfer with NAT hole punching, blake3 verified streaming, and resumable downloads.
+Sendmd is a Rust CLI tool for sending files and directories over the internet using the [iroh](https://crates.io/crates/iroh) networking library. It provides P2P file transfer with NAT hole punching, blake3 verified streaming, and resumable downloads.
 
 **This is a fork** that adds a Tauri desktop application with a modern SolidJS + Tailwind CSS v4 frontend.
 
@@ -23,14 +23,14 @@ Note: The project scripts use `pnpm` internally regardless of whether you use Bu
 ### Rust Workspace (CLI + Lib + App Backend)
 
 - `cargo build` - Build all workspace members
-- `cargo build -p pisend-lib` - Build only the library
-- `cargo build -p pisend` - Build only the CLI
+- `cargo build -p sendmd-lib` - Build only the library
+- `cargo build -p sendmd` - Build only the CLI
 - `cargo build -p app` - Build only the Tauri app backend
 - `cargo build --release` - Build optimized release binaries
 - `cargo test` - Run all tests
 - `cargo test --test cli` - Run CLI integration tests specifically
 - `cargo test --lib` - Run library unit tests only
-- `cargo test -p pisend-lib` - Run tests for the library crate only
+- `cargo test -p sendmd-lib` - Run tests for the library crate only
 - `cargo fmt --all -- --check` - Check code formatting
 - `cargo clippy --locked --workspace --all-targets --all-features` - Run Clippy lints
 - `cargo fmt` - Format code
@@ -50,14 +50,14 @@ pnpm run tauri build      # Build complete desktop app
 This is a Cargo workspace with three members:
 
 ```
-iroh-pisend/
-├── lib/          # pisend-lib crate - core library
-├── cli/          # pisend CLI - original command-line interface
+iroh-sendmd/
+├── lib/          # sendmd-lib crate - core library
+├── cli/          # sendmd CLI - original command-line interface
 ├── app/          # Tauri desktop application
 │   ├── src/          # SolidJS frontend
 │   ├── src-tauri/    # Rust backend (Tauri commands)
 │   └── package.json  # Frontend dependencies
-└── browser-lib/  # WebAssembly library crate (pisend-browser, separate workspace)
+└── browser-lib/  # WebAssembly library crate (sendmd-browser, separate workspace)
     └── src/          # Rust WASM bindings
 ```
 
@@ -67,12 +67,12 @@ iroh-pisend/
 **Important Workspace Notes:**
 
 - The `browser/` directory is deprecated. The WASM bindings have been extracted to `browser-lib/` for better workspace organization.
-- **`browser-lib` is NOT a member of the main Cargo workspace** - it has its own `[workspace]` section in `Cargo.toml` to isolate WASM-specific dependencies (like avoiding `mio` which isn't WASM-compatible).
+- **`browser-lib` has its own separate workspace** defined in its `Cargo.toml` (it is NOT part of the main workspace) to isolate WASM-specific dependencies (like avoiding `mio` which isn't WASM-compatible).
 - Build `browser-lib` separately: `cargo build --target=wasm32-unknown-unknown --manifest-path=browser-lib/Cargo.toml`
 
 ## Architecture
 
-### Library (`pisend-lib`)
+### Library (`sendmd-lib`)
 
 The core library (`lib/`) contains all transfer logic:
 
@@ -89,7 +89,7 @@ The core library (`lib/`) contains all transfer logic:
 
 1. Creates/loads secret key from `IROH_SECRET` env var or generates new one
 2. Builds iroh `Endpoint` with relay mode and optional DNS discovery
-3. Creates temp `.pisend-send-*` directory for blob storage
+3. Creates temp `.sendmd-send-*` directory for blob storage
 4. Imports file/directory into `FsStore` (parallel, uses `num_cpus` workers)
 5. Creates `BlobsProtocol` provider with progress event streaming
 6. Generates `BlobTicket` (endpoint address + collection hash)
@@ -100,7 +100,7 @@ The core library (`lib/`) contains all transfer logic:
 
 1. Parses ticket to extract endpoint address and collection hash
 2. Creates iroh `Endpoint` for connecting
-3. Creates temp `.pisend-recv-*` directory (uses `args.common.temp_dir` if set - critical for Android)
+3. Creates temp `.sendmd-recv-*` directory (uses `args.common.temp_dir` if set - critical for Android)
 4. Downloads collection via `execute_get()` with progress tracking
 5. Exports to current directory (or specified output directory) **preserving original filenames**
 6. Cleans up temp directory
@@ -116,7 +116,7 @@ The core library (`lib/`) contains all transfer logic:
 
 #### Nearby Device Discovery (`nearby.rs`)
 
-The library supports discovering nearby PiSend devices on the local network using mDNS:
+The library supports discovering nearby Sendmd devices on the local network using mDNS:
 
 - **`NearbyDiscovery`**: Manages mDNS discovery using `iroh::discovery::mdns::MdnsDiscovery`
 - Creates endpoint with `RelayMode::Disabled` for local-only discovery
@@ -127,13 +127,31 @@ The library supports discovering nearby PiSend devices on the local network usin
 Key types:
 - **`NearbyDevice`**: Discovered device info (node_id, name, addresses, last_seen, available)
 
-### CLI (`pisend`)
+### CLI (`sendmd`)
 
-The original CLI (`cli/src/main.rs`) is a thin wrapper around `pisend-lib`:
+The CLI (`cli/src/main.rs`) provides an interactive Terminal UI (TUI) with ratatui:
 
-- Uses `clap` derive macros for argument parsing
-- Delegates to `pisend_lib::send` and `pisend_lib::receive`
-- Uses `indicatif` for multi-progress bars in terminal
+**TUI Controls:**
+- **Tab** key - Switch between Send and Receive tabs
+- **Enter** - Initiate send/receive with current input
+- **Arrow keys** - Navigate transfer history
+- Type file path directly in Send tab input
+- Paste ticket string in Receive tab input
+
+- **TUI Framework**: Built with ratatui + crossterm for cross-platform terminal UI
+- **Event Loop**: Uses TICK_RATE_MS (250ms) for periodic UI updates
+- **Async Background Tasks**: Send and receive operations run in background tasks with tokio channels
+- **Transfer History**: Maintains list of transfers with UUID-based tracking
+- **Tabs**: Send tab (file input + send button) and Receive tab (ticket input + receive button)
+- Uses `clap` derive macros for argument parsing (if any CLI args are added)
+- Delegates to `pisend_lib::send_with_progress` and `pisend_lib::receive_with_progress`
+
+Key files:
+- **`cli/src/main.rs`**: Entry point with event loop setup
+- **`cli/src/tui/app.rs`**: Application state and transfer management
+- **`cli/src/tui/ui.rs`**: UI rendering with ratatui
+- **`cli/src/tui/event.rs`**: Event handling (keyboard input, terminal events)
+- **`cli/src/tui/file_search.rs`**: File search functionality (currently unused)
 
 ### Tauri Desktop App
 
@@ -141,10 +159,12 @@ The desktop app (`app/`) has two parts:
 
 #### Frontend (`app/src/`)
 
-- **SolidJS** with TypeScript
-- **Tailwind CSS v4** for styling
+- **SolidJS** with TypeScript and Solid Start framework
+- **Vinxi** as the bundler/dev server (runs on port 1420)
+- **Tailwind CSS v4** for styling (with autoprefixer and postcss)
 - **Lucide Solid** for icons
 - **solid-sonner** for toast notifications
+- **Path aliases**: Use `~/*` for src/ imports (configured in tsconfig.json)
 
 Key files:
 
@@ -154,7 +174,7 @@ Key files:
 
 #### Backend (`app/src-tauri/src/`)
 
-- **`lib.rs`**: Tauri commands that wrap `pisend-lib` functions
+- **`lib.rs`**: Tauri commands that wrap `sendmd-lib` functions
 - Uses `tokio::sync::RwLock<HashMap>` for transfer state management
 - Emits progress events to frontend via `app.emit("progress", update)`
 
@@ -181,7 +201,7 @@ Tauri Commands:
 - **`get_nearby_devices`**: Returns list of discovered nearby devices
 - **`stop_nearby_discovery`**: Stops mDNS discovery
 
-### Browser WASM Library (`pisend-browser` / `browser-lib`)
+### Browser WASM Library (`sendmd-browser` / `browser-lib`)
 
 The `browser-lib` crate provides WebAssembly bindings for in-browser P2P file transfer:
 
@@ -316,9 +336,9 @@ let args = ReceiveArgs {
 
 See `ANDROID_FIX_SUMMARY.md` for full debugging guide.
 
-### Router Keep-Alive
+### Router Keep-Alive (CRITICAL)
 
-Critical: The sender's router must stay alive to serve incoming connections. This is done by:
+**The sender's router must stay alive to serve incoming connections.** This is a critical pattern:
 
 ```rust
 tokio::spawn(async move {
@@ -327,7 +347,12 @@ tokio::spawn(async move {
 });
 ```
 
-Do NOT replace this with a sleep loop or the router will drop.
+**Why this matters:**
+- The router handles incoming P2P connections for file transfers
+- If the router is dropped, no new connections can be established
+- `std::future::pending()` creates a future that never completes, keeping the task alive
+- Do NOT replace this with a sleep loop or the router will drop after the sleep
+- Location: `lib/src/send.rs:152-156`
 
 ### Progress Channels
 
@@ -343,7 +368,7 @@ Do NOT replace this with a sleep loop or the router will drop.
 
 ### Path Handling
 
-- All temp directories use `.pisend-*` prefix
+- All temp directories use `.sendmd-*` prefix
 - `canonicalized_path_to_string()`: Platform-agnostic path conversion
 - Validates path components to prevent directory traversal
 
@@ -367,7 +392,7 @@ cargo test
 # Run specific test modules
 cargo test --test cli          # CLI integration tests
 cargo test --lib               # Library unit tests
-cargo test -p pisend-lib       # Library crate tests only
+cargo test -p sendmd-lib       # Library crate tests only
 
 # Run tests with output
 cargo test -- --nocapture
@@ -384,6 +409,7 @@ IROH_FORCE_STAGING_RELAYS=1 cargo test
 When running tests in CI or reproducing CI failures:
 - `RUSTFLAGS=-Dwarnings` - All warnings are treated as errors
 - `IROH_FORCE_STAGING_RELAYS=1` - Use staging relay servers instead of production
+- TypeScript strict mode is enabled with noUnusedLocals, noUnusedParameters, and noFallthroughCasesInSwitch
 
 ## Debugging
 
@@ -396,7 +422,7 @@ Android development has special debugging considerations:
 export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
 
 # View logs in real-time
-adb logcat | grep -E "pisend|iroh|rust"
+adb logcat | grep -E "sendmd|iroh|rust"
 
 # Save logs to file
 adb logcat > ~/android_debug.log
@@ -442,6 +468,16 @@ cd app
 pnpm run tauri android build  # Build Android APK
 pnpm run tauri ios build      # Build iOS app
 ```
+
+### Android Build Customization
+
+The Android build includes custom Kotlin files and ProGuard rules that are copied during the build process:
+
+- **`app/src-tauri/build.rs`**: Build script that copies custom Android code
+- **`app/src-tauri/android-includes/`**: Contains custom Kotlin source files and ProGuard rules
+  - `sendmd/leechat/app/FileUtils.kt`: File utilities for Android
+  - `proguard-jni.pro`: JNI ProGuard rules
+- Files are copied to `gen/android/app/` during compilation via `build.rs`
 
 ### Mobile File Picker
 
@@ -500,6 +536,8 @@ let entries = std::fs::read_dir(&docs_path)?;
 #### Desktop: `tauri_plugin_dialog`
 
 Standard file/folder dialogs via `tauri_plugin_dialog`.
+
+**Note:** The AGENTS.md file references a non-existent `tauri-plugin-mobile-file-picker` plugin - this is a legacy reference and can be ignored. The actual implementation uses platform-specific plugins as described above.
 
 ## Environment Variables
 

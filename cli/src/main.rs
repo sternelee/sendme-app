@@ -1,4 +1,4 @@
-//! PiSend CLI - Send files over the internet using iroh.
+//! Sendmd CLI - Send files over the internet using iroh.
 //!
 //! Interactive TUI version with ratatui.
 
@@ -197,9 +197,9 @@ async fn main() -> Result<()> {
 fn parse_ticket(s: &str) -> Result<BlobTicket> {
     let s = s.trim();
 
-    // Remove "pisend receive" prefix if present
-    let s = if s.starts_with("pisend receive ") {
-        s["pisend receive ".len()..].trim()
+    // Remove "sendmd receive" prefix if present
+    let s = if s.starts_with("sendmd receive ") {
+        s["sendmd receive ".len()..].trim()
     } else {
         s
     };

@@ -11,11 +11,11 @@ description = "A cli tool to send directories over the network, with NAT hole pu
 readme = "../../README.md"
 
 [[bin]]
-name = "pisend"
+name = "sendmd"
 path = "src/main.rs"
 
 [dependencies]
-pisend-lib = { path = "../lib" }
+sendmd-lib = { path = "../lib" }
 
 # CLI-only dependencies
 anyhow.workspace = true

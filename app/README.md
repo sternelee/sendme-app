@@ -1,6 +1,6 @@
 # Tauri + SolidJS + TypeScript
 
-This Tauri desktop application provides a modern GUI for PiSend file transfers, built with SolidJS and TypeScript.
+This Tauri desktop application provides a modern GUI for Sendmd file transfers, built with SolidJS and TypeScript.
 
 ## Recommended IDE Setup
 
@@ -20,7 +20,7 @@ This Tauri desktop application provides a modern GUI for PiSend file transfers, 
 ## CLI
 
 ```bash
-cargo install pisend
+cargo install sendmd
 ```
 
 ## Desktop App
@@ -42,7 +42,7 @@ See [Mobile Development](#mobile-development) below.
 ### Send side
 
 ```bash
-pisend send <file or directory>
+sendmd send <file or directory>
 ```
 
 This will create a temporary [iroh](https://crates.io/crates/iroh) node that
@@ -55,7 +55,7 @@ will delete the temporary directory.
 ### Receive side
 
 ```bash
-pisend receive <ticket>
+sendmd receive <ticket>
 ```
 
 This will download the data and create a file or directory named like the source
@@ -67,7 +67,7 @@ directory.
 
 On completion, it will delete the temp directory.
 
-All temp directories start with `.pisend-`.
+All temp directories start with `.sendmd-`.
 
 ## Desktop App Usage
 
@@ -131,7 +131,7 @@ cd app && pnpm run tauri dev
 # Android dev
 cd app && pnpm run tauri android dev
 
-cp /Users/sternelee/www/github/iroh-sendme/app/src-tauri/android-includes/pisend/leechat/app/FileUtils.kt /Users/sternelee/www/github/iroh-sendme/app/src-tauri/gen/android/app/src/main/java/pisend/leechat/app/ && ls -la /Users/sternelee/www/github/iroh-sendme/app/src-tauri/gen/android/app/src/main/java/pisend/leechat/app/
+cp /Users/sternelee/www/github/iroh-sendme/app/src-tauri/android-includes/sendmd/leechat/app/FileUtils.kt /Users/sternelee/www/github/iroh-sendme/app/src-tauri/gen/android/app/src/main/java/sendmd/leechat/app/ && ls -la /Users/sternelee/www/github/iroh-sendme/app/src-tauri/gen/android/app/src/main/java/sendmd/leechat/app/
 
 # iOS dev (macOS only)
 cd app && pnpm run tauri ios dev

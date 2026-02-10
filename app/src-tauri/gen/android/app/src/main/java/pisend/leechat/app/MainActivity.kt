@@ -1,4 +1,4 @@
-package pisend.leechat.app
+package sendmd.leechat.app
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

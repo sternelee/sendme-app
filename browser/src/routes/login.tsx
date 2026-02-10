@@ -75,7 +75,7 @@ export default function LoginPage() {
             <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
               <TbOutlineSparkles size={24} class="text-white" />
             </div>
-            <span class="text-3xl font-bold">PiSend</span>
+            <span class="text-3xl font-bold">Sendmd</span>
           </a>
           <h2 class="mt-6 text-3xl font-bold text-gray-900 dark:text-white">
             Sign in to your account

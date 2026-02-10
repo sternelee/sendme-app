@@ -5,7 +5,7 @@
 在 Android 平台上，文件选择器返回的是 `content://` URI 而不是直接的文件路径。之前的实现使用通用的临时文件名：
 
 ```
-pisend-content-{timestamp}-{uuid}.bin
+sendmd-content-{timestamp}-{uuid}.bin
 ```
 
 这导致接收方无法获知原始文件名和扩展名，影响用户体验。
@@ -52,7 +52,7 @@ Uri.parse(uri)
 
 2. **获取到空文件名**
    - 使用时间戳和 UUID 作为备用方案
-   - 格式：`pisend-content-{timestamp}-{uuid}.bin`
+   - 格式：`sendmd-content-{timestamp}-{uuid}.bin`
 
 3. **查询失败**
    - 记录警告日志
@@ -66,7 +66,7 @@ Uri.parse(uri)
 | `document.pdf` | `document-e5f6g7h8.pdf` |
 | `My Video.mp4` | `My Video-i9j0k1l2.mp4` |
 | `report-2024.xlsx` | `report-2024-m3n4o5p6.xlsx` |
-| (查询失败) | `pisend-content-1736395200-q7r8s9t0.bin` |
+| (查询失败) | `sendmd-content-1736395200-q7r8s9t0.bin` |
 
 ## 安全考虑
 
@@ -106,7 +106,7 @@ tracing::info!("Copied content URI to temporary file: {:?}", temp_file_path);
 ### 之前
 ```
 发送：family-photo.jpg
-接收：pisend-content-1736395200-a1b2c3d4.bin ❌
+接收：sendmd-content-1736395200-a1b2c3d4.bin ❌
 ```
 
 ### 之后

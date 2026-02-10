@@ -1,4 +1,4 @@
-//! TUI module for pisend CLI.
+//! TUI module for sendmd CLI.
 
 pub mod app;
 pub mod event;

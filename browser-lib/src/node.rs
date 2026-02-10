@@ -1,4 +1,4 @@
-//! PiSend node implementation for WebAssembly
+//! Sendmd node implementation for WebAssembly
 //!
 //! This module provides a SendmeNode that wraps iroh-blobs functionality
 //! for use in WebAssembly/browser environments.
@@ -14,7 +14,7 @@ use iroh_blobs::{
     BlobFormat, Hash,
 };
 
-/// PiSend node for browser/WebAssembly environments
+/// Sendmd node for browser/WebAssembly environments
 ///
 /// Uses in-memory storage and WebAssembly-compatible networking.
 #[derive(Clone)]
@@ -25,7 +25,7 @@ pub struct SendmeNode {
 }
 
 impl SendmeNode {
-    /// Spawn a new pisend node
+    /// Spawn a new sendmd node
     pub async fn spawn() -> Result<Self> {
         let discovery = StaticProvider::default();
         let endpoint = Endpoint::bind().await?;

@@ -1,6 +1,6 @@
 name: app
 options:
-  bundleIdPrefix: pisend.leechat.app
+  bundleIdPrefix: sendmd.leechat.app
   deploymentTarget:
     iOS: 14.0
 fileGroups: [../../src]
@@ -10,8 +10,8 @@ configs:
 settingGroups:
   app:
     base:
-      PRODUCT_NAME: PiSend
-      PRODUCT_BUNDLE_IDENTIFIER: pisend.leechat.app
+      PRODUCT_NAME: Sendmd
+      PRODUCT_BUNDLE_IDENTIFIER: sendmd.leechat.app
 targetTemplates:
   app:
     type: application

@@ -19,3 +19,13 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep FileUtils class - called from Rust via JNI
+-keep class sendmd.leechat.app.FileUtils {
+    public static boolean writeFileToContentUri(...);
+}
+
+# Keep all classes with static methods called from JNI
+-keepclassmembers class * {
+    public static ** *ContentUri(...);
+}

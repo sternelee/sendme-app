@@ -1,7 +1,7 @@
 fn main() {
     tauri_build::build();
 
-    // On Android, copy our custom Kotlin files to the generated project
+    // On Android, copy our custom Kotlin files and ProGuard rules to the generated project
     #[cfg(target_os = "android")]
     {
         // The gen directory is at src-tauri/gen/android
@@ -16,16 +16,18 @@ fn main() {
         for _ in 0..5 {
             android_gen_dir = android_gen_dir.parent().unwrap_or(&android_gen_dir).to_path_buf();
         }
-        // Now we're at target/, go to app/src-tauri/gen/android/app/src/main/java/pisend/leechat/app
-        android_gen_dir = android_gen_dir.join("app/src-tauri/gen/android/app/src/main/java/pisend/leechat/app");
+        // Base path for Android generated project
+        let android_gen_base = android_gen_dir.join("app/src-tauri/gen/android");
 
-        let source_dir = std::path::PathBuf::from("android-includes/pisend/leechat/app");
+        // Copy Kotlin source files
+        let kotlin_dest_dir = android_gen_base.join("app/src/main/java/sendmd/leechat/app");
+        let source_dir = std::path::PathBuf::from("android-includes/sendmd/leechat/app");
 
         if let Ok(entries) = std::fs::read_dir(&source_dir) {
             for entry in entries.flatten() {
                 let source_file = entry.path();
                 let file_name = source_file.file_name().unwrap();
-                let dest_file = android_gen_dir.join(file_name);
+                let dest_file = kotlin_dest_dir.join(file_name);
 
                 if source_file.extension().map_or(false, |e| e == "kt") {
                     // Create destination directory if it doesn't exist
@@ -40,6 +42,21 @@ fn main() {
                     std::fs::copy(&source_file, &dest_file).ok();
                 }
             }
+        }
+
+        // Copy ProGuard rules file
+        let proguard_source = std::path::PathBuf::from("android-includes/proguard-jni.pro");
+        let proguard_dest = android_gen_base.join("app/proguard-jni.pro");
+        
+        if proguard_source.exists() {
+            if let Some(parent) = proguard_dest.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            println!(
+                "cargo:warning=Copying ProGuard rules to {}",
+                proguard_dest.display()
+            );
+            std::fs::copy(&proguard_source, &proguard_dest).ok();
         }
     }
 }
