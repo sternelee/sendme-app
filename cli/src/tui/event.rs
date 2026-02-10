@@ -1,7 +1,7 @@
 //! Event system for the TUI.
 
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use pisend_lib::progress::ProgressEvent;
+use sendme_lib::progress::ProgressEvent;
 use std::sync::mpsc;
 use std::time::Duration;
 

@@ -4,8 +4,8 @@ This file provides guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-Sendmd is a **P2P file transfer system** built with [iroh](https://crates.io/crates/iroh), offering:
-- **CLI tool** (`sendmd`) - Interactive TUI with ratatui
+Sendme is a **P2P file transfer system** built with [iroh](https://crates.io/crates/iroh), offering:
+- **CLI tool** (`sendme`) - Interactive TUI with ratatui
 - **Desktop app** (Tauri) - Windows/macOS/Linux with SolidJS + Tailwind CSS v4
 - **Mobile apps** - iOS & Android native
 - **WASM browser** - Experimental (separate build: `browser-lib/`)
@@ -13,9 +13,9 @@ Sendmd is a **P2P file transfer system** built with [iroh](https://crates.io/cra
 ### Cargo Workspace Structure
 
 ```
-iroh-sendmd/
-├── lib/                    # sendmd-lib - Core library (send/receive/nearby)
-├── cli/                    # sendmd CLI - Binary using sendmd-lib
+iroh-sendme/
+├── lib/                    # sendme-lib - Core library (send/receive/nearby)
+├── cli/                    # sendme CLI - Binary using sendme-lib
 ├── app/src-tauri/          # Tauri backend
 └── browser-lib/            # WASM bindings (separate workspace - NOT in main workspace)
 ```
@@ -32,8 +32,8 @@ cargo build
 cargo build --release
 
 # Build specific packages
-cargo build -p sendmd-lib      # Library only
-cargo build -p sendmd          # CLI only (binary name: sendmd)
+cargo build -p sendme-lib      # Library only
+cargo build -p sendme          # CLI only (binary name: sendme)
 cargo build -p app             # Tauri backend only
 
 # Format (REQUIRED before committing)
@@ -57,14 +57,14 @@ cargo test send_recv_file
 cargo test send_recv_dir
 
 # Test specific package
-cargo test -p sendmd-lib                     # Library tests only
+cargo test -p sendme-lib                     # Library tests only
 cargo test -p cli                            # CLI tests only
 
 # Run integration tests only
 cargo test --test cli                        # tests/cli.rs
 
 # Run library unit tests only
-cargo test --lib -p sendmd-lib
+cargo test --lib -p sendme-lib
 
 # Verbose output for debugging
 cargo test send_recv_file -- --nocapture
@@ -183,7 +183,7 @@ const [isLoading, setIsLoading] = createSignal<boolean>(false);
 - **CI Environment**: `IROH_FORCE_STAGING_RELAYS: 1` (use staging relays in tests)
 - **TypeScript**: Strict mode enabled (noUnusedLocals, noUnusedParameters, noFallthroughCasesInSwitch)
 - **Frontend Framework**: SolidJS (not Vue/React) with Vinxi bundler and Tailwind CSS v4
-- **Path Handling**: All temp directories use `.sendmd-*` prefix
+- **Path Handling**: All temp directories use `.sendme-*` prefix
 - **Nearby Discovery**: Uses mDNS, requires same WiFi network
 - **Release Profile**: Optimized for size (`opt-level = "s"`, LTO, strip debug)
 
@@ -219,7 +219,7 @@ const [isLoading, setIsLoading] = createSignal<boolean>(false);
 - **`bindings.ts`**: Type-safe Tauri command wrappers
 - **`lib/utils.ts`**: Utilities (formatFileSize, formatDate)
 
-**Backend** (`app/src-tauri/src/lib.rs`): Tauri commands wrapping `sendmd-lib`:
+**Backend** (`app/src-tauri/src/lib.rs`): Tauri commands wrapping `sendme-lib`:
 - `send_file`, `receive_file`, `cancel_transfer`, `get_transfers`, `get_transfer_status`
 - `start_nearby_discovery`, `get_nearby_devices`, `stop_nearby_discovery`
 - Uses `tokio::sync::RwLock<HashMap>` for transfer state

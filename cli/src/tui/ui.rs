@@ -63,7 +63,7 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::DarkGray))
-                .title(" Sendmd - P2P File Transfer "),
+                .title(" Sendme - P2P File Transfer "),
         )
         .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().bg(Color::Blue))

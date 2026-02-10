@@ -577,7 +577,7 @@ export class SendmeNodeWasm {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * Create a new sendmd node
+     * Create a new sendme node
      * @returns {Promise<SendmeNodeWasm>}
      */
     static spawn() {
@@ -1317,7 +1317,7 @@ async function __wbg_init(module_or_path) {
     }
 
     if (typeof module_or_path === 'undefined') {
-        module_or_path = new URL('pisend_browser_bg.wasm', import.meta.url);
+        module_or_path = new URL('sendme_browser_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

@@ -1,4 +1,4 @@
-package sendmd.leechat.app
+package sendme.leechat.app
 
 import android.content.Context
 import android.net.Uri

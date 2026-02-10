@@ -12,7 +12,7 @@ export default function App() {
   return (
     <AuthProvider>
       <MetaProvider>
-        <Title>Sendmd - P2P File Transfer</Title>
+        <Title>Sendme - P2P File Transfer</Title>
         <Meta
           name="description"
           content="Secure, peer-to-peer file transfer powered by iroh. Send files of any size without cloud storage or limits."
@@ -23,14 +23,14 @@ export default function App() {
         />
         <Meta name="theme-color" content="#a855f7" />
         <Meta property="og:type" content="website" />
-        <Meta property="og:title" content="Sendmd - P2P File Transfer" />
+        <Meta property="og:title" content="Sendme - P2P File Transfer" />
         <Meta
           property="og:description"
           content="Secure, peer-to-peer file transfer powered by iroh. Send files of any size without cloud storage."
         />
         <Meta property="og:image" content="/og-image.png" />
         <Meta name="twitter:card" content="summary_large_image" />
-        <Meta name="twitter:title" content="Sendmd - P2P File Transfer" />
+        <Meta name="twitter:title" content="Sendme - P2P File Transfer" />
         <Meta
           name="twitter:description"
           content="Secure, peer-to-peer file transfer powered by iroh. Send files of any size without cloud storage."
@@ -41,7 +41,7 @@ export default function App() {
           name="apple-mobile-web-app-status-bar-style"
           content="black-translucent"
         />
-        <Meta name="apple-mobile-web-app-title" content="Sendmd" />
+        <Meta name="apple-mobile-web-app-title" content="Sendme" />
         <Meta
           name="viewport"
           content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"

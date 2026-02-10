@@ -126,7 +126,7 @@ export default function PWAUpdateNotification() {
               <div class="flex-1 min-w-0">
                 <h3 class="font-semibold text-white mb-1">Update Available</h3>
                 <p class="text-sm text-white/60">
-                  A new version of Sendmd is ready to install
+                  A new version of Sendme is ready to install
                 </p>
               </div>
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Sendmd is a Rust CLI tool for sending files and directories over the internet using the [iroh](https://crates.io/crates/iroh) networking library. It provides P2P file transfer with NAT hole punching, blake3 verified streaming, and resumable downloads.
+Sendme is a Rust CLI tool for sending files and directories over the internet using the [iroh](https://crates.io/crates/iroh) networking library. It provides P2P file transfer with NAT hole punching, blake3 verified streaming, and resumable downloads.
 
 **This is a fork** that adds a Tauri desktop application with a modern SolidJS + Tailwind CSS v4 frontend.
 
@@ -23,14 +23,14 @@ Note: The project scripts use `pnpm` internally regardless of whether you use Bu
 ### Rust Workspace (CLI + Lib + App Backend)
 
 - `cargo build` - Build all workspace members
-- `cargo build -p sendmd-lib` - Build only the library
-- `cargo build -p sendmd` - Build only the CLI
+- `cargo build -p sendme-lib` - Build only the library
+- `cargo build -p sendme` - Build only the CLI
 - `cargo build -p app` - Build only the Tauri app backend
 - `cargo build --release` - Build optimized release binaries
 - `cargo test` - Run all tests
 - `cargo test --test cli` - Run CLI integration tests specifically
 - `cargo test --lib` - Run library unit tests only
-- `cargo test -p sendmd-lib` - Run tests for the library crate only
+- `cargo test -p sendme-lib` - Run tests for the library crate only
 - `cargo fmt --all -- --check` - Check code formatting
 - `cargo clippy --locked --workspace --all-targets --all-features` - Run Clippy lints
 - `cargo fmt` - Format code
@@ -50,14 +50,14 @@ pnpm run tauri build      # Build complete desktop app
 This is a Cargo workspace with three members:
 
 ```
-iroh-sendmd/
-├── lib/          # sendmd-lib crate - core library
-├── cli/          # sendmd CLI - original command-line interface
+iroh-sendme/
+├── lib/          # sendme-lib crate - core library
+├── cli/          # sendme CLI - original command-line interface
 ├── app/          # Tauri desktop application
 │   ├── src/          # SolidJS frontend
 │   ├── src-tauri/    # Rust backend (Tauri commands)
 │   └── package.json  # Frontend dependencies
-└── browser-lib/  # WebAssembly library crate (sendmd-browser, separate workspace)
+└── browser-lib/  # WebAssembly library crate (sendme-browser, separate workspace)
     └── src/          # Rust WASM bindings
 ```
 
@@ -72,7 +72,7 @@ iroh-sendmd/
 
 ## Architecture
 
-### Library (`sendmd-lib`)
+### Library (`sendme-lib`)
 
 The core library (`lib/`) contains all transfer logic:
 
@@ -89,7 +89,7 @@ The core library (`lib/`) contains all transfer logic:
 
 1. Creates/loads secret key from `IROH_SECRET` env var or generates new one
 2. Builds iroh `Endpoint` with relay mode and optional DNS discovery
-3. Creates temp `.sendmd-send-*` directory for blob storage
+3. Creates temp `.sendme-send-*` directory for blob storage
 4. Imports file/directory into `FsStore` (parallel, uses `num_cpus` workers)
 5. Creates `BlobsProtocol` provider with progress event streaming
 6. Generates `BlobTicket` (endpoint address + collection hash)
@@ -100,7 +100,7 @@ The core library (`lib/`) contains all transfer logic:
 
 1. Parses ticket to extract endpoint address and collection hash
 2. Creates iroh `Endpoint` for connecting
-3. Creates temp `.sendmd-recv-*` directory (uses `args.common.temp_dir` if set - critical for Android)
+3. Creates temp `.sendme-recv-*` directory (uses `args.common.temp_dir` if set - critical for Android)
 4. Downloads collection via `execute_get()` with progress tracking
 5. Exports to current directory (or specified output directory) **preserving original filenames**
 6. Cleans up temp directory
@@ -116,7 +116,7 @@ The core library (`lib/`) contains all transfer logic:
 
 #### Nearby Device Discovery (`nearby.rs`)
 
-The library supports discovering nearby Sendmd devices on the local network using mDNS:
+The library supports discovering nearby Sendme devices on the local network using mDNS:
 
 - **`NearbyDiscovery`**: Manages mDNS discovery using `iroh::discovery::mdns::MdnsDiscovery`
 - Creates endpoint with `RelayMode::Disabled` for local-only discovery
@@ -127,7 +127,7 @@ The library supports discovering nearby Sendmd devices on the local network usin
 Key types:
 - **`NearbyDevice`**: Discovered device info (node_id, name, addresses, last_seen, available)
 
-### CLI (`sendmd`)
+### CLI (`sendme`)
 
 The CLI (`cli/src/main.rs`) provides an interactive Terminal UI (TUI) with ratatui:
 
@@ -144,7 +144,7 @@ The CLI (`cli/src/main.rs`) provides an interactive Terminal UI (TUI) with ratat
 - **Transfer History**: Maintains list of transfers with UUID-based tracking
 - **Tabs**: Send tab (file input + send button) and Receive tab (ticket input + receive button)
 - Uses `clap` derive macros for argument parsing (if any CLI args are added)
-- Delegates to `pisend_lib::send_with_progress` and `pisend_lib::receive_with_progress`
+- Delegates to `sendme_lib::send_with_progress` and `sendme_lib::receive_with_progress`
 
 Key files:
 - **`cli/src/main.rs`**: Entry point with event loop setup
@@ -174,7 +174,7 @@ Key files:
 
 #### Backend (`app/src-tauri/src/`)
 
-- **`lib.rs`**: Tauri commands that wrap `sendmd-lib` functions
+- **`lib.rs`**: Tauri commands that wrap `sendme-lib` functions
 - Uses `tokio::sync::RwLock<HashMap>` for transfer state management
 - Emits progress events to frontend via `app.emit("progress", update)`
 
@@ -201,7 +201,7 @@ Tauri Commands:
 - **`get_nearby_devices`**: Returns list of discovered nearby devices
 - **`stop_nearby_discovery`**: Stops mDNS discovery
 
-### Browser WASM Library (`sendmd-browser` / `browser-lib`)
+### Browser WASM Library (`sendme-browser` / `browser-lib`)
 
 The `browser-lib` crate provides WebAssembly bindings for in-browser P2P file transfer:
 
@@ -248,7 +248,7 @@ pnpm run serve           # Serve demo locally
 #### JavaScript API
 
 ```javascript
-import init, { SendmeNodeWasm } from "./wasm/pisend_browser.js";
+import init, { SendmeNodeWasm } from "./wasm/sendme_browser.js";
 
 await init();
 const node = await SendmeNodeWasm.spawn();
@@ -368,7 +368,7 @@ tokio::spawn(async move {
 
 ### Path Handling
 
-- All temp directories use `.sendmd-*` prefix
+- All temp directories use `.sendme-*` prefix
 - `canonicalized_path_to_string()`: Platform-agnostic path conversion
 - Validates path components to prevent directory traversal
 
@@ -392,7 +392,7 @@ cargo test
 # Run specific test modules
 cargo test --test cli          # CLI integration tests
 cargo test --lib               # Library unit tests
-cargo test -p sendmd-lib       # Library crate tests only
+cargo test -p sendme-lib       # Library crate tests only
 
 # Run tests with output
 cargo test -- --nocapture
@@ -422,7 +422,7 @@ Android development has special debugging considerations:
 export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
 
 # View logs in real-time
-adb logcat | grep -E "sendmd|iroh|rust"
+adb logcat | grep -E "sendme|iroh|rust"
 
 # Save logs to file
 adb logcat > ~/android_debug.log
@@ -475,7 +475,7 @@ The Android build includes custom Kotlin files and ProGuard rules that are copie
 
 - **`app/src-tauri/build.rs`**: Build script that copies custom Android code
 - **`app/src-tauri/android-includes/`**: Contains custom Kotlin source files and ProGuard rules
-  - `sendmd/leechat/app/FileUtils.kt`: File utilities for Android
+  - `sendme/leechat/app/FileUtils.kt`: File utilities for Android
   - `proguard-jni.pro`: JNI ProGuard rules
 - Files are copied to `gen/android/app/` during compilation via `build.rs`
 

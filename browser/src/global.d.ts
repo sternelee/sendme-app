@@ -7,7 +7,7 @@ declare module App {
   }
 }
 
-declare module "*/pisend_browser.js" {
+declare module "*/sendme_browser.js" {
   export interface SendmeNodeWasm {
     wait_for_ready(timeout: number): Promise<boolean>;
     import_and_create_ticket(

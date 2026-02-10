@@ -13,7 +13,7 @@ version = "0.0.1"
 edition = "2021"
 authors = ["Rüdiger Klaehn <rklaehn@protonmail.com>", "n0 team"]
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/n0-computer/sendmd"
+repository = "https://github.com/n0-computer/sendme"
 rust-version = "1.81"
 
 [workspace.dependencies]

@@ -29,7 +29,7 @@ export default function AuthModal() {
             <TbOutlineSparkles size={32} class="text-white" />
           </div>
           <h2 class="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-linear-to-r from-white to-white/60">
-            Sendmd
+            Sendme
           </h2>
           <p class="mt-4 text-white/40 font-medium">
             <Show when={activeTab() === "login"}>

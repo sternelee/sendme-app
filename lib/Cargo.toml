@@ -1,5 +1,5 @@
 [package]
-name = "sendmd-lib"
+name = "sendme-lib"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

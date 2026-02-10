@@ -26,7 +26,7 @@ export CC=/opt/homebrew/opt/llvm/bin/clang
 cargo build --target=wasm32-unknown-unknown
 
 # Generate bindings
-wasm-bindgen ./target/wasm32-unknown-unknown/debug/pisend_browser.wasm \
+wasm-bindgen ./target/wasm32-unknown-unknown/debug/sendme_browser.wasm \
   --out-dir=public/wasm --weak-refs --target=web --debug
 
 # Or use the npm script (sets CC automatically)
@@ -69,8 +69,8 @@ The server will start on a random port (e.g., `http://localhost:49667`).
 **Steps**:
 1. From terminal, send a file using CLI:
    ```bash
-   cd /path/to/iroh-sendmd
-   cargo run --bin sendmd send test-file.txt
+   cd /path/to/iroh-sendme
+   cargo run --bin sendme send test-file.txt
    ```
    
 2. Copy the ticket from CLI output (starts with `blob:`)
@@ -104,8 +104,8 @@ The server will start on a random port (e.g., `http://localhost:49667`).
 
 2. From terminal, receive the file:
    ```bash
-   cd /path/to/iroh-sendmd
-   cargo run --bin sendmd receive <paste-ticket-here>
+   cd /path/to/iroh-sendme
+   cargo run --bin sendme receive <paste-ticket-here>
    ```
 
 3. Verify:
@@ -218,7 +218,7 @@ DevTools → Network tab shows:
 ### CLI Debug Mode
 Run CLI with verbose logging:
 ```bash
-RUST_LOG=debug cargo run --bin sendmd send test.txt
+RUST_LOG=debug cargo run --bin sendme send test.txt
 ```
 
 ### Common Issues

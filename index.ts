@@ -1,1 +1,1 @@
-console.log("Hello via sendmd!");
+console.log("Hello via sendme!");

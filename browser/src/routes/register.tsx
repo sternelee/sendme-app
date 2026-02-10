@@ -114,13 +114,13 @@ export default function RegisterPage() {
             <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
               <TbOutlineSparkles size={24} class="text-white" />
             </div>
-            <span class="text-3xl font-bold">Sendmd</span>
+            <span class="text-3xl font-bold">Sendme</span>
           </a>
           <h2 class="mt-6 text-3xl font-bold text-gray-900 dark:text-white">
             Create your account
           </h2>
           <p class="mt-3 text-gray-600 dark:text-gray-400">
-            Join Sendmd to share files securely
+            Join Sendme to share files securely
           </p>
         </div>
 

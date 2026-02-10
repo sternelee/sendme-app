@@ -14,8 +14,8 @@ export default defineConfig({
         registerType: "autoUpdate",
         includeAssets: ["favicon.ico", "robots.txt", "apple-touch-icon.png"],
         manifest: {
-          name: "Sendmd - P2P File Transfer",
-          short_name: "Sendmd",
+          name: "Sendme - P2P File Transfer",
+          short_name: "Sendme",
           description:
             "Secure, peer-to-peer file transfer powered by iroh. Send files of any size without cloud storage.",
           theme_color: "#a855f7",

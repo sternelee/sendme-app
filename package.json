@@ -1,5 +1,5 @@
 {
-  "name": "iroh-sendmd",
+  "name": "iroh-sendme",
   "module": "index.ts",
   "type": "module",
   "private": true,

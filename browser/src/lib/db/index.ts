@@ -1,5 +1,5 @@
 /**
- * Database connection and utilities for Sendmd Browser App
+ * Database connection and utilities for Sendme Browser App
  * Uses Drizzle ORM with Cloudflare D1
  */
 

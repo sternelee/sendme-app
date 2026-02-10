@@ -1,4 +1,4 @@
-//! Core types for the sendmd library.
+//! Core types for the sendme library.
 
 use std::{fmt::Display, net::SocketAddrV4, net::SocketAddrV6, path::PathBuf, str::FromStr};
 

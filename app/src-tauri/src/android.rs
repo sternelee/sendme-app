@@ -62,7 +62,7 @@ pub fn find_received_files(base_dir: &str) -> Vec<String> {
                 // Skip hidden files and temp files
                 if let Some(name) = file_path.file_name() {
                     let name_str = name.to_string_lossy();
-                    if !name_str.starts_with('.') && !name_str.starts_with(".sendmd-") {
+                    if !name_str.starts_with('.') && !name_str.starts_with(".sendme-") {
                         files.push(file_path.to_string_lossy().to_string());
                     }
                 }

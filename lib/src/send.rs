@@ -80,7 +80,7 @@ async fn send_internal(
     };
 
     let blobs_data_dir = base_dir.join(format!(
-        ".sendmd-send-{}",
+        ".sendme-send-{}",
         data_encoding::HEXLOWER.encode(&suffix)
     ));
 

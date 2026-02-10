@@ -435,7 +435,7 @@ export default function Home() {
     if (navigator.share) {
       navigator
         .share({
-          title: "Sendmd Ticket",
+          title: "Sendme Ticket",
           text: text,
         })
         .then(() => console.log("Successful share"))
@@ -552,7 +552,7 @@ export default function Home() {
               </div>
               <div>
                 <h1 class="bg-linear-to-r from-white to-white/60 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
-                  Sendmd
+                  Sendme
                 </h1>
                 <p class="text-[10px] font-bold tracking-[0.2em] text-white/30 uppercase">
                   Secure P2P Node

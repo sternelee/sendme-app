@@ -1,4 +1,4 @@
-//! Sendmd CLI - Send files over the internet using iroh.
+//! Sendme CLI - Send files over the internet using iroh.
 //!
 //! Interactive TUI version with ratatui.
 
@@ -11,7 +11,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use pisend_lib::{types::*, BlobTicket};
+use sendme_lib::{types::*, BlobTicket};
 use tokio::sync::mpsc;
 
 mod tui;
@@ -197,9 +197,9 @@ async fn main() -> Result<()> {
 fn parse_ticket(s: &str) -> Result<BlobTicket> {
     let s = s.trim();
 
-    // Remove "sendmd receive" prefix if present
-    let s = if s.starts_with("sendmd receive ") {
-        s["sendmd receive ".len()..].trim()
+    // Remove "sendme receive" prefix if present
+    let s = if s.starts_with("sendme receive ") {
+        s["sendme receive ".len()..].trim()
     } else {
         s
     };
@@ -248,7 +248,7 @@ async fn handle_send_request(request: SendRequest, event_handler: EventHandler) 
     });
 
     // Run send_with_progress and send completion event
-    match pisend_lib::send_with_progress(args, progress_tx).await {
+    match sendme_lib::send_with_progress(args, progress_tx).await {
         Ok(result) => {
             event_handler.send_send_completed(result.ticket.to_string(), request_path_clone);
         }
@@ -282,7 +282,7 @@ async fn handle_receive_request(
     });
 
     // Run receive operation
-    if let Err(e) = pisend_lib::receive_with_progress(args, progress_tx).await {
+    if let Err(e) = sendme_lib::receive_with_progress(args, progress_tx).await {
         eprintln!("Receive error: {}", e);
     }
 

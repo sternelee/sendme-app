@@ -72,7 +72,7 @@ cd browser
 pnpm run serve
 
 # 在另一个终端测试 CLI 传输
-cargo run --bin sendmd send test.txt
+cargo run --bin sendme send test.txt
 ```
 
 ---

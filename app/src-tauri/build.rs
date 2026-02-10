@@ -20,8 +20,8 @@ fn main() {
         let android_gen_base = android_gen_dir.join("app/src-tauri/gen/android");
 
         // Copy Kotlin source files
-        let kotlin_dest_dir = android_gen_base.join("app/src/main/java/sendmd/leechat/app");
-        let source_dir = std::path::PathBuf::from("android-includes/sendmd/leechat/app");
+        let kotlin_dest_dir = android_gen_base.join("app/src/main/java/sendme/leechat/app");
+        let source_dir = std::path::PathBuf::from("android-includes/sendme/leechat/app");
 
         if let Ok(entries) = std::fs::read_dir(&source_dir) {
             for entry in entries.flatten() {

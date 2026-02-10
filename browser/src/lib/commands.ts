@@ -1,5 +1,5 @@
 /**
- * WASM integration layer for Sendmd browser functionality
+ * WASM integration layer for Sendme browser functionality
  * Wraps the WASM module for file sending and receiving
  */
 
@@ -13,7 +13,7 @@ export async function initWasm(): Promise<void> {
   if (wasmModule) return;
 
   try {
-    wasmModule = await import("../wasm/pisend_browser.js");
+    wasmModule = await import("../wasm/sendme_browser.js");
     await wasmModule.default();
   } catch (error) {
     console.error("Failed to initialize WASM:", error);
@@ -22,7 +22,7 @@ export async function initWasm(): Promise<void> {
 }
 
 /**
- * Initialize or get the Sendmd node instance
+ * Initialize or get the Sendme node instance
  */
 async function getNode(): Promise<any> {
   if (!wasmModule) {

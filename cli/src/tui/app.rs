@@ -1,8 +1,8 @@
 //! Application state and logic for the TUI.
 
 use crate::tui::file_search::FileSearchPopup;
-use pisend_lib::progress::{DownloadProgress, ProgressEvent};
-use pisend_lib::Hash;
+use sendme_lib::progress::{DownloadProgress, ProgressEvent};
+use sendme_lib::Hash;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -199,13 +199,13 @@ impl Transfer {
                 self.status = TransferStatus::Connecting;
             }
             ProgressEvent::Import(_, progress) => match progress {
-                pisend_lib::progress::ImportProgress::Started { total_files } => {
+                sendme_lib::progress::ImportProgress::Started { total_files } => {
                     self.total_files = *total_files as u64;
                 }
-                pisend_lib::progress::ImportProgress::FileCompleted { .. } => {
+                sendme_lib::progress::ImportProgress::FileCompleted { .. } => {
                     self.transferred_files += 1;
                 }
-                pisend_lib::progress::ImportProgress::Completed { total_size } => {
+                sendme_lib::progress::ImportProgress::Completed { total_size } => {
                     self.total_bytes = *total_size;
                     self.status = TransferStatus::Serving;
                 }
@@ -214,13 +214,13 @@ impl Transfer {
             ProgressEvent::Export(_, progress) => {
                 self.status = TransferStatus::Exporting;
                 match progress {
-                    pisend_lib::progress::ExportProgress::Started { total_files } => {
+                    sendme_lib::progress::ExportProgress::Started { total_files } => {
                         self.total_files = *total_files as u64;
                     }
-                    pisend_lib::progress::ExportProgress::FileCompleted { .. } => {
+                    sendme_lib::progress::ExportProgress::FileCompleted { .. } => {
                         self.transferred_files += 1;
                     }
-                    pisend_lib::progress::ExportProgress::Completed => {
+                    sendme_lib::progress::ExportProgress::Completed => {
                         self.status = TransferStatus::Completed;
                     }
                     _ => {}

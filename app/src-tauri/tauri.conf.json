@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
-  "productName": "Sendmd",
+  "productName": "Sendme",
   "version": "0.31.0",
-  "identifier": "sendmd.leechat.app",
+  "identifier": "sendme.leechat.app",
   "build": {
     "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm --filter sendmd run build",
+    "beforeBuildCommand": "pnpm --filter sendme run build",
     "frontendDist": "../.output/public"
   },
   "app": {
     "windows": [
       {
-        "title": "Sendmd - P2P File Transfer",
+        "title": "Sendme - P2P File Transfer",
         "width": 800,
         "height": 600,
         "resizable": true,
@@ -38,7 +38,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVDMTIwRkNFRjY2QTY4NUQKUldSZGFHcjJ6ZzhTWEpMemlZUHRxRlpPTGovSXZ4MHZUdmRicFgwdWYxY0JLR0dlZ2FKaGV3MEUK",
-      "endpoints": ["https://cdn.crabnebula.cloud/update/cloudplay/sendmd"]
+      "endpoints": ["https://cdn.crabnebula.cloud/update/cloudplay/sendme"]
     }
   }
 }

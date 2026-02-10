@@ -107,7 +107,7 @@ export default function PWAInstallPrompt() {
 
               {/* Content */}
               <div class="flex-1 min-w-0">
-                <h3 class="font-semibold text-white mb-1">Install Sendmd</h3>
+                <h3 class="font-semibold text-white mb-1">Install Sendme</h3>
                 <p class="text-sm text-white/60">
                   Install the app for faster access and offline support
                 </p>

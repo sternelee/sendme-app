@@ -21,7 +21,7 @@
 #-renamesourcefileattribute SourceFile
 
 # Keep FileUtils class - called from Rust via JNI
--keep class sendmd.leechat.app.FileUtils {
+-keep class sendme.leechat.app.FileUtils {
     public static boolean writeFileToContentUri(...);
 }
 

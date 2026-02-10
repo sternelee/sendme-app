@@ -1,4 +1,4 @@
-use pisend_lib::{progress::*, types::*};
+use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
@@ -258,7 +258,7 @@ fn copy_files_to_content_uri_sync(
     let activity = unsafe { JObject::from_raw(activity_raw) };
 
     // Find the FileUtils class once - check for exceptions after
-    let class = match env.find_class("sendmd/leechat/app/FileUtils") {
+    let class = match env.find_class("sendme/leechat/app/FileUtils") {
         Ok(c) => c,
         Err(e) => {
             if let Some(msg) = check_and_clear_jni_exception(&mut env) {
@@ -453,7 +453,7 @@ pub fn run() {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Debug)
-                .with_tag("sendmd"),
+                .with_tag("sendme"),
         );
     }
 
@@ -549,19 +549,19 @@ async fn send_file(
     let ticket_type = match request.ticket_type.as_str() {
         "id" => {
             log_info!("🎫 Ticket type: ID only");
-            Ok(pisend_lib::types::AddrInfoOptions::Id)
+            Ok(sendme_lib::types::AddrInfoOptions::Id)
         }
         "relay" => {
             log_info!("🎫 Ticket type: Relay");
-            Ok(pisend_lib::types::AddrInfoOptions::Relay)
+            Ok(sendme_lib::types::AddrInfoOptions::Relay)
         }
         "addresses" => {
             log_info!("🎫 Ticket type: Addresses (local-only)");
-            Ok(pisend_lib::types::AddrInfoOptions::Addresses)
+            Ok(sendme_lib::types::AddrInfoOptions::Addresses)
         }
         "relay_and_addresses" => {
             log_info!("🎫 Ticket type: Relay + Addresses");
-            Ok(pisend_lib::types::AddrInfoOptions::RelayAndAddresses)
+            Ok(sendme_lib::types::AddrInfoOptions::RelayAndAddresses)
         }
         _ => {
             let err = format!("Invalid ticket type: {}", request.ticket_type);
@@ -733,8 +733,8 @@ async fn send_file(
         update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
     });
 
-    log_info!("🚀 Calling pisend_lib::send_with_progress...");
-    match pisend_lib::send_with_progress(args, tx).await {
+    log_info!("🚀 Calling sendme_lib::send_with_progress...");
+    match sendme_lib::send_with_progress(args, tx).await {
         Ok(result) => {
             log_info!("═══════════════════════════════════════════════════");
             log_info!("✅ SEND COMPLETED SUCCESSFULLY");
@@ -993,9 +993,9 @@ async fn receive_file(
         update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
     });
 
-    log_info!("Calling pisend_lib::receive_with_progress...");
+    log_info!("Calling sendme_lib::receive_with_progress...");
 
-    match pisend_lib::receive_with_progress(args, tx).await {
+    match sendme_lib::receive_with_progress(args, tx).await {
         Ok(result) => {
             log_info!("✅ RECEIVE COMPLETED");
             log_info!(
@@ -1173,11 +1173,11 @@ async fn clear_transfers(transfers: tauri::State<'_, Transfers>) -> Result<(), S
     }
     drop(transfers_guard);
 
-    // Clean up temporary sendmd directories
+    // Clean up temporary sendme directories
     let temp_dirs = std::fs::read_dir(".")
         .map_err(|e| e.to_string())?
         .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.file_name().to_string_lossy().starts_with(".sendmd-"))
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(".sendme-"))
         .filter(|entry| entry.path().is_dir())
         .map(|entry| entry.path())
         .collect::<Vec<_>>();

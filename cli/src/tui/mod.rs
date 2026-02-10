@@ -1,4 +1,4 @@
-//! TUI module for sendmd CLI.
+//! TUI module for sendme CLI.
 
 pub mod app;
 pub mod event;

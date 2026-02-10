@@ -29,13 +29,13 @@
 	</dict>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_pisend._tcp</string>
-		<string>_pisend._udp</string>
+		<string>_sendme._tcp</string>
+		<string>_sendme._udp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Read QR codes</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Sendmd needs local network access to establish P2P connections and share terminal sessions</string>
+	<string>Sendme needs local network access to establish P2P connections and share terminal sessions</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>background-processing</string>

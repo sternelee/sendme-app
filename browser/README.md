@@ -1,4 +1,4 @@
-# Sendmd Browser App
+# Sendme Browser App
 
 A modern SolidJS web application for P2P file transfer using [iroh](https://iroh.computer) networking. Features a cosmic gradient UI with glass morphism effects and WebAssembly-powered file transfers.
 
@@ -119,8 +119,8 @@ const { filename, data } = await receiveFile(ticket);
 ### Key Components
 
 - **`src/routes/index.tsx`** - Main page with Send/Receive tabs
-- **`src/components/sendmd/SendTab.tsx`** - File sending with drag & drop
-- **`src/components/sendmd/ReceiveTab.tsx`** - File receiving via ticket
+- **`src/components/sendme/SendTab.tsx`** - File sending with drag & drop
+- **`src/components/sendme/ReceiveTab.tsx`** - File receiving via ticket
 - **`src/lib/commands.ts`** - WASM integration layer
 
 ### Data Flow
@@ -149,7 +149,7 @@ browser-app/
 │   └── wasm/              # Generated WASM files (DO NOT edit)
 ├── src/
 │   ├── components/
-│   │   └── sendmd/        # Send/Receive components
+│   │   └── sendme/        # Send/Receive components
 │   ├── lib/
 │   │   └── commands.ts    # WASM integration
 │   ├── routes/
