@@ -36,6 +36,13 @@ pub struct PickerDirectoryInfo {
 #[cfg(target_os = "android")]
 mod android;
 
+// macOS menubar module
+#[cfg(target_os = "macos")]
+mod menubar;
+
+#[cfg(target_os = "macos")]
+mod menubar_cmd;
+
 // Import tracing for non-Android platforms
 #[cfg(not(target_os = "android"))]
 use tracing;
@@ -395,6 +402,15 @@ pub fn run() {
         .setup(move |app| {
             // Store transfers in app state
             app.manage(transfers.clone());
+
+            // Create system tray icon on macOS
+            #[cfg(target_os = "macos")]
+            {
+                if let Err(e) = menubar::create_tray(app.handle()) {
+                    tracing::error!("Failed to create tray icon: {}", e);
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -410,7 +426,14 @@ pub fn run() {
             open_received_file,
             list_received_files,
             pick_file,
-            pick_directory
+            pick_directory,
+            // Menubar commands
+            #[cfg(target_os = "macos")]
+            menubar_cmd::init_menubar,
+            #[cfg(target_os = "macos")]
+            menubar_cmd::show_menubar_panel,
+            #[cfg(target_os = "macos")]
+            menubar_cmd::hide_menubar_panel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
