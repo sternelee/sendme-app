@@ -385,6 +385,12 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
 
+    // macOS NSPanel support
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_nspanel::init());
+    }
+
     builder
         .setup(move |app| {
             // Store transfers in app state

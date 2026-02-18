@@ -28,6 +28,9 @@ tauri-plugin-opener = "2"
 anyhow = "1"
 iroh-blobs.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
