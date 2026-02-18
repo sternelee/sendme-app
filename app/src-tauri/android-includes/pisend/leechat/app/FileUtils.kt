@@ -33,14 +33,18 @@ object FileUtils {
             val documentTree = DocumentFile.fromTreeUri(context, treeUri)
             if (documentTree == null) {
                 Log.e(TAG, "Failed to get DocumentFile from tree URI: $dirUri")
-                return false
+                throw IllegalStateException("Failed to get DocumentFile from tree URI. This may indicate the URI permission has expired. Please re-select the directory.")
             }
 
             Log.d(TAG, "DocumentTree name: ${documentTree.name}, canWrite: ${documentTree.canWrite()}")
 
             if (!documentTree.canWrite()) {
                 Log.e(TAG, "DocumentTree is not writable: $dirUri")
-                return false
+                // Check if permission was granted
+                val persistedUris = context.contentResolver.persistedUriPermissions
+                val hasPermission = persistedUris.any { it.uri.toString() == dirUri && it.isReadPermission }
+                Log.e(TAG, "Permission check: has persisted permission = $hasPermission")
+                throw SecurityException("Cannot write to directory. The app does not have write permission for this location. Please re-select the directory and grant permission.")
             }
 
             // Handle subdirectory paths (e.g., "subdir/file.txt")
@@ -61,7 +65,7 @@ object FileUtils {
                         val newDir = targetDir.createDirectory(dirName)
                         if (newDir == null) {
                             Log.e(TAG, "Failed to create subdirectory: $dirName in ${targetDir.uri}")
-                            return false
+                            throw IllegalStateException("Failed to create subdirectory '$dirName'. The directory may be read-only or the URI permission may not cover this path.")
                         }
                         Log.d(TAG, "Created subdirectory: $dirName")
                         newDir
@@ -84,7 +88,10 @@ object FileUtils {
             val newFile = targetDir.createFile(mimeType, actualFileName)
             if (newFile == null) {
                 Log.e(TAG, "Failed to create file: $actualFileName in ${targetDir.uri}")
-                return false
+                // Try to get more info
+                val canCreate = targetDir.canWrite()
+                Log.e(TAG, "Target directory canWrite: $canCreate, canRead: ${targetDir.canRead()}")
+                throw IllegalStateException("Failed to create file '$actualFileName'. The directory may be full or read-only. Check device storage space and directory permissions.")
             }
 
             Log.d(TAG, "Created file: ${newFile.uri}")
@@ -97,18 +104,18 @@ object FileUtils {
                 true
             } ?: run {
                 Log.e(TAG, "Failed to open output stream for ${newFile.uri}")
-                false
+                throw IllegalStateException("Failed to open output stream for file '$actualFileName'. The file may have been created but could not be written to.")
             }
         } catch (e: SecurityException) {
             Log.e(TAG, "Security exception - URI permission may have expired: $dirUri", e)
-            false
+            throw SecurityException("Permission denied. The directory access permission may have expired. Please re-select the directory and grant permission when prompted. Original error: ${e.message}")
         } catch (e: IllegalArgumentException) {
             Log.e(TAG, "Invalid URI argument: $dirUri", e)
-            false
+            throw IllegalArgumentException("Invalid directory URI: $dirUri. The selected directory may no longer exist or be accessible. Original error: ${e.message}")
         } catch (e: Exception) {
             Log.e(TAG, "Error writing file to content URI", e)
             e.printStackTrace()
-            false
+            throw RuntimeException("Failed to write file '$fileName': ${e.javaClass.simpleName} - ${e.message}")
         }
     }
 
