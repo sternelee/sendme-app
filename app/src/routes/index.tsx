@@ -168,10 +168,7 @@ export default function Home() {
   };
 
   // Theme functions
-  function setThemeValue(newTheme: Theme) {
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
-
+  function applyTheme(newTheme: Theme) {
     const root = window.document.documentElement;
     root.classList.remove("light", "dark");
 
@@ -183,6 +180,22 @@ export default function Home() {
       root.classList.add(systemTheme);
     } else {
       root.classList.add(newTheme);
+    }
+  }
+
+  function setThemeValue(newTheme: Theme) {
+    // Use View Transition API if available for smooth theme switching
+    if (document.startViewTransition) {
+      document.startViewTransition(() => {
+        applyTheme(newTheme);
+        setTheme(newTheme);
+        localStorage.setItem("theme", newTheme);
+      });
+    } else {
+      // Fallback for browsers without View Transition
+      applyTheme(newTheme);
+      setTheme(newTheme);
+      localStorage.setItem("theme", newTheme);
     }
   }
 
@@ -542,7 +555,7 @@ export default function Home() {
         <div class="absolute top-1/2 left-1/2 h-full w-full -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(18,14,38,0.4)_100%)]" />
       </div>
 
-      <main class="relative z-10 flex min-h-screen flex-col items-center px-4 py-8">
+      <main class={`relative z-10 flex min-h-screen flex-col items-center px-4 py-8 ${isMobile() ? 'pb-safe pt-safe' : ''}`}>
         <div class="w-full max-w-2xl space-y-10">
           {/* Header */}
           <header class="flex items-center justify-between">
@@ -563,7 +576,7 @@ export default function Home() {
             <div class="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
-                class="rounded-xl border border-white/5 bg-white/5 p-2.5 text-white/50 transition-all hover:bg-white/10 hover:text-white"
+                class="touch-button rounded-xl border border-white/5 bg-white/5 p-2.5 text-white/50 transition-all hover:bg-white/10 hover:text-white active:scale-95"
                 title={`Current theme: ${theme()}`}
               >
                 <Switch>
@@ -588,7 +601,7 @@ export default function Home() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.1 }}
                 transition={{ duration: 0.2 }}
-                class="glass relative flex min-h-[400px] items-center justify-center overflow-hidden rounded-3xl border border-white/10 p-8 shadow-2xl"
+                class="glass-liquid glass-frost relative flex min-h-[400px] items-center justify-center overflow-hidden rounded-3xl border border-white/10 p-8 shadow-2xl"
               >
                 <div class="text-center">
                   <Loader2
@@ -607,7 +620,7 @@ export default function Home() {
               <Motion.div
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.2 }}
-                class="glass relative rounded-3xl border border-white/10 shadow-2xl"
+                class="glass-liquid glass-frost relative rounded-3xl border border-white/10 shadow-2xl"
               >
                 <div class="p-8">
                   {/* Tabs */}
@@ -747,7 +760,7 @@ export default function Home() {
                               press={{ scale: 0.98 }}
                               onClick={handleSend}
                               disabled={!sendPath() || isSending()}
-                              class="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-purple-600 to-indigo-600 font-bold text-white shadow-xl shadow-purple-500/20 transition-all hover:shadow-purple-500/40 disabled:opacity-50"
+                              class="touch-active flex h-14 min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-purple-600 to-indigo-600 font-bold text-white shadow-xl shadow-purple-500/20 transition-all hover:shadow-purple-500/40 disabled:opacity-50"
                             >
                               {isSending() ? (
                                 <Loader2 class="animate-spin" size={20} />
@@ -896,7 +909,7 @@ export default function Home() {
                                   !receiveTicket() ||
                                   (isReceiving() && !currentReceivingId())
                                 }
-                                class={`flex h-14 w-full items-center justify-center gap-2 rounded-2xl font-bold shadow-xl transition-all ${
+                                class={`touch-active flex h-14 min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl font-bold shadow-xl transition-all ${
                                   currentReceivingId()
                                     ? "border border-red-500/20 bg-red-500/10 text-red-500 hover:bg-red-500/20"
                                     : "bg-linear-to-r from-indigo-600 to-purple-600 text-white shadow-indigo-500/20 hover:shadow-indigo-500/40"
