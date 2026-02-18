@@ -167,243 +167,131 @@ async fn handle_content_uri(
 
 /// Copy exported files from temp_dir to a content URI on Android.
 ///
-/// Uses JNI to call Android's ContentResolver to create and write files
-/// to the selected directory.
+/// Uses tauri_plugin_android_fs API to create files and write content
+/// to the selected directory via Android's Storage Access Framework.
 #[cfg(target_os = "android")]
 async fn copy_files_to_content_uri(
-    _app: &AppHandle,
+    app: &AppHandle,
     temp_dir: &std::path::Path,
     content_uri: &str,
     collection: &iroh_blobs::format::collection::Collection,
 ) -> anyhow::Result<()> {
+    use tauri_plugin_android_fs::AndroidFsExt;
+
     log_info!("Starting copy to content URI: {}", content_uri);
     log_info!("Files to copy: {}", collection.len());
+    log_info!("Temp directory: {:?}", temp_dir);
 
-    // Extract the tree URI part from the content URI
-    // Android SAF may return URIs in format: content://.../tree/.../document/...
-    // We need only the tree part for DocumentFile.fromTreeUri()
-    let tree_uri = extract_tree_uri_from_content_uri(content_uri);
-    log_info!("Extracted tree URI: {}", tree_uri);
+    let api = app.android_fs_async();
 
-    // Collect file info to copy
-    let files_to_copy: Vec<(String, std::path::PathBuf)> = collection
-        .iter()
-        .map(|(name, _hash)| (name.to_string(), temp_dir.join(name)))
-        .collect();
-
-    // Run JNI operations in a blocking thread to avoid issues with async runtime
-    let result = tokio::task::spawn_blocking(move || {
-        copy_files_to_content_uri_sync(&tree_uri, &files_to_copy)
-    })
-    .await
-    .map_err(|e| anyhow::anyhow!("Task join error: {:?}", e))??;
-
-    Ok(result)
-}
-
-/// Extract the tree URI part from a potentially compound content URI.
-///
-/// Android SAF may return URIs in these formats:
-/// - Simple tree: content://.../tree/primary%3ADownload
-/// - Compound: content://.../tree/primary%3ADownload/document/primary%3ADownload
-///
-/// We only need the tree part for DocumentFile.fromTreeUri().
-#[cfg(target_os = "android")]
-fn extract_tree_uri_from_content_uri(content_uri: &str) -> String {
-    // Check if the URI contains /document/ after the tree part
-    if let Some(tree_end) = content_uri.find("/tree/") {
-        if let Some(doc_start) = content_uri.find("/document/") {
-            // Found both /tree/ and /document/, extract only up to /document/
-            if doc_start > tree_end {
-                let tree_uri = &content_uri[..doc_start];
-                log_info!("Compound URI detected, extracted tree part: {}", tree_uri);
-                return tree_uri.to_string();
-            }
-        }
-    }
-    // No /document/ part found, return as-is
-    content_uri.to_string()
-}
-
-/// Helper function to check and clear JNI exceptions
-#[cfg(target_os = "android")]
-fn check_and_clear_jni_exception(env: &mut jni::AttachGuard) -> Option<String> {
-    if env.exception_check().unwrap_or(false) {
-        env.exception_clear().ok()?;
-        Some("JNI exception occurred".to_string())
+    // Reconstruct the FileUri from the content URI string.
+    // The pick_directory function converts FileUri -> FilePath -> String which only keeps
+    // the document URI (e.g., "content://.../tree/.../document/...").
+    // We need to extract the tree URI part for documentTopTreeUri so the plugin
+    // can properly resolve SAF operations.
+    let tree_uri = if let Some(doc_idx) = content_uri.find("/document/") {
+        // Extract tree URI: everything before /document/
+        &content_uri[..doc_idx]
     } else {
-        None
-    }
-}
-
-/// Synchronous version of copy_files_to_content_uri for use in spawn_blocking
-#[cfg(target_os = "android")]
-fn copy_files_to_content_uri_sync(
-    content_uri: &str,
-    files_to_copy: &[(String, std::path::PathBuf)],
-) -> anyhow::Result<()> {
-    use jni::objects::{JObject, JValue};
-    use ndk_context::android_context;
-
-    // Get JNI environment properly
-    let ctx = android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-        .map_err(|e| anyhow::anyhow!("Failed to get JavaVM: {:?}", e))?;
-    let mut env = vm
-        .attach_current_thread()
-        .map_err(|e| anyhow::anyhow!("Failed to attach to JVM: {:?}", e))?;
-
-    // Get the activity context for ContentResolver access
-    let activity_raw = ctx.context() as jni::sys::jobject;
-    let activity = unsafe { JObject::from_raw(activity_raw) };
-
-    // Find the FileUtils class once - check for exceptions after
-    let class = match env.find_class("sendme/leechat/app/FileUtils") {
-        Ok(c) => c,
-        Err(e) => {
-            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                return Err(anyhow::anyhow!("Failed to find FileUtils class: {} (JNI: {})", e, msg));
-            }
-            return Err(anyhow::anyhow!("Failed to find FileUtils class: {:?}", e));
-        }
+        // If no /document/ part, it's already a tree URI
+        content_uri
     };
-    
-    // Check for any pending exception after find_class
-    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-        return Err(anyhow::anyhow!("JNI exception after finding FileUtils class: {}", msg));
+
+    let dir_uri: tauri_plugin_android_fs::FileUri = serde_json::from_value(serde_json::json!({
+        "uri": content_uri,
+        "documentTopTreeUri": tree_uri,
+    }))?;
+
+    log_info!("Constructed FileUri: {:?}", dir_uri);
+
+    // Collect file info to copy AND verify files exist
+    let mut files_to_copy: Vec<(String, std::path::PathBuf)> = Vec::new();
+    let mut missing_files: Vec<String> = Vec::new();
+
+    for (name, _hash) in collection.iter() {
+        let source_path = temp_dir.join(name);
+        if source_path.exists() {
+            log_info!("✅ File exists: {:?} -> {}", source_path, name);
+            files_to_copy.push((name.to_string(), source_path));
+        } else {
+            log_error!("❌ File NOT found: {:?} (looking for: {})", source_path, name);
+            missing_files.push(name.to_string());
+        }
     }
 
-    for (name, source_path) in files_to_copy {
-        log_info!("Reading file from: {:?}", source_path);
-
-        if !source_path.exists() {
-            log_error!("Source file does not exist: {:?}", source_path);
-            anyhow::bail!("Source file does not exist: {:?}", source_path);
+    // If any files are missing, log error and bail
+    if !missing_files.is_empty() {
+        log_error!("❌ Missing {} files out of {}", missing_files.len(), collection.len());
+        if let Ok(entries) = std::fs::read_dir(temp_dir) {
+            log_error!("Contents of temp_dir:");
+            for entry in entries.flatten() {
+                log_error!("  - {:?}", entry.path());
+            }
         }
+        anyhow::bail!(
+            "Export verification failed: {} files not found in temp directory. Missing: {:?}",
+            missing_files.len(),
+            missing_files
+        );
+    }
 
+    if files_to_copy.is_empty() {
+        log_warn!("No files to copy (empty collection)");
+        return Ok(());
+    }
+
+    log_info!("📋 Ready to copy {} files to content URI", files_to_copy.len());
+
+    for (name, source_path) in &files_to_copy {
+        log_info!("Copying {} ({:?}) to content URI", name, source_path);
+
+        // Read the file content from temp directory
         let content = std::fs::read(source_path).map_err(|e| {
             log_error!("Failed to read file {:?}: {}", source_path, e);
             anyhow::anyhow!("Failed to read file {:?}: {}", source_path, e)
         })?;
 
-        log_info!("Writing {} ({} bytes) to content URI", name, content.len());
+        log_info!("Read {} bytes from {:?}", content.len(), source_path);
 
-        // Push a local frame to manage JNI local references
-        if let Err(e) = env.push_local_frame(16) {
-            check_and_clear_jni_exception(&mut env);
-            return Err(anyhow::anyhow!("Failed to push local frame: {:?}", e));
-        }
+        // Create the file in the target directory using the plugin API
+        // create_new_file automatically creates parent directories for nested paths
+        let file_uri = api.create_new_file(&dir_uri, name, None)
+            .await
+            .map_err(|e| {
+                log_error!("❌ Failed to create file '{}' in content URI: {:?}", name, e);
+                anyhow::anyhow!(
+                    "Failed to create file '{}' in selected directory: {:?}. \
+                     The directory may not be writable or permission may have expired.",
+                    name, e
+                )
+            })?;
 
-        let result = (|| -> anyhow::Result<()> {
-            // Convert content to Java byte array
-            let byte_array = match env.byte_array_from_slice(&content) {
-                Ok(arr) => arr,
-                Err(e) => {
-                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                        anyhow::bail!("Failed to create byte array: {} (JNI: {})", e, msg);
-                    }
-                    anyhow::bail!("Failed to create byte array: {:?}", e);
-                }
-            };
-            
-            // Check for exception after byte_array_from_slice
-            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                anyhow::bail!("JNI exception after creating byte array: {}", msg);
-            }
+        log_info!("Created file URI: {:?}", file_uri);
 
-            // Create JObject wrappers
-            let dir_uri_jstring = match env.new_string(content_uri) {
-                Ok(s) => s,
-                Err(e) => {
-                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                        anyhow::bail!("Failed to create dir URI string: {} (JNI: {})", e, msg);
-                    }
-                    anyhow::bail!("Failed to create dir URI string: {:?}", e);
-                }
-            };
-            
-            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                anyhow::bail!("JNI exception after creating dir URI string: {}", msg);
-            }
+        // Write content to the created file
+        api.write(&file_uri, &content)
+            .await
+            .map_err(|e| {
+                log_error!("❌ Failed to write to file '{}': {:?}", name, e);
+                anyhow::anyhow!(
+                    "Failed to write to file '{}': {:?}. \
+                     Check device storage space and directory permissions.",
+                    name, e
+                )
+            })?;
 
-            let file_name_jstring = match env.new_string(name) {
-                Ok(s) => s,
-                Err(e) => {
-                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                        anyhow::bail!("Failed to create filename string: {} (JNI: {})", e, msg);
-                    }
-                    anyhow::bail!("Failed to create filename string: {:?}", e);
-                }
-            };
-            
-            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                anyhow::bail!("JNI exception after creating filename string: {}", msg);
-            }
+        log_info!("✅ Copied {} ({} bytes) to content URI", name, content.len());
 
-            // Call static method with context parameter
-            let call_result = match env.call_static_method(
-                &class,
-                "writeFileToContentUri",
-                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;[B)Z",
-                &[
-                    JValue::Object(&activity),
-                    JValue::Object(&JObject::from(dir_uri_jstring)),
-                    JValue::Object(&JObject::from(file_name_jstring)),
-                    JValue::Object(&JObject::from(byte_array)),
-                ],
-            ) {
-                Ok(r) => r,
-                Err(e) => {
-                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                        anyhow::bail!("Failed to call writeFileToContentUri: {} (JNI: {})", e, msg);
-                    }
-                    anyhow::bail!("Failed to call writeFileToContentUri: {:?}", e);
-                }
-            };
-            
-            // Check for Java exception thrown by the method (even if call_static_method returned Ok)
-            if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                anyhow::bail!("Java exception in writeFileToContentUri: {}", msg);
-            }
-
-            // Extract the boolean result
-            let success = match call_result.z() {
-                Ok(b) => b,
-                Err(e) => {
-                    if let Some(msg) = check_and_clear_jni_exception(&mut env) {
-                        anyhow::bail!("Failed to extract boolean result: {} (JNI: {})", e, msg);
-                    }
-                    anyhow::bail!("Failed to extract boolean result: {:?}", e);
-                }
-            };
-
-            if !success {
-                anyhow::bail!("writeFileToContentUri returned false for file {}", name);
-            }
-
-            log_info!("✅ Copied {} to content URI", name);
-            Ok(())
-        })();
-
-        // Pop the local frame (passing null since we don't need to return an object)
-        // Ignore errors here as we're cleaning up
-        unsafe {
-            let _ = env.pop_local_frame(&JObject::null());
-        }
-
-        // Propagate any error from inside the frame
-        if let Err(e) = result {
-            return Err(e);
-        }
-
-        // Clean up the temp file only on success
+        // Clean up the temp file
         if let Err(e) = std::fs::remove_file(source_path) {
             log_warn!("Failed to remove temp file {:?}: {}", source_path, e);
         }
     }
 
+    log_info!("✅ All {} files copied successfully", files_to_copy.len());
     Ok(())
 }
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SendFileRequest {
@@ -1008,20 +896,32 @@ async fn receive_file(
             #[cfg(target_os = "android")]
             if let Some(content_uri) = content_uri_output {
                 log_info!("Copying files to content URI: {}", content_uri);
-                if let Err(e) =
-                    copy_files_to_content_uri(&app, &temp_dir, &content_uri, &result.collection)
-                        .await
-                {
-                    log_error!("Failed to copy files to content URI: {}", e);
-                    update_transfer_status(
-                        transfers.inner(),
-                        &transfer_id,
-                        &format!("error: {}", e),
-                    )
-                    .await;
-                    return Err(format!("Failed to copy files to content URI: {}", e));
+                log_info!("Temp directory used for export: {:?}", temp_dir);
+                match copy_files_to_content_uri(&app, &temp_dir, &content_uri, &result.collection).await {
+                    Ok(_) => {
+                        log_info!("✅ Files copied to content URI successfully");
+                    }
+                    Err(e) => {
+                        log_error!("❌ Failed to copy files to content URI: {}", e);
+                        log_error!("❌ Troubleshooting tips:");
+                        log_error!("   1. Check if the directory permission was granted");
+                        log_error!("   2. Check if the device has storage space");
+                        log_error!("   3. Try selecting a different directory");
+                        log_error!("   4. Check Android logs for more details (adb logcat)");
+                        update_transfer_status(
+                            transfers.inner(),
+                            &transfer_id,
+                            &format!("error: {}", e),
+                        )
+                        .await;
+                        return Err(format!(
+                            "Failed to copy files to selected directory. The app may not have \
+                            write permission for this location. Try selecting a different directory \
+                            or the Downloads folder. Error: {}",
+                            e
+                        ));
+                    }
                 }
-                log_info!("✅ Files copied to content URI successfully");
             }
 
             update_transfer_status(transfers.inner(), &transfer_id, "completed").await;
@@ -1883,8 +1783,18 @@ async fn pick_directory(
             log_info!("✅ Selected directory: {}", uri_str);
 
             // Take persistable URI permission for long-term access
-            if let Err(e) = api.take_persistable_uri_permission(&uri).await {
-                log_warn!("Failed to take persistable URI permission: {}", e);
+            // This is CRITICAL - without persistent permission, writing to the URI will fail!
+            match api.take_persistable_uri_permission(&uri).await {
+                Ok(_) => {
+                    log_info!("✅ Persistable URI permission acquired successfully");
+                }
+                Err(e) => {
+                    // Log as ERROR since this will cause write failures
+                    log_error!("❌ Failed to take persistable URI permission: {}", e);
+                    log_error!("❌ Writing to this directory will likely FAIL!");
+                    log_error!("❌ This is a common cause of 'permission denied' errors on Android");
+                    // Don't return error - some devices don't support this, but warn prominently
+                }
             }
 
             // Try to get the directory name from the URI
