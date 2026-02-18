@@ -50,6 +50,7 @@ import {
   Sparkles,
   Shield,
   Zap,
+  History,
 } from "lucide-solid";
 import { Toaster, toast } from "solid-sonner";
 import {
