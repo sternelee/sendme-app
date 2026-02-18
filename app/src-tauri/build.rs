@@ -2,11 +2,13 @@ fn main() {
     tauri_build::build();
 
     // On Android, copy our custom Kotlin files and ProGuard rules to the generated project
-    #[cfg(target_os = "android")]
-    {
+    // Note: This runs during cargo build on the HOST machine, not on Android target
+    // So we can't use #[cfg(target_os = "android")] - instead check for android-includes dir
+    if std::path::Path::new("android-includes").exists() {
         // The gen directory is at src-tauri/gen/android
         // We need to find it relative to the build directory
         let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+        println!("cargo:warning=OUT_DIR: {:?}", out_dir);
 
         // Navigate from target/.../build/NAME/out to src-tauri/gen/android
         // OUT_DIR structure: target/{ARCH}/release/build/{crate-hash}/out
@@ -16,12 +18,21 @@ fn main() {
         for _ in 0..5 {
             android_gen_dir = android_gen_dir.parent().unwrap_or(&android_gen_dir).to_path_buf();
         }
+        println!("cargo:warning=After 5 parents: {:?}", android_gen_dir);
+
         // Base path for Android generated project
         let android_gen_base = android_gen_dir.join("app/src-tauri/gen/android");
+        println!("cargo:warning=android_gen_base: {:?}", android_gen_base);
+
+        // Check if the source directory exists
+        let source_dir = std::path::PathBuf::from("android-includes/pisend/leechat/app");
+        println!("cargo:warning=Source dir exists: {:?}", source_dir.exists());
 
         // Copy Kotlin source files
+        // Note: the directory is 'pisend' not 'sendme' in android-includes
         let kotlin_dest_dir = android_gen_base.join("app/src/main/java/sendme/leechat/app");
-        let source_dir = std::path::PathBuf::from("android-includes/sendme/leechat/app");
+        println!("cargo:warning=kotlin_dest_dir: {:?}", kotlin_dest_dir);
+        let source_dir = std::path::PathBuf::from("android-includes/pisend/leechat/app");
 
         if let Ok(entries) = std::fs::read_dir(&source_dir) {
             for entry in entries.flatten() {
@@ -47,7 +58,7 @@ fn main() {
         // Copy ProGuard rules file
         let proguard_source = std::path::PathBuf::from("android-includes/proguard-jni.pro");
         let proguard_dest = android_gen_base.join("app/proguard-jni.pro");
-        
+
         if proguard_source.exists() {
             if let Some(parent) = proguard_dest.parent() {
                 std::fs::create_dir_all(parent).ok();
