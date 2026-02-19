@@ -1,11 +1,10 @@
-import { Show, createSignal, onMount } from "solid-js";
+import { createSignal, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { platform } from "@tauri-apps/plugin-os";
 import { Sparkles, Loader2 } from "lucide-solid";
 
 export default function Home() {
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = createSignal(true);
 
   onMount(async () => {
     try {
@@ -26,15 +25,15 @@ export default function Home() {
   });
 
   return (
-    <div class="min-h-screen bg-[#120e26] flex items-center justify-center">
+    <div class="flex min-h-screen items-center justify-center bg-[#120e26]">
       <div class="text-center">
-        <div class="flex items-center justify-center gap-3 mb-4">
+        <div class="mb-4 flex items-center justify-center gap-3">
           <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-purple-500 to-indigo-600 shadow-xl shadow-purple-500/20">
             <Sparkles size={24} class="text-white" />
           </div>
         </div>
         <Loader2 class="mx-auto animate-spin text-purple-400" size={24} />
-        <p class="mt-4 text-white/50 text-sm">Loading...</p>
+        <p class="mt-4 text-sm text-white/50">Loading...</p>
       </div>
     </div>
   );
