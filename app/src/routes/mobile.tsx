@@ -22,6 +22,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { platform } from "@tauri-apps/plugin-os";
 import {
   scan,
+  Format,
   checkPermissions,
   requestPermissions,
 } from "@tauri-apps/plugin-barcode-scanner";
@@ -134,8 +135,12 @@ export default function Mobile() {
 
   // Transfer state
   const [transfers, setTransfers] = createSignal<Transfer[]>([]);
-  const [currentSendingId, setCurrentSendingId] = createSignal<string | null>(null);
-  const [currentReceivingId, setCurrentReceivingId] = createSignal<string | null>(null);
+  const [currentSendingId, setCurrentSendingId] = createSignal<string | null>(
+    null,
+  );
+  const [currentReceivingId, setCurrentReceivingId] = createSignal<
+    string | null
+  >(null);
 
   // Theme functions
   function applyTheme(newTheme: Theme) {
@@ -365,6 +370,28 @@ export default function Mobile() {
     }
   }
 
+  async function handleScanBarcode() {
+    try {
+      let permissionStatus = await checkPermissions();
+      if (permissionStatus !== "granted") {
+        permissionStatus = await requestPermissions();
+      }
+
+      if (permissionStatus !== "granted") {
+        toast.error("Camera permission is required to scan QR codes");
+        return;
+      }
+
+      const result = await scan({ formats: [Format.QRCode] });
+      if (result && result.content) {
+        setReceiveTicket(result.content);
+      }
+    } catch (e) {
+      console.error("Scan error:", e);
+      toast.error(`Scan failed: ${e}`);
+    }
+  }
+
   // Initialize
   onMount(async () => {
     // Check if mobile
@@ -415,7 +442,7 @@ export default function Mobile() {
       <Toaster position="top-center" />
 
       {/* Header */}
-      <header class="sticky top-0 z-40 glass-liquid border-b border-white/5 px-4 py-3">
+      <header class="glass-liquid sticky top-0 z-40 border-b border-white/5 px-4 py-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-purple-500 to-indigo-600">
@@ -423,7 +450,9 @@ export default function Mobile() {
             </div>
             <div>
               <h1 class="text-lg font-bold text-white">Sendme</h1>
-              <p class="text-[10px] text-white/40 uppercase tracking-wider">P2P Transfer</p>
+              <p class="text-[10px] tracking-wider text-white/40 uppercase">
+                P2P Transfer
+              </p>
             </div>
           </div>
 
@@ -439,7 +468,14 @@ export default function Mobile() {
                 <Moon size={18} />
               </Match>
               <Match when={theme() === "system"}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
                   <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
                   <line x1="8" y1="21" x2="16" y2="21"></line>
                   <line x1="12" y1="17" x2="12" y2="21"></line>
@@ -461,8 +497,8 @@ export default function Mobile() {
               class="space-y-4"
             >
               {/* Send Card */}
-              <div class="glass-liquid rounded-2xl p-4 border border-white/10">
-                <h2 class="flex items-center gap-2 text-base font-semibold text-white mb-3">
+              <div class="glass-liquid rounded-2xl border border-white/10 p-4">
+                <h2 class="mb-3 flex items-center gap-2 text-base font-semibold text-white">
                   <Send size={18} class="text-purple-400" />
                   Send Files
                 </h2>
@@ -472,9 +508,11 @@ export default function Mobile() {
                   onClick={selectFile}
                   class="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-white/10 bg-white/5 p-4 transition-all hover:border-purple-500/30 active:scale-98"
                 >
-                  <FolderOpen size={32} class="text-white/40 mb-2" />
+                  <FolderOpen size={32} class="mb-2 text-white/40" />
                   <span class="text-sm text-white/60">
-                    {sendPath() ? getDisplayName(sendPath()) : "Tap to select file"}
+                    {sendPath()
+                      ? getDisplayName(sendPath())
+                      : "Tap to select file"}
                   </span>
                 </div>
 
@@ -482,9 +520,16 @@ export default function Mobile() {
                 <button
                   onClick={handleSend}
                   disabled={!sendPath() || isSending()}
-                  class="touch-active mt-3 w-full flex h-12 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-purple-600 to-indigo-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50"
+                  class="touch-active mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-purple-600 to-indigo-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50"
                 >
-                  <Show when={isSending()} fallback={<><Zap size={18} /> Generate Ticket</>}>
+                  <Show
+                    when={isSending()}
+                    fallback={
+                      <>
+                        <Zap size={18} /> Generate Ticket
+                      </>
+                    }
+                  >
                     <Loader2 size={18} class="animate-spin" />
                   </Show>
                 </button>
@@ -497,27 +542,39 @@ export default function Mobile() {
                     class="mt-3 overflow-hidden"
                   >
                     <div class="glass-inset rounded-xl p-3">
-                      <div class="flex items-center justify-between mb-2">
+                      <div class="mb-2 flex items-center justify-between">
                         <span class="text-xs text-white/50">Ticket</span>
                         <div class="flex gap-2">
-                          <button onClick={copyTicket} class="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white">
+                          <button
+                            onClick={copyTicket}
+                            class="rounded-lg bg-white/5 p-1.5 text-white/60 hover:text-white"
+                          >
                             <Copy size={14} />
                           </button>
                           <Show when={isMobile()}>
-                            <button onClick={shareTicket} class="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white">
+                            <button
+                              onClick={shareTicket}
+                              class="rounded-lg bg-white/5 p-1.5 text-white/60 hover:text-white"
+                            >
                               <Share2 size={14} />
                             </button>
                           </Show>
                         </div>
                       </div>
-                      <p class="font-mono text-xs text-white/80 break-all">{sendTicket()}</p>
+                      <p class="font-mono text-xs break-all text-white/80">
+                        {sendTicket()}
+                      </p>
                     </div>
 
                     {/* QR Code */}
                     <Show when={qrCodeUrl()}>
                       <div class="mt-3 flex justify-center">
                         <div class="glass rounded-xl p-2">
-                          <img src={qrCodeUrl()} alt="QR Code" class="w-32 h-32 rounded-lg" />
+                          <img
+                            src={qrCodeUrl()}
+                            alt="QR Code"
+                            class="h-32 w-32 rounded-lg"
+                          />
                         </div>
                       </div>
                     </Show>
@@ -526,8 +583,8 @@ export default function Mobile() {
               </div>
 
               {/* Receive Card */}
-              <div class="glass-liquid rounded-2xl p-4 border border-white/10">
-                <h2 class="flex items-center gap-2 text-base font-semibold text-white mb-3">
+              <div class="glass-liquid rounded-2xl border border-white/10 p-4">
+                <h2 class="mb-3 flex items-center gap-2 text-base font-semibold text-white">
                   <Download size={18} class="text-indigo-400" />
                   Receive Files
                 </h2>
@@ -538,13 +595,14 @@ export default function Mobile() {
                   value={receiveTicket()}
                   onInput={(e) => setReceiveTicket(e.currentTarget.value)}
                   placeholder="Paste ticket here"
-                  class="w-full h-12 rounded-xl border border-white/5 bg-white/5 px-4 pr-12 font-mono text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50"
+                  class="h-12 w-full rounded-xl border border-white/5 bg-white/5 px-4 pr-12 font-mono text-sm text-white placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none"
                 />
 
                 {/* Scan Button */}
                 <Show when={isMobile()}>
                   <button
-                    class="touch-active mt-2 w-full flex h-10 items-center justify-center gap-2 rounded-xl border border-white/5 bg-white/5 text-white/60 text-sm transition-all hover:bg-white/10 hover:text-white"
+                    onClick={handleScanBarcode}
+                    class="touch-active mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/5 bg-white/5 text-sm text-white/60 transition-all hover:bg-white/10 hover:text-white"
                   >
                     <Scan size={16} />
                     Scan QR Code
@@ -553,8 +611,8 @@ export default function Mobile() {
 
                 {/* Output Directory */}
                 <div class="mt-3 flex gap-2">
-                  <div class="flex-1 flex items-center rounded-xl border border-white/5 bg-white/5 px-3 h-10">
-                    <span class="text-xs text-white/50 truncate">
+                  <div class="flex h-10 flex-1 items-center rounded-xl border border-white/5 bg-white/5 px-3">
+                    <span class="truncate text-xs text-white/50">
                       {receiveOutputDir() || "Default location"}
                     </span>
                   </div>
@@ -570,9 +628,16 @@ export default function Mobile() {
                 <button
                   onClick={handleReceive}
                   disabled={!receiveTicket() || isReceiving()}
-                  class="touch-active mt-3 w-full flex h-12 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-indigo-500/25 disabled:opacity-50"
+                  class="touch-active mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-indigo-500/25 disabled:opacity-50"
                 >
-                  <Show when={isReceiving()} fallback={<><Download size={18} /> Connect & Receive</>}>
+                  <Show
+                    when={isReceiving()}
+                    fallback={
+                      <>
+                        <Download size={18} /> Connect & Receive
+                      </>
+                    }
+                  >
                     <Loader2 size={18} class="animate-spin" />
                     {receiveProgress()}%
                   </Show>
@@ -580,8 +645,8 @@ export default function Mobile() {
               </div>
 
               {/* Text Transfer Card */}
-              <div class="glass-liquid rounded-2xl p-4 border border-white/10">
-                <h2 class="flex items-center gap-2 text-base font-semibold text-white mb-3">
+              <div class="glass-liquid rounded-2xl border border-white/10 p-4">
+                <h2 class="mb-3 flex items-center gap-2 text-base font-semibold text-white">
                   <MessageSquare size={18} class="text-purple-400" />
                   Send Text
                 </h2>
@@ -591,16 +656,23 @@ export default function Mobile() {
                   value={sendTextContent()}
                   onInput={(e) => setSendTextContent(e.currentTarget.value)}
                   placeholder="Enter text to send..."
-                  class="w-full h-20 rounded-xl border border-white/5 bg-white/5 p-3 font-mono text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 resize-none"
+                  class="h-20 w-full resize-none rounded-xl border border-white/5 bg-white/5 p-3 font-mono text-sm text-white placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none"
                 />
 
                 {/* Send Text Button */}
                 <button
                   onClick={handleSendText}
                   disabled={!sendTextContent() || isSendingText()}
-                  class="touch-active mt-3 w-full flex h-12 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-purple-600 to-indigo-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50"
+                  class="touch-active mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-purple-600 to-indigo-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50"
                 >
-                  <Show when={isSendingText()} fallback={<><Zap size={18} /> Generate Ticket</>}>
+                  <Show
+                    when={isSendingText()}
+                    fallback={
+                      <>
+                        <Zap size={18} /> Generate Ticket
+                      </>
+                    }
+                  >
                     <Loader2 size={18} class="animate-spin" />
                   </Show>
                 </button>
@@ -613,45 +685,64 @@ export default function Mobile() {
                     class="mt-3 overflow-hidden"
                   >
                     <div class="glass-inset rounded-xl p-3">
-                      <div class="flex items-center justify-between mb-2">
+                      <div class="mb-2 flex items-center justify-between">
                         <span class="text-xs text-white/50">Text Ticket</span>
                         <div class="flex gap-2">
-                          <button onClick={() => navigator.clipboard.writeText(sendTextTicket()!)} class="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white">
+                          <button
+                            onClick={() =>
+                              navigator.clipboard.writeText(sendTextTicket()!)
+                            }
+                            class="rounded-lg bg-white/5 p-1.5 text-white/60 hover:text-white"
+                          >
                             <Copy size={14} />
                           </button>
-                          <button onClick={shareTextTicket} class="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white">
+                          <button
+                            onClick={shareTextTicket}
+                            class="rounded-lg bg-white/5 p-1.5 text-white/60 hover:text-white"
+                          >
                             <Share2 size={14} />
                           </button>
                         </div>
                       </div>
-                      <p class="font-mono text-xs text-white/80 break-all">{sendTextTicket()}</p>
+                      <p class="font-mono text-xs break-all text-white/80">
+                        {sendTextTicket()}
+                      </p>
                     </div>
                   </Motion.div>
                 </Show>
 
                 {/* Divider */}
-                <div class="flex items-center gap-2 my-4">
+                <div class="my-4 flex items-center gap-2">
                   <div class="h-px flex-1 bg-white/10" />
                   <span class="text-xs text-white/30">OR</span>
                   <div class="h-px flex-1 bg-white/10" />
                 </div>
 
                 {/* Receive Text */}
-                <h3 class="text-sm font-medium text-white/70 mb-2">Receive Text</h3>
+                <h3 class="mb-2 text-sm font-medium text-white/70">
+                  Receive Text
+                </h3>
                 <input
                   type="text"
                   value={receiveTextTicket()}
                   onInput={(e) => setReceiveTextTicket(e.currentTarget.value)}
                   placeholder="Paste text ticket..."
-                  class="w-full h-12 rounded-xl border border-white/5 bg-white/5 px-4 font-mono text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50"
+                  class="h-12 w-full rounded-xl border border-white/5 bg-white/5 px-4 font-mono text-sm text-white placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none"
                 />
 
                 <button
                   onClick={handleReceiveText}
                   disabled={!receiveTextTicket() || isReceivingText()}
-                  class="touch-active mt-3 w-full flex h-12 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-indigo-500/25 disabled:opacity-50"
+                  class="touch-active mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-indigo-500/25 disabled:opacity-50"
                 >
-                  <Show when={isReceivingText()} fallback={<><Download size={18} /> Receive Text</>}>
+                  <Show
+                    when={isReceivingText()}
+                    fallback={
+                      <>
+                        <Download size={18} /> Receive Text
+                      </>
+                    }
+                  >
                     <Loader2 size={18} class="animate-spin" />
                   </Show>
                 </button>
@@ -664,13 +755,20 @@ export default function Mobile() {
                     class="mt-3 overflow-hidden"
                   >
                     <div class="glass-inset rounded-xl p-3">
-                      <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs text-white/50">Received: {receivedTextFilename()}</span>
-                        <button onClick={copyReceivedText} class="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white">
+                      <div class="mb-2 flex items-center justify-between">
+                        <span class="text-xs text-white/50">
+                          Received: {receivedTextFilename()}
+                        </span>
+                        <button
+                          onClick={copyReceivedText}
+                          class="rounded-lg bg-white/5 p-1.5 text-white/60 hover:text-white"
+                        >
                           <Clipboard size={14} />
                         </button>
                       </div>
-                      <pre class="font-mono text-xs text-white/80 whitespace-pre-wrap break-words max-h-24 overflow-y-auto">{receivedText()}</pre>
+                      <pre class="max-h-24 overflow-y-auto font-mono text-xs break-words whitespace-pre-wrap text-white/80">
+                        {receivedText()}
+                      </pre>
                     </div>
                   </Motion.div>
                 </Show>
@@ -684,39 +782,54 @@ export default function Mobile() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
-              <h2 class="text-base font-semibold text-white mb-3">Transfer History</h2>
+              <h2 class="mb-3 text-base font-semibold text-white">
+                Transfer History
+              </h2>
 
-              <Show when={transfers().length > 0} fallback={
-                <div class="glass-liquid rounded-2xl p-8 text-center border border-white/10">
-                  <History size={40} class="mx-auto text-white/20 mb-3" />
-                  <p class="text-white/40 text-sm">No transfers yet</p>
-                </div>
-              }>
+              <Show
+                when={transfers().length > 0}
+                fallback={
+                  <div class="glass-liquid rounded-2xl border border-white/10 p-8 text-center">
+                    <History size={40} class="mx-auto mb-3 text-white/20" />
+                    <p class="text-sm text-white/40">No transfers yet</p>
+                  </div>
+                }
+              >
                 <div class="space-y-2">
                   <For each={transfers()}>
                     {(transfer) => (
-                      <div class="glass-liquid rounded-xl p-3 border border-white/5">
+                      <div class="glass-liquid rounded-xl border border-white/5 p-3">
                         <div class="flex items-center gap-3">
                           <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-white/5">
-                            {getFileIcon(transfer.transfer_type === "send" ? "file" : "download")}
+                            {getFileIcon(
+                              transfer.transfer_type === "send"
+                                ? "file"
+                                : "download",
+                            )}
                           </div>
-                          <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-white truncate">{getDisplayName(transfer.path)}</p>
-                            <p class="text-xs text-white/40">{formatDate(transfer.created_at)}</p>
+                          <div class="min-w-0 flex-1">
+                            <p class="truncate text-sm font-medium text-white">
+                              {getDisplayName(transfer.path)}
+                            </p>
+                            <p class="text-xs text-white/40">
+                              {formatDate(transfer.created_at)}
+                            </p>
                           </div>
                           <div class="flex items-center gap-2">
-                            <span class={`text-xs px-2 py-1 rounded-full ${
-                              transfer.status === "completed"
-                                ? "bg-green-500/20 text-green-400"
-                                : transfer.status === "error"
-                                ? "bg-red-500/20 text-red-400"
-                                : "bg-yellow-500/20 text-yellow-400"
-                            }`}>
+                            <span
+                              class={`rounded-full px-2 py-1 text-xs ${
+                                transfer.status === "completed"
+                                  ? "bg-green-500/20 text-green-400"
+                                  : transfer.status === "error"
+                                    ? "bg-red-500/20 text-red-400"
+                                    : "bg-yellow-500/20 text-yellow-400"
+                              }`}
+                            >
                               {getTransferStatus(transfer.status)}
                             </span>
                             <button
                               onClick={() => handleDeleteTransfer(transfer)}
-                              class="p-1.5 rounded-lg text-white/40 hover:text-red-400"
+                              class="rounded-lg p-1.5 text-white/40 hover:text-red-400"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -736,21 +849,21 @@ export default function Mobile() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
-              <h2 class="text-base font-semibold text-white mb-3">Settings</h2>
+              <h2 class="mb-3 text-base font-semibold text-white">Settings</h2>
 
               <div class="space-y-3">
-                <div class="glass-liquid rounded-xl p-4 border border-white/5">
+                <div class="glass-liquid rounded-xl border border-white/5 p-4">
                   <div class="flex items-center justify-between">
                     <div>
                       <p class="text-sm font-medium text-white">Theme</p>
                       <p class="text-xs text-white/40">Choose appearance</p>
                     </div>
-                    <div class="flex gap-1 p-1 rounded-lg bg-white/5">
+                    <div class="flex gap-1 rounded-lg bg-white/5 p-1">
                       <For each={["light", "dark", "system"] as Theme[]}>
                         {(t) => (
                           <button
                             onClick={() => setThemeValue(t)}
-                            class={`px-3 py-1.5 rounded-md text-xs transition-all ${
+                            class={`rounded-md px-3 py-1.5 text-xs transition-all ${
                               theme() === t
                                 ? "bg-purple-500/20 text-purple-400"
                                 : "text-white/40 hover:text-white"
@@ -770,11 +883,11 @@ export default function Mobile() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav class="fixed bottom-0 left-0 right-0 glass-liquid border-t border-white/5 pb-safe z-50">
-        <div class="flex items-center justify-around h-16 px-4">
+      <nav class="glass-liquid pb-safe fixed right-0 bottom-0 left-0 z-50 border-t border-white/5">
+        <div class="flex h-16 items-center justify-around px-4">
           <button
             onClick={() => setActiveTab("home")}
-            class={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+            class={`flex flex-col items-center gap-1 rounded-xl p-2 transition-all ${
               activeTab() === "home" ? "text-purple-400" : "text-white/40"
             }`}
           >
@@ -784,7 +897,7 @@ export default function Mobile() {
 
           <button
             onClick={() => setActiveTab("history")}
-            class={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+            class={`flex flex-col items-center gap-1 rounded-xl p-2 transition-all ${
               activeTab() === "history" ? "text-purple-400" : "text-white/40"
             }`}
           >
@@ -794,7 +907,7 @@ export default function Mobile() {
 
           <button
             onClick={() => setActiveTab("settings")}
-            class={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+            class={`flex flex-col items-center gap-1 rounded-xl p-2 transition-all ${
               activeTab() === "settings" ? "text-purple-400" : "text-white/40"
             }`}
           >

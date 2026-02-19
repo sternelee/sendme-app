@@ -210,6 +210,8 @@ export async function send_text(request: SendTextRequest): Promise<string> {
 /**
  * Receive text using a ticket
  */
-export async function receive_text(request: ReceiveTextRequest): Promise<TextResult> {
+export async function receive_text(
+  request: ReceiveTextRequest,
+): Promise<TextResult> {
   return await invoke("receive_text", { request });
 }

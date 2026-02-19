@@ -21,12 +21,6 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { platform } from "@tauri-apps/plugin-os";
-import {
-  scan,
-  Format,
-  checkPermissions,
-  requestPermissions,
-} from "@tauri-apps/plugin-barcode-scanner";
 import QRCode from "qrcode";
 import { Motion, Presence } from "solid-motionone";
 import {
@@ -48,11 +42,9 @@ import {
   Sun,
   Moon,
   Trash2,
-  Scan,
   Sparkles,
   Shield,
   Zap,
-  History,
   MessageSquare,
   Clipboard,
 } from "lucide-solid";
@@ -105,7 +97,9 @@ const ticketTypes = [
 
 export default function Home() {
   // Tab state
-  const [activeTab, setActiveTab] = createSignal<"send" | "receive" | "text">("send");
+  const [activeTab, setActiveTab] = createSignal<"send" | "receive" | "text">(
+    "send",
+  );
 
   // Transfers state
   const [transfers, setTransfers] = createSignal<Transfer[]>([]);
@@ -409,30 +403,6 @@ export default function Home() {
     }
   }
 
-  async function handleScanBarcode() {
-    try {
-      // Check and request camera permission before scanning
-      let permissionStatus = await checkPermissions();
-      if (permissionStatus !== "granted") {
-        permissionStatus = await requestPermissions();
-      }
-
-      if (permissionStatus !== "granted") {
-        toast.error("Camera permission is required to scan QR codes");
-        return;
-      }
-
-      // Use the barcode scanner plugin directly
-      const result = await scan({ formats: [Format.QRCode] });
-      if (result && result.content) {
-        setReceiveTicket(result.content);
-      }
-    } catch (e) {
-      console.error("Scan failed:", e);
-      toast.error(`Scan failed: ${e}`);
-    }
-  }
-
   async function handleCancel(id: string) {
     try {
       await cancel_transfer(id);
@@ -631,7 +601,9 @@ export default function Home() {
         <div class="absolute top-1/2 left-1/2 h-full w-full -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(18,14,38,0.4)_100%)]" />
       </div>
 
-      <main class={`relative z-10 flex min-h-screen flex-col items-center px-4 py-8 ${isMobile() ? 'pb-safe pt-safe' : ''}`}>
+      <main
+        class={`relative z-10 flex min-h-screen flex-col items-center px-4 py-8 ${isMobile() ? "pb-safe pt-safe" : ""}`}
+      >
         <div class="w-full max-w-2xl space-y-10">
           {/* Header */}
           <header class="flex items-center justify-between">
@@ -677,7 +649,7 @@ export default function Home() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.1 }}
                 transition={{ duration: 0.2 }}
-                class="glass-liquid glass-frost relative flex min-h-[400px] items-center justify-center overflow-hidden rounded-3xl border border-white/10 p-8 shadow-2xl"
+                class="glass-liquid glass-frost relative flex min-h-100 items-center justify-center overflow-hidden rounded-3xl border border-white/10 p-8 shadow-2xl"
               >
                 <div class="text-center">
                   <Loader2
@@ -705,16 +677,11 @@ export default function Home() {
                       animate={{
                         left:
                           activeTab() === "send"
-                            ? "6px"
+                            ? "2px"
                             : activeTab() === "receive"
-                              ? "calc(50% - 2px)"
-                              : "calc(66.66% + 2px)",
-                        right:
-                          activeTab() === "text"
-                            ? "6px"
-                            : activeTab() === "send"
-                              ? "calc(33.33% + 2px)"
-                              : "calc(33.33% + 2px)",
+                              ? "calc(33.33% + 1px)"
+                              : "calc(66.66% + 1px)",
+                        width: "calc(33.33% - 4px)",
                       }}
                       transition={{ duration: 0.2, easing: "ease-out" }}
                       class="absolute top-1.5 bottom-1.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/20"
@@ -756,458 +723,437 @@ export default function Home() {
 
                   {/* Content area */}
                   <div class="relative">
-                    <Presence exitBeforeEnter>
-                      <Switch fallback={null}>
-                        <Match when={activeTab() === "send"}>
-                          <Motion.div
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2, easing: "ease-out" }}
-                            class="space-y-6"
-                          >
-                            <div class="space-y-4">
-                              <div
-                                class="group relative flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-white/10 bg-white/2 p-12 transition-all hover:border-purple-500/30 hover:bg-white/4"
-                                onClick={selectFile}
-                              >
-                                <div class="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500/20 to-indigo-500/20 shadow-lg shadow-purple-500/10 transition-transform group-hover:scale-110">
-                                  <FolderOpen
-                                    class="text-purple-400"
-                                    size={36}
-                                  />
-                                </div>
-                                <h3 class="text-xl font-semibold text-white">
-                                  {sendPath()
-                                    ? getDisplayName(sendPath())
-                                    : "Share a file"}
-                                </h3>
-                                <p class="mt-2 text-sm text-white/40">
-                                  {sendPath()
-                                    ? "Tap to change file"
-                                    : "Tap to select a file from your device"}
-                                </p>
-                              </div>
-
-                              <div class="flex gap-3">
-                                <button
-                                  onClick={selectDirectory}
-                                  disabled={isSending()}
-                                  class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm font-medium text-white/70 transition-all hover:bg-white/10 disabled:opacity-50"
-                                >
-                                  <FolderOpen size={16} />
-                                  Directory
-                                </button>
-
-                                <div class="relative flex-1">
-                                  <button
-                                    onClick={() =>
-                                      setShowTicketPopover(!showTicketPopover())
-                                    }
-                                    disabled={isSending()}
-                                    class="flex w-full items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm font-medium text-white/70 transition-all hover:bg-white/10 disabled:opacity-50"
-                                  >
-                                    <span class="truncate">
-                                      {
-                                        ticketTypes.find(
-                                          (t) => t.value === sendTicketType(),
-                                        )?.label
-                                      }
-                                    </span>
-                                    <ChevronRight
-                                      size={14}
-                                      class="opacity-40"
-                                    />
-                                  </button>
-                                  <Show when={showTicketPopover()}>
-                                    <div class="glass animate-in fade-in absolute left-0 z-50 mt-1 w-full overflow-hidden rounded-2xl border border-white/10 p-2 shadow-2xl duration-200">
-                                      <For each={ticketTypes}>
-                                        {(type) => (
-                                          <button
-                                            onClick={() => {
-                                              setSendTicketType(
-                                                type.value as any,
-                                              );
-                                              setShowTicketPopover(false);
-                                            }}
-                                            class={`w-full rounded-xl px-3 py-2 text-left transition-all ${
-                                              sendTicketType() === type.value
-                                                ? "bg-white/10 text-white"
-                                                : "text-white/40 hover:bg-white/5 hover:text-white/60"
-                                            }`}
-                                          >
-                                            <div class="text-xs font-semibold">
-                                              {type.label}
-                                            </div>
-                                            <div class="mt-0.5 text-[10px] opacity-60">
-                                              {type.description}
-                                            </div>
-                                          </button>
-                                        )}
-                                      </For>
-                                    </div>
-                                  </Show>
-                                </div>
-                              </div>
-                            </div>
-
-                            <Motion.button
-                              hover={{ scale: 1.02 }}
-                              press={{ scale: 0.98 }}
-                              onClick={handleSend}
-                              disabled={!sendPath() || isSending()}
-                              class="touch-active flex h-14 min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-purple-600 to-indigo-600 font-bold text-white shadow-xl shadow-purple-500/20 transition-all hover:shadow-purple-500/40 disabled:opacity-50"
+                    <Switch fallback={null}>
+                      <Match when={activeTab() === "send"}>
+                        <Motion.div
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                          class="space-y-6"
+                        >
+                          <div class="space-y-4">
+                            <div
+                              class="group relative flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-white/10 bg-white/2 p-12 transition-all hover:border-purple-500/30 hover:bg-white/4"
+                              onClick={selectFile}
                             >
-                              {isSending() ? (
-                                <Loader2 class="animate-spin" size={20} />
-                              ) : (
-                                <>
-                                  <Zap size={20} />
-                                  Generate Ticket
-                                </>
-                              )}
-                            </Motion.button>
-
-                            <Presence>
-                              <Show when={sendTicket()}>
-                                <Motion.div
-                                  animate={{ opacity: 1 }}
-                                  exit={{ opacity: 0 }}
-                                  class="space-y-6 border-t border-white/5 pt-6"
-                                >
-                                  <div class="flex flex-col items-center gap-6">
-                                    <Show when={sendTicketQrCode()}>
-                                      <div class="rounded-3xl bg-white p-4 shadow-2xl">
-                                        <img
-                                          src={sendTicketQrCode()!}
-                                          alt="QR"
-                                          class="h-48 w-48"
-                                        />
-                                      </div>
-                                    </Show>
-
-                                    <div class="w-full space-y-3">
-                                      <div class="glass-inset flex flex-col gap-2 rounded-2xl p-4">
-                                        <label class="text-[10px] font-bold tracking-widest text-white/30 uppercase">
-                                          Transfer Ticket
-                                        </label>
-                                        <div class="flex items-center gap-3">
-                                          <code class="flex-1 truncate rounded-lg bg-purple-500/10 px-3 py-2 font-mono text-sm text-purple-200">
-                                            {sendTicket()}
-                                          </code>
-                                          <button
-                                            onClick={() =>
-                                              copyToClipboard(sendTicket()!)
-                                            }
-                                            class="rounded-xl bg-white/5 p-2.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-                                          >
-                                            <Copy size={18} />
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      <Show when={isMobile()}>
-                                        <button
-                                          onClick={() =>
-                                            shareText(sendTicket()!)
-                                          }
-                                          class="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/5 py-4 font-semibold text-white transition-all hover:bg-white/10"
-                                        >
-                                          <Share2 size={18} />
-                                          Share with Friends
-                                        </button>
-                                      </Show>
-                                    </div>
-                                  </div>
-                                </Motion.div>
-                              </Show>
-                            </Presence>
-                          </Motion.div>
-                        </Match>
-
-                        <Match when={activeTab() === "receive"}>
-                          <Motion.div
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2, easing: "ease-out" }}
-                            class="space-y-6"
-                          >
-                            <div class="space-y-4">
-                              <div class="space-y-2">
-                                <label class="ml-1 text-xs font-bold tracking-widest text-white/30 uppercase">
-                                  Universal Ticket
-                                </label>
-                                <div class="flex gap-2">
-                                  <div class="relative flex-1">
-                                    <input
-                                      value={receiveTicket()}
-                                      onInput={(e) =>
-                                        setReceiveTicket(e.currentTarget.value)
-                                      }
-                                      placeholder="Paste ticket code..."
-                                      class="h-14 w-full rounded-2xl border border-white/5 bg-white/5 pr-4 pl-12 font-mono text-sm text-white transition-all placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none"
-                                    />
-                                    <Shield
-                                      class="absolute top-1/2 left-4 -translate-y-1/2 text-white/20"
-                                      size={20}
-                                    />
-                                  </div>
-                                  <Show when={isMobile()}>
-                                    <button
-                                      onClick={handleScanBarcode}
-                                      class="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/5 bg-white/5 text-white/60 transition-all hover:bg-white/10 hover:text-white"
-                                    >
-                                      <Scan size={20} />
-                                    </button>
-                                  </Show>
-                                </div>
+                              <div class="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500/20 to-indigo-500/20 shadow-lg shadow-purple-500/10 transition-transform group-hover:scale-110">
+                                <FolderOpen class="text-purple-400" size={36} />
                               </div>
-
-                              <div class="space-y-2">
-                                <label class="ml-1 text-xs font-bold tracking-widest text-white/30 uppercase">
-                                  Destination
-                                </label>
-                                <div class="flex gap-2">
-                                  <div class="relative flex-1">
-                                    <input
-                                      readOnly
-                                      value={
-                                        receiveOutputDir() ||
-                                        "Default Downloads"
-                                      }
-                                      class="h-14 w-full rounded-2xl border border-white/5 bg-white/5 pr-4 pl-12 text-sm text-white/50 focus:outline-none"
-                                    />
-                                    <FolderOpen
-                                      class="absolute top-1/2 left-4 -translate-y-1/2 text-white/20"
-                                      size={20}
-                                    />
-                                  </div>
-                                  <button
-                                    onClick={selectOutputDirectory}
-                                    class="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/5 bg-white/5 text-white/60 transition-all hover:bg-white/10 hover:text-white"
-                                  >
-                                    <ChevronRight size={20} />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div class="group relative">
-                              <Motion.button
-                                hover={{ scale: 1.02 }}
-                                press={{ scale: 0.98 }}
-                                onClick={() =>
-                                  currentReceivingId()
-                                    ? handleCancelReceive()
-                                    : handleReceive()
-                                }
-                                disabled={
-                                  !receiveTicket() ||
-                                  (isReceiving() && !currentReceivingId())
-                                }
-                                class={`touch-active flex h-14 min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl font-bold shadow-xl transition-all ${
-                                  currentReceivingId()
-                                    ? "border border-red-500/20 bg-red-500/10 text-red-500 hover:bg-red-500/20"
-                                    : "bg-linear-to-r from-indigo-600 to-purple-600 text-white shadow-indigo-500/20 hover:shadow-indigo-500/40"
-                                }`}
-                              >
-                                <Show
-                                  when={currentReceivingId()}
-                                  fallback={
-                                    <>
-                                      {isReceiving() ? (
-                                        <Loader2
-                                          class="animate-spin"
-                                          size={20}
-                                        />
-                                      ) : (
-                                        <Download size={20} />
-                                      )}
-                                      {isReceiving()
-                                        ? "Connecting..."
-                                        : "Connect & Receive"}
-                                    </>
-                                  }
-                                >
-                                  <span class="group-hover:hidden">
-                                    {Math.round(receiveProgress())}%
-                                    Receiving...
-                                  </span>
-                                  <span class="hidden items-center gap-2 group-hover:flex">
-                                    <X size={18} /> Cancel Transfer
-                                  </span>
-                                </Show>
-                              </Motion.button>
-                            </div>
-                          </Motion.div>
-                        </Match>
-
-                        <Match when={activeTab() === "text"}>
-                          <Motion.div
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2, easing: "ease-out" }}
-                            class="space-y-6"
-                          >
-                            {/* Send Text Section */}
-                            <div class="space-y-4">
-                              <h3 class="text-sm font-semibold text-white/80">
-                                Send Text
+                              <h3 class="text-xl font-semibold text-white">
+                                {sendPath()
+                                  ? getDisplayName(sendPath())
+                                  : "Share a file"}
                               </h3>
-                              <div class="space-y-2">
-                                <textarea
-                                  value={sendTextContent()}
-                                  onInput={(e) =>
-                                    setSendTextContent(e.currentTarget.value)
-                                  }
-                                  placeholder="Enter text to send..."
-                                  class="h-32 w-full rounded-2xl border border-white/5 bg-white/5 p-4 font-mono text-sm text-white transition-all placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none resize-none"
-                                />
-                              </div>
+                              <p class="mt-2 text-sm text-white/40">
+                                {sendPath()
+                                  ? "Tap to change file"
+                                  : "Tap to select a file from your device"}
+                              </p>
+                            </div>
 
-                              <Motion.button
-                                hover={{ scale: 1.02 }}
-                                press={{ scale: 0.98 }}
-                                onClick={handleSendText}
-                                disabled={!sendTextContent() || isSendingText()}
-                                class="touch-active flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-purple-600 to-indigo-600 font-semibold text-white transition-all hover:shadow-purple-500/20 disabled:opacity-50"
+                            <div class="flex gap-3">
+                              <button
+                                onClick={selectDirectory}
+                                disabled={isSending()}
+                                class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm font-medium text-white/70 transition-all hover:bg-white/10 disabled:opacity-50"
                               >
-                                {isSendingText() ? (
-                                  <Loader2 class="animate-spin" size={18} />
-                                ) : (
-                                  <>
-                                    <Zap size={18} />
-                                    Generate Text Ticket
-                                  </>
-                                )}
-                              </Motion.button>
+                                <FolderOpen size={16} />
+                                Directory
+                              </button>
 
-                              <Presence>
-                                <Show when={textSendTicket()}>
-                                  <Motion.div
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    class="space-y-4 border-t border-white/5 pt-4"
-                                  >
-                                    <Show when={textSendTicketQrCode()}>
-                                      <div class="flex justify-center">
-                                        <div class="rounded-2xl bg-white p-3">
-                                          <img
-                                            src={textSendTicketQrCode()!}
-                                            alt="QR"
-                                            class="h-32 w-32"
-                                          />
-                                        </div>
-                                      </div>
-                                    </Show>
+                              <div class="relative flex-1">
+                                <button
+                                  onClick={() =>
+                                    setShowTicketPopover(!showTicketPopover())
+                                  }
+                                  disabled={isSending()}
+                                  class="flex w-full items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm font-medium text-white/70 transition-all hover:bg-white/10 disabled:opacity-50"
+                                >
+                                  <span class="truncate">
+                                    {
+                                      ticketTypes.find(
+                                        (t) => t.value === sendTicketType(),
+                                      )?.label
+                                    }
+                                  </span>
+                                  <ChevronRight size={14} class="opacity-40" />
+                                </button>
+                                <Show when={showTicketPopover()}>
+                                  <div class="glass animate-in fade-in absolute left-0 z-50 mt-1 w-full overflow-hidden rounded-2xl border border-white/10 p-2 shadow-2xl duration-200">
+                                    <For each={ticketTypes}>
+                                      {(type) => (
+                                        <button
+                                          onClick={() => {
+                                            setSendTicketType(
+                                              type.value as any,
+                                            );
+                                            setShowTicketPopover(false);
+                                          }}
+                                          class={`w-full rounded-xl px-3 py-2 text-left transition-all ${
+                                            sendTicketType() === type.value
+                                              ? "bg-white/10 text-white"
+                                              : "text-white/40 hover:bg-white/5 hover:text-white/60"
+                                          }`}
+                                        >
+                                          <div class="text-xs font-semibold">
+                                            {type.label}
+                                          </div>
+                                          <div class="mt-0.5 text-[10px] opacity-60">
+                                            {type.description}
+                                          </div>
+                                        </button>
+                                      )}
+                                    </For>
+                                  </div>
+                                </Show>
+                              </div>
+                            </div>
+                          </div>
 
+                          <Motion.button
+                            hover={{ scale: 1.02 }}
+                            press={{ scale: 0.98 }}
+                            onClick={handleSend}
+                            disabled={!sendPath() || isSending()}
+                            class="touch-active flex h-14 min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-purple-600 to-indigo-600 font-bold text-white shadow-xl shadow-purple-500/20 transition-all hover:shadow-purple-500/40 disabled:opacity-50"
+                          >
+                            {isSending() ? (
+                              <Loader2 class="animate-spin" size={20} />
+                            ) : (
+                              <>
+                                <Zap size={20} />
+                                Generate Ticket
+                              </>
+                            )}
+                          </Motion.button>
+
+                          <Presence>
+                            <Show when={sendTicket()}>
+                              <Motion.div
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                class="space-y-6 border-t border-white/5 pt-6"
+                              >
+                                <div class="flex flex-col items-center gap-6">
+                                  <Show when={sendTicketQrCode()}>
+                                    <div class="rounded-3xl bg-white p-4 shadow-2xl">
+                                      <img
+                                        src={sendTicketQrCode()!}
+                                        alt="QR"
+                                        class="h-48 w-48"
+                                      />
+                                    </div>
+                                  </Show>
+
+                                  <div class="w-full space-y-3">
                                     <div class="glass-inset flex flex-col gap-2 rounded-2xl p-4">
                                       <label class="text-[10px] font-bold tracking-widest text-white/30 uppercase">
-                                        Text Ticket
+                                        Transfer Ticket
                                       </label>
                                       <div class="flex items-center gap-3">
-                                        <code class="flex-1 truncate rounded-lg bg-purple-500/10 px-3 py-2 font-mono text-xs text-purple-200">
-                                          {textSendTicket()}
+                                        <code class="flex-1 truncate rounded-lg bg-purple-500/10 px-3 py-2 font-mono text-sm text-purple-200">
+                                          {sendTicket()}
                                         </code>
                                         <button
                                           onClick={() =>
-                                            copyToClipboard(textSendTicket()!)
+                                            copyToClipboard(sendTicket()!)
                                           }
                                           class="rounded-xl bg-white/5 p-2.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
                                         >
-                                          <Copy size={16} />
+                                          <Copy size={18} />
                                         </button>
                                       </div>
                                     </div>
 
                                     <Show when={isMobile()}>
                                       <button
-                                        onClick={() =>
-                                          shareText(textSendTicket()!)
-                                        }
-                                        class="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/5 py-3 font-semibold text-white transition-all hover:bg-white/10"
+                                        onClick={() => shareText(sendTicket()!)}
+                                        class="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/5 py-4 font-semibold text-white transition-all hover:bg-white/10"
                                       >
-                                        <Share2 size={16} />
-                                        Share
+                                        <Share2 size={18} />
+                                        Share with Friends
                                       </button>
                                     </Show>
-                                  </Motion.div>
-                                </Show>
-                              </Presence>
-                            </div>
+                                  </div>
+                                </div>
+                              </Motion.div>
+                            </Show>
+                          </Presence>
+                        </Motion.div>
+                      </Match>
 
-                            {/* Divider */}
-                            <div class="flex items-center gap-4">
-                              <div class="h-px flex-1 bg-white/10" />
-                              <span class="text-xs text-white/30">OR</span>
-                              <div class="h-px flex-1 bg-white/10" />
-                            </div>
-
-                            {/* Receive Text Section */}
-                            <div class="space-y-4">
-                              <h3 class="text-sm font-semibold text-white/80">
-                                Receive Text
-                              </h3>
-                              <div class="space-y-2">
-                                <input
-                                  value={receiveTextTicket()}
-                                  onInput={(e) =>
-                                    setReceiveTextTicket(e.currentTarget.value)
-                                  }
-                                  placeholder="Paste ticket code..."
-                                  class="h-14 w-full rounded-2xl border border-white/5 bg-white/5 px-4 font-mono text-sm text-white transition-all placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none"
-                                />
+                      <Match when={activeTab() === "receive"}>
+                        <Motion.div
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                          class="space-y-6"
+                        >
+                          <div class="space-y-4">
+                            <div class="space-y-2">
+                              <label class="ml-1 text-xs font-bold tracking-widest text-white/30 uppercase">
+                                Universal Ticket
+                              </label>
+                              <div class="flex gap-2">
+                                <div class="relative flex-1">
+                                  <input
+                                    value={receiveTicket()}
+                                    onInput={(e) =>
+                                      setReceiveTicket(e.currentTarget.value)
+                                    }
+                                    placeholder="Paste ticket code..."
+                                    class="h-14 w-full rounded-2xl border border-white/5 bg-white/5 pr-4 pl-12 font-mono text-sm text-white transition-all placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none"
+                                  />
+                                  <Shield
+                                    class="absolute top-1/2 left-4 -translate-y-1/2 text-white/20"
+                                    size={20}
+                                  />
+                                </div>
                               </div>
+                            </div>
 
-                              <Motion.button
-                                hover={{ scale: 1.02 }}
-                                press={{ scale: 0.98 }}
-                                onClick={handleReceiveText}
-                                disabled={!receiveTextTicket() || isReceivingText()}
-                                class="touch-active flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 font-semibold text-white transition-all hover:shadow-indigo-500/20 disabled:opacity-50"
-                              >
-                                {isReceivingText() ? (
-                                  <Loader2 class="animate-spin" size={18} />
-                                ) : (
+                            <div class="space-y-2">
+                              <label class="ml-1 text-xs font-bold tracking-widest text-white/30 uppercase">
+                                Destination
+                              </label>
+                              <div class="flex gap-2">
+                                <div class="relative flex-1">
+                                  <input
+                                    readOnly
+                                    value={
+                                      receiveOutputDir() || "Default Downloads"
+                                    }
+                                    class="h-14 w-full rounded-2xl border border-white/5 bg-white/5 pr-4 pl-12 text-sm text-white/50 focus:outline-none"
+                                  />
+                                  <FolderOpen
+                                    class="absolute top-1/2 left-4 -translate-y-1/2 text-white/20"
+                                    size={20}
+                                  />
+                                </div>
+                                <button
+                                  onClick={selectOutputDirectory}
+                                  class="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/5 bg-white/5 text-white/60 transition-all hover:bg-white/10 hover:text-white"
+                                >
+                                  <ChevronRight size={20} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="group relative">
+                            <Motion.button
+                              hover={{ scale: 1.02 }}
+                              press={{ scale: 0.98 }}
+                              onClick={() =>
+                                currentReceivingId()
+                                  ? handleCancelReceive()
+                                  : handleReceive()
+                              }
+                              disabled={
+                                !receiveTicket() ||
+                                (isReceiving() && !currentReceivingId())
+                              }
+                              class={`touch-active flex h-14 min-h-14 w-full items-center justify-center gap-2 rounded-2xl font-bold shadow-xl transition-all ${
+                                currentReceivingId()
+                                  ? "border border-red-500/20 bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                                  : "bg-linear-to-r from-indigo-600 to-purple-600 text-white shadow-indigo-500/20 hover:shadow-indigo-500/40"
+                              }`}
+                            >
+                              <Show
+                                when={currentReceivingId()}
+                                fallback={
                                   <>
-                                    <Download size={18} />
-                                    Receive Text
+                                    {isReceiving() ? (
+                                      <Loader2 class="animate-spin" size={20} />
+                                    ) : (
+                                      <Download size={20} />
+                                    )}
+                                    {isReceiving()
+                                      ? "Connecting..."
+                                      : "Connect & Receive"}
                                   </>
-                                )}
-                              </Motion.button>
+                                }
+                              >
+                                <span class="group-hover:hidden">
+                                  {Math.round(receiveProgress())}% Receiving...
+                                </span>
+                                <span class="hidden items-center gap-2 group-hover:flex">
+                                  <X size={18} /> Cancel Transfer
+                                </span>
+                              </Show>
+                            </Motion.button>
+                          </div>
+                        </Motion.div>
+                      </Match>
 
-                              <Presence>
-                                <Show when={receivedText()}>
-                                  <Motion.div
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    class="space-y-4 border-t border-white/5 pt-4"
-                                  >
-                                    <div class="glass-inset flex flex-col gap-2 rounded-2xl p-4">
-                                      <label class="text-[10px] font-bold tracking-widest text-white/30 uppercase">
-                                        Received: {receivedTextFilename()}
-                                      </label>
-                                      <div class="max-h-48 overflow-y-auto rounded-lg bg-white/5 p-3">
-                                        <pre class="font-mono text-sm text-white/80 whitespace-pre-wrap break-words">
-                                          {receivedText()}
-                                        </pre>
+                      <Match when={activeTab() === "text"}>
+                        <Motion.div
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                          class="space-y-6"
+                        >
+                          {/* Send Text Section */}
+                          <div class="space-y-4">
+                            <h3 class="text-sm font-semibold text-white/80">
+                              Send Text
+                            </h3>
+                            <div class="space-y-2">
+                              <textarea
+                                value={sendTextContent()}
+                                onInput={(e) =>
+                                  setSendTextContent(e.currentTarget.value)
+                                }
+                                placeholder="Enter text to send..."
+                                class="h-32 w-full resize-none rounded-2xl border border-white/5 bg-white/5 p-4 font-mono text-sm text-white transition-all placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none"
+                              />
+                            </div>
+
+                            <Motion.button
+                              hover={{ scale: 1.02 }}
+                              press={{ scale: 0.98 }}
+                              onClick={handleSendText}
+                              disabled={!sendTextContent() || isSendingText()}
+                              class="touch-active flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-purple-600 to-indigo-600 font-semibold text-white transition-all hover:shadow-purple-500/20 disabled:opacity-50"
+                            >
+                              {isSendingText() ? (
+                                <Loader2 class="animate-spin" size={18} />
+                              ) : (
+                                <>
+                                  <Zap size={18} />
+                                  Generate Text Ticket
+                                </>
+                              )}
+                            </Motion.button>
+
+                            <Presence>
+                              <Show when={textSendTicket()}>
+                                <Motion.div
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  class="space-y-4 border-t border-white/5 pt-4"
+                                >
+                                  <Show when={textSendTicketQrCode()}>
+                                    <div class="flex justify-center">
+                                      <div class="rounded-2xl bg-white p-3">
+                                        <img
+                                          src={textSendTicketQrCode()!}
+                                          alt="QR"
+                                          class="h-32 w-32"
+                                        />
                                       </div>
                                     </div>
+                                  </Show>
 
+                                  <div class="glass-inset flex flex-col gap-2 rounded-2xl p-4">
+                                    <label class="text-[10px] font-bold tracking-widest text-white/30 uppercase">
+                                      Text Ticket
+                                    </label>
+                                    <div class="flex items-center gap-3">
+                                      <code class="flex-1 truncate rounded-lg bg-purple-500/10 px-3 py-2 font-mono text-xs text-purple-200">
+                                        {textSendTicket()}
+                                      </code>
+                                      <button
+                                        onClick={() =>
+                                          copyToClipboard(textSendTicket()!)
+                                        }
+                                        class="rounded-xl bg-white/5 p-2.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                                      >
+                                        <Copy size={16} />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <Show when={isMobile()}>
                                     <button
-                                      onClick={copyReceivedText}
+                                      onClick={() =>
+                                        shareText(textSendTicket()!)
+                                      }
                                       class="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/5 py-3 font-semibold text-white transition-all hover:bg-white/10"
                                     >
-                                      <Clipboard size={16} />
-                                      Copy to Clipboard
+                                      <Share2 size={16} />
+                                      Share
                                     </button>
-                                  </Motion.div>
-                                </Show>
-                              </Presence>
+                                  </Show>
+                                </Motion.div>
+                              </Show>
+                            </Presence>
+                          </div>
+
+                          {/* Divider */}
+                          <div class="flex items-center gap-4">
+                            <div class="h-px flex-1 bg-white/10" />
+                            <span class="text-xs text-white/30">OR</span>
+                            <div class="h-px flex-1 bg-white/10" />
+                          </div>
+
+                          {/* Receive Text Section */}
+                          <div class="space-y-4">
+                            <h3 class="text-sm font-semibold text-white/80">
+                              Receive Text
+                            </h3>
+                            <div class="space-y-2">
+                              <input
+                                value={receiveTextTicket()}
+                                onInput={(e) =>
+                                  setReceiveTextTicket(e.currentTarget.value)
+                                }
+                                placeholder="Paste ticket code..."
+                                class="h-14 w-full rounded-2xl border border-white/5 bg-white/5 px-4 font-mono text-sm text-white transition-all placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none"
+                              />
                             </div>
-                          </Motion.div>
-                        </Match>
-                      </Switch>
-                    </Presence>
+
+                            <Motion.button
+                              hover={{ scale: 1.02 }}
+                              press={{ scale: 0.98 }}
+                              onClick={handleReceiveText}
+                              disabled={
+                                !receiveTextTicket() || isReceivingText()
+                              }
+                              class="touch-active flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 font-semibold text-white transition-all hover:shadow-indigo-500/20 disabled:opacity-50"
+                            >
+                              {isReceivingText() ? (
+                                <Loader2 class="animate-spin" size={18} />
+                              ) : (
+                                <>
+                                  <Download size={18} />
+                                  Receive Text
+                                </>
+                              )}
+                            </Motion.button>
+
+                            <Presence>
+                              <Show when={receivedText()}>
+                                <Motion.div
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  class="space-y-4 border-t border-white/5 pt-4"
+                                >
+                                  <div class="glass-inset flex flex-col gap-2 rounded-2xl p-4">
+                                    <label class="text-[10px] font-bold tracking-widest text-white/30 uppercase">
+                                      Received: {receivedTextFilename()}
+                                    </label>
+                                    <div class="max-h-48 overflow-y-auto rounded-lg bg-white/5 p-3">
+                                      <pre class="font-mono text-sm break-words whitespace-pre-wrap text-white/80">
+                                        {receivedText()}
+                                      </pre>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    onClick={copyReceivedText}
+                                    class="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/5 py-3 font-semibold text-white transition-all hover:bg-white/10"
+                                  >
+                                    <Clipboard size={16} />
+                                    Copy to Clipboard
+                                  </button>
+                                </Motion.div>
+                              </Show>
+                            </Presence>
+                          </div>
+                        </Motion.div>
+                      </Match>
+                    </Switch>
                   </div>
                 </div>
               </Motion.div>
