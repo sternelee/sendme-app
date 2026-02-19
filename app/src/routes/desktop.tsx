@@ -10,6 +10,8 @@ import {
 import {
   send_file,
   receive_file,
+  send_text,
+  receive_text,
   cancel_transfer,
   get_transfers,
   clear_transfers,
@@ -51,6 +53,8 @@ import {
   Shield,
   Zap,
   History,
+  MessageSquare,
+  Clipboard,
 } from "lucide-solid";
 import { Toaster, toast } from "solid-sonner";
 import {
@@ -101,7 +105,7 @@ const ticketTypes = [
 
 export default function Home() {
   // Tab state
-  const [activeTab, setActiveTab] = createSignal<"send" | "receive">("send");
+  const [activeTab, setActiveTab] = createSignal<"send" | "receive" | "text">("send");
 
   // Transfers state
   const [transfers, setTransfers] = createSignal<Transfer[]>([]);
@@ -115,6 +119,18 @@ export default function Home() {
   const [sendTicketQrCode, setSendTicketQrCode] = createSignal("");
   const [isSending, setIsSending] = createSignal(false);
   const [showTicketPopover, setShowTicketPopover] = createSignal(false);
+
+  // Text send state
+  const [sendTextContent, setSendTextContent] = createSignal("");
+  const [textSendTicket, setTextSendTicket] = createSignal("");
+  const [textSendTicketQrCode, setTextSendTicketQrCode] = createSignal("");
+  const [isSendingText, setIsSendingText] = createSignal(false);
+
+  // Text receive state
+  const [receiveTextTicket, setReceiveTextTicket] = createSignal("");
+  const [receivedText, setReceivedText] = createSignal("");
+  const [receivedTextFilename, setReceivedTextFilename] = createSignal("");
+  const [isReceivingText, setIsReceivingText] = createSignal(false);
 
   // Receive state
   const [receiveTicket, setReceiveTicket] = createSignal("");
@@ -325,6 +341,65 @@ export default function Home() {
     } finally {
       setIsReceiving(false);
     }
+  }
+
+  // Text send/receive handlers
+  async function handleSendText() {
+    if (!sendTextContent()) {
+      return;
+    }
+
+    setIsSendingText(true);
+    setTextSendTicket("");
+    setTextSendTicketQrCode("");
+
+    try {
+      const result = await send_text({
+        text: sendTextContent(),
+        ticket_type: sendTicketType(),
+      });
+      setTextSendTicket(result);
+      setTextSendTicketQrCode(
+        await QRCode.toDataURL(result, {
+          errorCorrectionLevel: "H",
+          width: 300,
+        }),
+      );
+    } catch (e) {
+      console.error("Send text failed:", e);
+      toast.error(`Send text failed: ${e}`);
+    } finally {
+      setIsSendingText(false);
+    }
+  }
+
+  async function handleReceiveText() {
+    if (!receiveTextTicket()) {
+      return;
+    }
+
+    setIsReceivingText(true);
+    setReceivedText("");
+    setReceivedTextFilename("");
+
+    try {
+      const result = await receive_text({
+        ticket: receiveTextTicket(),
+      });
+      setReceivedText(result.text);
+      setReceivedTextFilename(result.filename);
+      setReceiveTextTicket("");
+    } catch (e) {
+      console.error("Receive text failed:", e);
+      toast.error(`Receive text failed: ${e}`);
+    } finally {
+      setIsReceivingText(false);
+    }
+  }
+
+  async function copyReceivedText() {
+    await navigator.clipboard.writeText(receivedText());
+    toast.success("Text copied to clipboard");
   }
 
   async function handleCancelReceive() {
@@ -629,9 +704,17 @@ export default function Home() {
                     <Motion.div
                       animate={{
                         left:
-                          activeTab() === "send" ? "6px" : "calc(50% + 2px)",
+                          activeTab() === "send"
+                            ? "6px"
+                            : activeTab() === "receive"
+                              ? "calc(50% - 2px)"
+                              : "calc(66.66% + 2px)",
                         right:
-                          activeTab() === "send" ? "calc(50% + 2px)" : "6px",
+                          activeTab() === "text"
+                            ? "6px"
+                            : activeTab() === "send"
+                              ? "calc(33.33% + 2px)"
+                              : "calc(33.33% + 2px)",
                       }}
                       transition={{ duration: 0.2, easing: "ease-out" }}
                       class="absolute top-1.5 bottom-1.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/20"
@@ -657,6 +740,17 @@ export default function Home() {
                     >
                       <Download size={20} />
                       Receive
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("text")}
+                      class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3.5 font-semibold transition-all ${
+                        activeTab() === "text"
+                          ? "text-white"
+                          : "text-white/50 hover:text-white/80"
+                      }`}
+                    >
+                      <MessageSquare size={20} />
+                      Text
                     </button>
                   </div>
 
@@ -943,6 +1037,172 @@ export default function Home() {
                                   </span>
                                 </Show>
                               </Motion.button>
+                            </div>
+                          </Motion.div>
+                        </Match>
+
+                        <Match when={activeTab() === "text"}>
+                          <Motion.div
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2, easing: "ease-out" }}
+                            class="space-y-6"
+                          >
+                            {/* Send Text Section */}
+                            <div class="space-y-4">
+                              <h3 class="text-sm font-semibold text-white/80">
+                                Send Text
+                              </h3>
+                              <div class="space-y-2">
+                                <textarea
+                                  value={sendTextContent()}
+                                  onInput={(e) =>
+                                    setSendTextContent(e.currentTarget.value)
+                                  }
+                                  placeholder="Enter text to send..."
+                                  class="h-32 w-full rounded-2xl border border-white/5 bg-white/5 p-4 font-mono text-sm text-white transition-all placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none resize-none"
+                                />
+                              </div>
+
+                              <Motion.button
+                                hover={{ scale: 1.02 }}
+                                press={{ scale: 0.98 }}
+                                onClick={handleSendText}
+                                disabled={!sendTextContent() || isSendingText()}
+                                class="touch-active flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-purple-600 to-indigo-600 font-semibold text-white transition-all hover:shadow-purple-500/20 disabled:opacity-50"
+                              >
+                                {isSendingText() ? (
+                                  <Loader2 class="animate-spin" size={18} />
+                                ) : (
+                                  <>
+                                    <Zap size={18} />
+                                    Generate Text Ticket
+                                  </>
+                                )}
+                              </Motion.button>
+
+                              <Presence>
+                                <Show when={textSendTicket()}>
+                                  <Motion.div
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    class="space-y-4 border-t border-white/5 pt-4"
+                                  >
+                                    <Show when={textSendTicketQrCode()}>
+                                      <div class="flex justify-center">
+                                        <div class="rounded-2xl bg-white p-3">
+                                          <img
+                                            src={textSendTicketQrCode()!}
+                                            alt="QR"
+                                            class="h-32 w-32"
+                                          />
+                                        </div>
+                                      </div>
+                                    </Show>
+
+                                    <div class="glass-inset flex flex-col gap-2 rounded-2xl p-4">
+                                      <label class="text-[10px] font-bold tracking-widest text-white/30 uppercase">
+                                        Text Ticket
+                                      </label>
+                                      <div class="flex items-center gap-3">
+                                        <code class="flex-1 truncate rounded-lg bg-purple-500/10 px-3 py-2 font-mono text-xs text-purple-200">
+                                          {textSendTicket()}
+                                        </code>
+                                        <button
+                                          onClick={() =>
+                                            copyToClipboard(textSendTicket()!)
+                                          }
+                                          class="rounded-xl bg-white/5 p-2.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                                        >
+                                          <Copy size={16} />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <Show when={isMobile()}>
+                                      <button
+                                        onClick={() =>
+                                          shareText(textSendTicket()!)
+                                        }
+                                        class="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/5 py-3 font-semibold text-white transition-all hover:bg-white/10"
+                                      >
+                                        <Share2 size={16} />
+                                        Share
+                                      </button>
+                                    </Show>
+                                  </Motion.div>
+                                </Show>
+                              </Presence>
+                            </div>
+
+                            {/* Divider */}
+                            <div class="flex items-center gap-4">
+                              <div class="h-px flex-1 bg-white/10" />
+                              <span class="text-xs text-white/30">OR</span>
+                              <div class="h-px flex-1 bg-white/10" />
+                            </div>
+
+                            {/* Receive Text Section */}
+                            <div class="space-y-4">
+                              <h3 class="text-sm font-semibold text-white/80">
+                                Receive Text
+                              </h3>
+                              <div class="space-y-2">
+                                <input
+                                  value={receiveTextTicket()}
+                                  onInput={(e) =>
+                                    setReceiveTextTicket(e.currentTarget.value)
+                                  }
+                                  placeholder="Paste ticket code..."
+                                  class="h-14 w-full rounded-2xl border border-white/5 bg-white/5 px-4 font-mono text-sm text-white transition-all placeholder:text-white/20 focus:border-purple-500/50 focus:outline-none"
+                                />
+                              </div>
+
+                              <Motion.button
+                                hover={{ scale: 1.02 }}
+                                press={{ scale: 0.98 }}
+                                onClick={handleReceiveText}
+                                disabled={!receiveTextTicket() || isReceivingText()}
+                                class="touch-active flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 font-semibold text-white transition-all hover:shadow-indigo-500/20 disabled:opacity-50"
+                              >
+                                {isReceivingText() ? (
+                                  <Loader2 class="animate-spin" size={18} />
+                                ) : (
+                                  <>
+                                    <Download size={18} />
+                                    Receive Text
+                                  </>
+                                )}
+                              </Motion.button>
+
+                              <Presence>
+                                <Show when={receivedText()}>
+                                  <Motion.div
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    class="space-y-4 border-t border-white/5 pt-4"
+                                  >
+                                    <div class="glass-inset flex flex-col gap-2 rounded-2xl p-4">
+                                      <label class="text-[10px] font-bold tracking-widest text-white/30 uppercase">
+                                        Received: {receivedTextFilename()}
+                                      </label>
+                                      <div class="max-h-48 overflow-y-auto rounded-lg bg-white/5 p-3">
+                                        <pre class="font-mono text-sm text-white/80 whitespace-pre-wrap break-words">
+                                          {receivedText()}
+                                        </pre>
+                                      </div>
+                                    </div>
+
+                                    <button
+                                      onClick={copyReceivedText}
+                                      class="flex w-full items-center justify-center gap-2 rounded-2xl bg-white/5 py-3 font-semibold text-white transition-all hover:bg-white/10"
+                                    >
+                                      <Clipboard size={16} />
+                                      Copy to Clipboard
+                                    </button>
+                                  </Motion.div>
+                                </Show>
+                              </Presence>
                             </div>
                           </Motion.div>
                         </Match>

@@ -183,3 +183,33 @@ export async function pick_directory(options?: {
     startDirectory: options?.startDirectory,
   });
 }
+
+// Text transfer types
+export interface SendTextRequest {
+  text: string;
+  filename?: string;
+  ticket_type: string;
+}
+
+export interface ReceiveTextRequest {
+  ticket: string;
+}
+
+export interface TextResult {
+  text: string;
+  filename: string;
+}
+
+/**
+ * Send text and return the ticket
+ */
+export async function send_text(request: SendTextRequest): Promise<string> {
+  return await invoke("send_text", { request });
+}
+
+/**
+ * Receive text using a ticket
+ */
+export async function receive_text(request: ReceiveTextRequest): Promise<TextResult> {
+  return await invoke("receive_text", { request });
+}
