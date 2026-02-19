@@ -300,6 +300,27 @@ async fn copy_files_to_content_uri(
 }
 
 
+/// Send text request
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SendTextRequest {
+    pub text: String,
+    pub filename: Option<String>,
+    pub ticket_type: String,
+}
+
+/// Receive text request
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReceiveTextRequest {
+    pub ticket: String,
+}
+
+/// Text transfer result
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TextResult {
+    pub text: String,
+    pub filename: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SendFileRequest {
     pub path: String,
@@ -416,6 +437,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             send_file,
             receive_file,
+            send_text,
+            receive_text,
             cancel_transfer,
             get_transfers,
             get_transfer_status,
@@ -1929,4 +1952,163 @@ fn pick_directory(
     _start_directory: Option<String>,
 ) -> Result<PickerDirectoryInfo, String> {
     Err("Directory picking is only available on mobile platforms. Use tauri-plugin-dialog on desktop.".to_string())
+}
+
+/// Send text as a virtual file and return the ticket
+#[tauri::command]
+async fn send_text(
+    app: AppHandle,
+    request: SendTextRequest,
+) -> Result<String, String> {
+    log_info!("📝 SEND_TEXT STARTED");
+    log_info!("Text length: {} chars", request.text.len());
+
+    // Convert text to bytes
+    let bytes = request.text.as_bytes();
+
+    // Create filename
+    let filename = request.filename.unwrap_or_else(|| "message.txt".to_string());
+    log_info!("Filename: {}", filename);
+
+    // Get temp directory
+    let temp_dir = app.path().temp_dir().map_err(|e| {
+        let err_msg = format!("Failed to get temp directory: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
+
+    // Create a unique temp file for the text
+    let unique_id = Uuid::new_v4().simple().to_string()[..8].to_string();
+    let safe_filename = filename.replace(['/', '\\', '\0'], "_");
+    let temp_filename = format!("{}-{}.txt", safe_filename, unique_id);
+    let file_path = temp_dir.join(&temp_filename);
+
+    // Write text to temp file
+    tokio::fs::write(&file_path, bytes).await.map_err(|e| {
+        let err_msg = format!("Failed to write temp file: {}", e);
+        log_error!("❌ {}", err_msg);
+        err_msg
+    })?;
+    log_info!("Temp file created: {:?}", file_path);
+
+    // Parse ticket type
+    let ticket_type = match request.ticket_type.as_str() {
+        "id" => sendme_lib::types::AddrInfoOptions::Id,
+        "relay" => sendme_lib::types::AddrInfoOptions::Relay,
+        "addresses" => sendme_lib::types::AddrInfoOptions::Addresses,
+        "relay_and_addresses" => sendme_lib::types::AddrInfoOptions::RelayAndAddresses,
+        _ => {
+            let err = format!("Invalid ticket type: {}", request.ticket_type);
+            log_error!("❌ {}", err);
+            return Err(err);
+        }
+    };
+
+    let args = SendArgs {
+        path: file_path.clone(),
+        ticket_type,
+        common: CommonConfig {
+            temp_dir: Some(temp_dir.clone()),
+            ..Default::default()
+        },
+    };
+
+    log_info!("Calling sendme_lib::send_with_progress...");
+    match sendme_lib::send_with_progress(args, tokio::sync::mpsc::channel(32).0).await {
+        Ok(result) => {
+            log_info!("✅ SEND_TEXT COMPLETED");
+            log_info!("Ticket: {}", result.ticket.to_string());
+
+            // Clean up temp file
+            let _ = tokio::fs::remove_file(&file_path).await;
+
+            Ok(result.ticket.to_string())
+        }
+        Err(e) => {
+            log_error!("❌ SEND_TEXT FAILED: {}", e);
+
+            // Clean up temp file
+            let _ = tokio::fs::remove_file(&file_path).await;
+
+            Err(e.to_string())
+        }
+    }
+}
+
+/// Receive text and return the content
+#[tauri::command]
+async fn receive_text(
+    app: AppHandle,
+    request: ReceiveTextRequest,
+) -> Result<TextResult, String> {
+    log_info!("📥 RECEIVE_TEXT STARTED");
+    log_info!("Ticket length: {} chars", request.ticket.len());
+
+    // Parse ticket
+    let ticket = request.ticket.parse().map_err(|e| {
+        let err = format!("Invalid ticket: {}", e);
+        log_error!("❌ {}", err);
+        err
+    })?;
+    log_info!("Ticket parsed successfully");
+
+    // Get temp directory
+    let temp_dir = app.path().temp_dir().map_err(|e| {
+        let err = format!("Failed to get temp directory: {}", e);
+        log_error!("❌ {}", err);
+        err
+    })?;
+    log_info!("Temp dir: {:?}", temp_dir);
+
+    let args = ReceiveArgs {
+        ticket,
+        common: CommonConfig {
+            format: Format::Hex,
+            relay: RelayModeOption::Default,
+            show_secret: false,
+            magic_ipv4_addr: None,
+            magic_ipv6_addr: None,
+            temp_dir: Some(temp_dir.clone()),
+        },
+        export_dir: Some(temp_dir.clone()),
+    };
+
+    log_info!("Calling sendme_lib::receive_with_progress...");
+    match sendme_lib::receive_with_progress(args, tokio::sync::mpsc::channel(32).0).await {
+        Ok(result) => {
+            log_info!("✅ RECEIVE_TEXT COMPLETED");
+            log_info!("Files: {}", result.total_files);
+
+            // Read the received file content
+            let mut text = String::new();
+            let mut filename = String::new();
+
+            for (name, _hash) in result.collection.iter() {
+                let file_path = temp_dir.join(name);
+                if file_path.exists() {
+                    filename = name.to_string();
+                    text = tokio::fs::read_to_string(&file_path).await.map_err(|e| {
+                        let err = format!("Failed to read file: {}", e);
+                        log_error!("❌ {}", err);
+                        err
+                    })?;
+                    log_info!("Read {} bytes from {}", text.len(), filename);
+                    break;
+                }
+            }
+
+            // Clean up temp directory
+            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+
+            if text.is_empty() {
+                return Err("No text content received".to_string());
+            }
+
+            Ok(TextResult { text, filename })
+        }
+        Err(e) => {
+            log_error!("❌ RECEIVE_TEXT FAILED: {}", e);
+            Err(e.to_string())
+        }
+    }
 }

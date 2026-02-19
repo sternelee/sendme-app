@@ -10,6 +10,8 @@ import {
 import {
   send_file,
   receive_file,
+  send_text,
+  receive_text,
   cancel_transfer,
   get_transfers,
   open_received_file,
@@ -49,6 +51,8 @@ import {
   Home,
   History,
   Settings,
+  MessageSquare,
+  Clipboard,
 } from "lucide-solid";
 import { Toaster, toast } from "solid-sonner";
 import {
@@ -116,6 +120,17 @@ export default function Mobile() {
   const [receiveOutputDir, setReceiveOutputDir] = createSignal("");
   const [isReceiving, setIsReceiving] = createSignal(false);
   const [receiveProgress, setReceiveProgress] = createSignal(0);
+
+  // Text send state
+  const [sendTextContent, setSendTextContent] = createSignal("");
+  const [sendTextTicket, setSendTextTicket] = createSignal<string | null>(null);
+  const [isSendingText, setIsSendingText] = createSignal(false);
+
+  // Text receive state
+  const [receiveTextTicket, setReceiveTextTicket] = createSignal("");
+  const [receivedText, setReceivedText] = createSignal("");
+  const [receivedTextFilename, setReceivedTextFilename] = createSignal("");
+  const [isReceivingText, setIsReceivingText] = createSignal(false);
 
   // Transfer state
   const [transfers, setTransfers] = createSignal<Transfer[]>([]);
@@ -231,6 +246,66 @@ export default function Mobile() {
     } finally {
       setIsReceiving(false);
       setCurrentReceivingId(null);
+    }
+  }
+
+  // Text send/receive handlers
+  async function handleSendText() {
+    if (!sendTextContent() || isSendingText()) return;
+
+    setIsSendingText(true);
+    setSendTextTicket(null);
+
+    try {
+      const ticket = await send_text({
+        text: sendTextContent(),
+        ticket_type: "relay_and_addresses",
+      });
+      setSendTextTicket(ticket);
+    } catch (e) {
+      console.error("Send text error:", e);
+      toast.error(`Send text failed: ${e}`);
+    } finally {
+      setIsSendingText(false);
+    }
+  }
+
+  async function handleReceiveText() {
+    if (!receiveTextTicket() || isReceivingText()) return;
+
+    setIsReceivingText(true);
+    setReceivedText("");
+    setReceivedTextFilename("");
+
+    try {
+      const result = await receive_text({
+        ticket: receiveTextTicket(),
+      });
+      setReceivedText(result.text);
+      setReceivedTextFilename(result.filename);
+      setReceiveTextTicket("");
+    } catch (e) {
+      console.error("Receive text error:", e);
+      toast.error(`Receive text failed: ${e}`);
+    } finally {
+      setIsReceivingText(false);
+    }
+  }
+
+  async function copyReceivedText() {
+    if (receivedText()) {
+      await navigator.clipboard.writeText(receivedText());
+      toast.success("Text copied!");
+    }
+  }
+
+  async function shareTextTicket() {
+    if (sendTextTicket()) {
+      try {
+        await navigator.share({ text: sendTextTicket()! });
+      } catch (e) {
+        console.error("Share error:", e);
+      }
     }
   }
 
@@ -502,6 +577,103 @@ export default function Mobile() {
                     {receiveProgress()}%
                   </Show>
                 </button>
+              </div>
+
+              {/* Text Transfer Card */}
+              <div class="glass-liquid rounded-2xl p-4 border border-white/10">
+                <h2 class="flex items-center gap-2 text-base font-semibold text-white mb-3">
+                  <MessageSquare size={18} class="text-purple-400" />
+                  Send Text
+                </h2>
+
+                {/* Text Input */}
+                <textarea
+                  value={sendTextContent()}
+                  onInput={(e) => setSendTextContent(e.currentTarget.value)}
+                  placeholder="Enter text to send..."
+                  class="w-full h-20 rounded-xl border border-white/5 bg-white/5 p-3 font-mono text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 resize-none"
+                />
+
+                {/* Send Text Button */}
+                <button
+                  onClick={handleSendText}
+                  disabled={!sendTextContent() || isSendingText()}
+                  class="touch-active mt-3 w-full flex h-12 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-purple-600 to-indigo-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50"
+                >
+                  <Show when={isSendingText()} fallback={<><Zap size={18} /> Generate Ticket</>}>
+                    <Loader2 size={18} class="animate-spin" />
+                  </Show>
+                </button>
+
+                {/* Text Ticket Display */}
+                <Show when={sendTextTicket()}>
+                  <Motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    class="mt-3 overflow-hidden"
+                  >
+                    <div class="glass-inset rounded-xl p-3">
+                      <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-white/50">Text Ticket</span>
+                        <div class="flex gap-2">
+                          <button onClick={() => navigator.clipboard.writeText(sendTextTicket()!)} class="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white">
+                            <Copy size={14} />
+                          </button>
+                          <button onClick={shareTextTicket} class="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white">
+                            <Share2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <p class="font-mono text-xs text-white/80 break-all">{sendTextTicket()}</p>
+                    </div>
+                  </Motion.div>
+                </Show>
+
+                {/* Divider */}
+                <div class="flex items-center gap-2 my-4">
+                  <div class="h-px flex-1 bg-white/10" />
+                  <span class="text-xs text-white/30">OR</span>
+                  <div class="h-px flex-1 bg-white/10" />
+                </div>
+
+                {/* Receive Text */}
+                <h3 class="text-sm font-medium text-white/70 mb-2">Receive Text</h3>
+                <input
+                  type="text"
+                  value={receiveTextTicket()}
+                  onInput={(e) => setReceiveTextTicket(e.currentTarget.value)}
+                  placeholder="Paste text ticket..."
+                  class="w-full h-12 rounded-xl border border-white/5 bg-white/5 px-4 font-mono text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50"
+                />
+
+                <button
+                  onClick={handleReceiveText}
+                  disabled={!receiveTextTicket() || isReceivingText()}
+                  class="touch-active mt-3 w-full flex h-12 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 font-semibold text-white transition-all hover:shadow-lg hover:shadow-indigo-500/25 disabled:opacity-50"
+                >
+                  <Show when={isReceivingText()} fallback={<><Download size={18} /> Receive Text</>}>
+                    <Loader2 size={18} class="animate-spin" />
+                  </Show>
+                </button>
+
+                {/* Received Text Display */}
+                <Show when={receivedText()}>
+                  <Motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    class="mt-3 overflow-hidden"
+                  >
+                    <div class="glass-inset rounded-xl p-3">
+                      <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-white/50">Received: {receivedTextFilename()}</span>
+                        <button onClick={copyReceivedText} class="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white">
+                          <Clipboard size={14} />
+                        </button>
+                      </div>
+                      <pre class="font-mono text-xs text-white/80 whitespace-pre-wrap break-words max-h-24 overflow-y-auto">{receivedText()}</pre>
+                    </div>
+                  </Motion.div>
+                </Show>
               </div>
             </Motion.div>
           </Show>
