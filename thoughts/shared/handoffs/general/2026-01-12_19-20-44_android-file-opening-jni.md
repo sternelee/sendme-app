@@ -4,7 +4,7 @@ session_name: general
 researcher: claude
 git_commit: 12fdd27a982009c340f1b94eb390c2c5cbac1f78
 branch: main
-repository: iroh-sendme
+repository: sendme-app
 topic: "Android File Opening via JNI Implementation"
 tags: [android, jni, file-provider, mediastore, scoped-storage]
 status: blocked
@@ -111,7 +111,7 @@ turn_span_id:
 - `app/src/lib/commands.ts` - Command wrappers
 
 ### Build Artifacts
-- APK: `/Users/sternelee/www/github/iroh-sendme/app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`
+- APK: `/Users/sternelee/www/github/sendme-app/app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`
 
 ## Action Items & Next Steps
 

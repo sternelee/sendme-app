@@ -102,7 +102,7 @@ export default function HomePage() {
               <Motion.a
                 hover={{ scale: 1.05, backgroundColor: "rgba(255, 255, 255, 0.15)" }}
                 press={{ scale: 0.95 }}
-                href="https://github.com/n0kosec/iroh-sendme"
+                href="https://github.com/sternelee/sendme-app"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="w-full sm:w-auto px-8 py-4 rounded-xl bg-white/10 border border-white/10 text-white font-semibold flex items-center justify-center gap-2"
@@ -242,7 +242,7 @@ export default function HomePage() {
             <Motion.a
               hover={{ scale: 1.02 }}
               press={{ scale: 0.98 }}
-              href="https://github.com/n0kosec/iroh-sendme/releases"
+              href="https://github.com/sternelee/sendme-app/releases"
               target="_blank"
               rel="noopener noreferrer"
               class="block w-full px-4 py-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-300 text-sm font-medium text-center hover:bg-purple-500/20 transition-all"
@@ -267,7 +267,7 @@ export default function HomePage() {
             <Motion.a
               hover={{ scale: 1.02 }}
               press={{ scale: 0.98 }}
-              href="https://github.com/n0kosec/iroh-sendme/releases"
+              href="https://github.com/sternelee/sendme-app/releases"
               target="_blank"
               rel="noopener noreferrer"
               class="block w-full px-4 py-2.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-300 text-sm font-medium text-center hover:bg-orange-500/20 transition-all"
@@ -389,7 +389,7 @@ export default function HomePage() {
             </div>
             <div class="flex items-center gap-6 text-sm text-white/40">
               <a
-                href="https://github.com/n0kosec/iroh-sendme"
+                href="https://github.com/sternelee/sendme-app"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="hover:text-white/60 transition-colors"

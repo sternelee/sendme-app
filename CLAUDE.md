@@ -50,7 +50,7 @@ pnpm run tauri build      # Build complete desktop app
 This is a Cargo workspace with three members:
 
 ```
-iroh-sendme/
+sendme-app/
 ├── lib/          # sendme-lib crate - core library
 ├── cli/          # sendme CLI - original command-line interface
 ├── app/          # Tauri desktop application
