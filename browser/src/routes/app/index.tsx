@@ -1,8 +1,9 @@
 import { createSignal, onMount, Show, Switch, Match } from "solid-js";
-import { initWasm } from "../../lib/commands";
-import { useAuth } from "../../lib/contexts/user-better-auth";
+import { initWasm, sendText, receiveText } from "../../lib/commands";
+import { useAuth } from "../../lib/contexts/contexts";
 import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
+import TextTab from "../../components/sendme/TextTab";
 import DeviceListModal from "../../components/devices/DeviceListModal";
 import { Motion, Presence } from "solid-motionone";
 import {
@@ -11,15 +12,37 @@ import {
   TbOutlineDownload,
   TbOutlineDevices,
   TbOutlineLogout,
+  TbOutlineSun,
+  TbOutlineMoon,
+  TbOutlineMessage,
+  TbOutlineHistory,
+  TbOutlineSettings,
+  TbOutlineHome,
 } from "solid-icons/tb";
 
+type Theme = "light" | "dark";
+type AppTab = "home" | "history" | "settings";
+type TransferTab = "send" | "receive" | "text";
+
+interface Transfer {
+  id: string;
+  transfer_type: string;
+  path: string;
+  status: string;
+  created_at: number;
+}
+
 export default function AppPage() {
-  const [activeTab, setActiveTab] = createSignal<"send" | "receive">("send");
+  const [activeAppTab, setActiveAppTab] = createSignal<AppTab>("home");
+  const [activeTransferTab, setActiveTransferTab] = createSignal<TransferTab>("send");
   const [isInitializing, setIsInitializing] = createSignal(true);
   const [mousePos, setMousePos] = createSignal({ x: 0, y: 0 });
   const [isDeviceModalOpen, setIsDeviceModalOpen] = createSignal(false);
+  const [theme, setTheme] = createSignal<Theme>("dark");
+  const [transfers, setTransfers] = createSignal<Transfer[]>([]);
 
-  const auth = useAuth();
+  // Mock transfers for demo (in real app, this would come from backend)
+  const mockTransfers: Transfer[] = [];
 
   onMount(async () => {
     try {
@@ -30,6 +53,13 @@ export default function AppPage() {
       setIsInitializing(false);
     }
 
+    // Load theme from localStorage
+    const savedTheme = localStorage.getItem("theme") as Theme | null;
+    if (savedTheme) {
+      setTheme(savedTheme);
+      applyTheme(savedTheme);
+    }
+
     const handleMouseMove = (e: MouseEvent) => {
       setMousePos({ x: e.clientX, y: e.clientY });
     };
@@ -37,12 +67,21 @@ export default function AppPage() {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   });
 
-  const handleLogout = async () => {
-    await auth.logout();
-  };
+  function applyTheme(newTheme: Theme) {
+    const root = document.documentElement;
+    root.classList.remove("light", "dark");
+    root.classList.add(newTheme);
+  }
+
+  function toggleTheme() {
+    const newTheme = theme() === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    applyTheme(newTheme);
+    localStorage.setItem("theme", newTheme);
+  }
 
   return (
-    <div class="min-h-screen bg-animate text-white selection:bg-purple-500/30">
+    <div class="min-h-screen bg-animate text-gray-900 dark:text-white selection:bg-purple-500/30">
       {/* Dynamic Background */}
       <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <Motion.div
@@ -50,20 +89,20 @@ export default function AppPage() {
             x: mousePos().x * 0.05,
             y: mousePos().y * 0.05,
           }}
-          class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[120px]"
+          class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/20 dark:bg-purple-600/20 rounded-full blur-[120px]"
         />
         <Motion.div
           animate={{
             x: mousePos().x * -0.03,
             y: mousePos().y * -0.03,
           }}
-          class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[120px]"
+          class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/20 dark:bg-indigo-600/20 rounded-full blur-[120px]"
         />
         <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,transparent_0%,rgba(18,14,38,0.4)_100%)]" />
       </div>
 
       {/* Header */}
-      <header class="relative z-20 border-b border-white/5 backdrop-blur-md bg-black/10">
+      <header class="relative z-20 border-b border-gray-200 dark:border-white/5 backdrop-blur-md bg-white/80 dark:bg-black/10">
         <div class="container mx-auto px-6 py-4 flex items-center justify-between">
           <Motion.a
             hover={{ scale: 1.05 }}
@@ -71,141 +110,254 @@ export default function AppPage() {
             class="flex items-center gap-3 group"
             href="/"
           >
-            <div class="w-10 h-10 rounded-xl bg-linear-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:shadow-purple-500/40 transition-all">
+            <div class="w-10 h-10 rounded-xl bg-linear-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:shadow-purple-500/40 transition-all">
               <TbOutlineSparkles size={22} class="text-white" />
             </div>
-            <span class="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
+            <span class="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-white/60">
               Sendme
             </span>
           </Motion.a>
 
-          <Show when={auth.isAuthenticated() && auth.user()}>
-            <div class="flex items-center gap-4">
-              <div class="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
+          <div class="flex items-center gap-2">
+            {/* Theme Toggle */}
+            <Motion.button
+              hover={{ scale: 1.05 }}
+              press={{ scale: 0.95 }}
+              onClick={toggleTheme}
+              class="p-2.5 rounded-xl bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:text-gray-900 dark:hover:text-white transition-colors"
+              title={`Current theme: ${theme()}`}
+            >
+              <Show when={theme() === "dark"} fallback={<TbOutlineMoon size={20} />}>
+                <TbOutlineSun size={20} />
+              </Show>
+            </Motion.button>
+
+            <Show when={false /* auth.isAuthenticated() && auth.user() */}>
+              <div class="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10">
                 <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <span class="text-xs font-medium text-white/80">
-                  {auth.user()?.name}
+                <span class="text-xs font-medium text-gray-700 dark:text-white/80">
+                  User
                 </span>
               </div>
               <Motion.button
-                hover={{
-                  scale: 1.05,
-                  backgroundColor: "rgba(255, 255, 255, 0.15)",
-                }}
+                hover={{ scale: 1.05, backgroundColor: "rgba(0, 0, 0, 0.1)" }}
                 press={{ scale: 0.95 }}
                 onClick={() => setIsDeviceModalOpen(true)}
-                class="p-2.5 rounded-xl bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors"
+                class="p-2.5 rounded-xl bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:text-gray-900 dark:hover:text-white transition-colors"
                 title="Devices"
               >
                 <TbOutlineDevices size={20} />
               </Motion.button>
               <Motion.button
-                hover={{
-                  scale: 1.05,
-                  backgroundColor: "rgba(255, 255, 255, 0.15)",
-                }}
+                hover={{ scale: 1.05, backgroundColor: "rgba(0, 0, 0, 0.1)" }}
                 press={{ scale: 0.95 }}
-                onClick={handleLogout}
-                class="p-2.5 rounded-xl bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors"
+                class="p-2.5 rounded-xl bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:text-gray-900 dark:hover:text-white transition-colors"
                 title="Logout"
               >
                 <TbOutlineLogout size={20} />
               </Motion.button>
-            </div>
-          </Show>
+            </Show>
+          </div>
         </div>
       </header>
 
       {/* Main content */}
-      <main class="relative z-10 container mx-auto px-4 py-12 min-h-[calc(100vh-80px)] flex flex-col items-center">
-        <div class="relative w-full max-w-xl min-h-[600px]">
+      <main class="relative z-10 container mx-auto px-4 py-8 min-h-[calc(100vh-80px)] flex flex-col items-center">
+        <div class="w-full max-w-2xl space-y-8">
           <Presence>
             {isInitializing() ? (
               <Motion.div
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.1 }}
                 transition={{ duration: 0.2 }}
-                class="absolute inset-0 flex items-center justify-center"
+                class="glass-liquid glass-frost rounded-3xl border border-gray-200 dark:border-white/10 p-8 text-center"
               >
-                <div class="glass rounded-3xl p-12 text-center max-w-sm w-full">
-                  <div class="relative w-16 h-16 mx-auto mb-6">
-                    <div class="absolute inset-0 rounded-full border-4 border-purple-500/20" />
-                    <div class="absolute inset-0 rounded-full border-4 border-t-purple-500 animate-spin" />
-                  </div>
-                  <h3 class="text-lg font-semibold mb-2">Powering Up</h3>
-                  <p class="text-white/50 text-sm">
-                    Preparing secure P2P node...
-                  </p>
-                </div>
+                <TbOutlineSparkles class="mx-auto mb-4 text-purple-400 animate-spin" size={40} />
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  Initializing
+                </h3>
+                <p class="text-sm text-gray-500 dark:text-white/50">
+                  Preparing secure P2P node...
+                </p>
               </Motion.div>
             ) : (
               <Motion.div
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.2 }}
-                class="absolute inset-0"
+                class="glass-liquid glass-frost rounded-3xl border border-gray-200 dark:border-white/10 shadow-2xl"
               >
-                {/* Tabs */}
-                <div class="glass rounded-2xl p-1.5 mb-8 flex gap-1 relative overflow-hidden">
-                  <Motion.div
-                    animate={{
-                      left: activeTab() === "send" ? "6px" : "calc(50% + 2px)",
-                      right: activeTab() === "send" ? "calc(50% + 2px)" : "6px",
-                    }}
-                    transition={{ duration: 0.2, easing: "ease-out" }}
-                    class="absolute top-1.5 bottom-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-lg shadow-purple-500/20"
-                  />
-                  <button
-                    onClick={() => setActiveTab("send")}
-                    class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${activeTab() === "send"
-                      ? "text-white"
-                      : "text-white/50 hover:text-white/80"
+                <div class="p-8">
+                  {/* App Tabs (Home/History/Settings) */}
+                  <div class="flex gap-1 p-1.5 mb-8 bg-gray-100 dark:bg-white/5 rounded-xl">
+                    <button
+                      onClick={() => setActiveAppTab("home")}
+                      class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold transition-all ${
+                        activeAppTab() === "home"
+                          ? "bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm"
+                          : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
                       }`}
-                  >
-                    <TbOutlineUpload size={20} />
-                    Send
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("receive")}
-                    class={`relative z-10 flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-semibold ${activeTab() === "receive"
-                      ? "text-white"
-                      : "text-white/50 hover:text-white/80"
+                    >
+                      <TbOutlineHome size={18} />
+                      Home
+                    </button>
+                    <button
+                      onClick={() => setActiveAppTab("history")}
+                      class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold transition-all ${
+                        activeAppTab() === "history"
+                          ? "bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm"
+                          : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
                       }`}
-                  >
-                    <TbOutlineDownload size={20} />
-                    Receive
-                  </button>
-                </div>
+                    >
+                      <TbOutlineHistory size={18} />
+                      History
+                    </button>
+                    <button
+                      onClick={() => setActiveAppTab("settings")}
+                      class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold transition-all ${
+                        activeAppTab() === "settings"
+                          ? "bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm"
+                          : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
+                      }`}
+                    >
+                      <TbOutlineSettings size={18} />
+                      Settings
+                    </button>
+                  </div>
 
-                {/* Content area */}
-                <div class="relative">
-                  <Presence exitBeforeEnter>
-                    <Switch fallback={null}>
-                      <Match when={activeTab() === "send"}>
-                        <Motion.div
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0.2, easing: "ease-out" }}
-                          class="glass rounded-3xl p-1 overflow-hidden"
-                        >
-                          <div class="p-8">
-                            <SendTab />
-                          </div>
-                        </Motion.div>
-                      </Match>
-                      <Match when={activeTab() === "receive"}>
-                        <Motion.div
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0.2, easing: "ease-out" }}
-                          class="glass rounded-3xl p-1 overflow-hidden"
-                        >
-                          <div class="p-8">
-                            <ReceiveTab isActive={true} />
-                          </div>
-                        </Motion.div>
-                      </Match>
-                    </Switch>
-                  </Presence>
+                  {/* Home Tab Content */}
+                  <Show when={activeAppTab() === "home"}>
+                    {/* Transfer Tabs (Send/Receive/Text) */}
+                    <div class="relative mb-8 flex gap-1 overflow-hidden p-1.5 bg-gray-100 dark:bg-white/5 rounded-xl">
+                      <Motion.div
+                        animate={{
+                          left:
+                            activeTransferTab() === "send"
+                              ? "2px"
+                              : activeTransferTab() === "receive"
+                                ? "calc(33.33% + 1px)"
+                                : "calc(66.66% + 1px)",
+                          width: "calc(33.33% - 4px)",
+                        }}
+                        transition={{ duration: 0.2, easing: "ease-out" }}
+                        class="absolute top-1.5 bottom-1.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/20"
+                      />
+                      <button
+                        onClick={() => setActiveTransferTab("send")}
+                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3.5 font-semibold transition-all ${
+                          activeTransferTab() === "send"
+                            ? "text-white"
+                            : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
+                        }`}
+                      >
+                        <TbOutlineUpload size={20} />
+                        Send
+                      </button>
+                      <button
+                        onClick={() => setActiveTransferTab("receive")}
+                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3.5 font-semibold transition-all ${
+                          activeTransferTab() === "receive"
+                            ? "text-white"
+                            : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
+                        }`}
+                      >
+                        <TbOutlineDownload size={20} />
+                        Receive
+                      </button>
+                      <button
+                        onClick={() => setActiveTransferTab("text")}
+                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3.5 font-semibold transition-all ${
+                          activeTransferTab() === "text"
+                            ? "text-white"
+                            : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
+                        }`}
+                      >
+                        <TbOutlineMessage size={20} />
+                        Text
+                      </button>
+                    </div>
+
+                    {/* Transfer Content */}
+                    <div class="relative">
+                      <Presence exitBeforeEnter>
+                        <Switch fallback={null}>
+                          <Match when={activeTransferTab() === "send"}>
+                            <Motion.div
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              transition={{ duration: 0.2, easing: "ease-out" }}
+                            >
+                              <SendTab />
+                            </Motion.div>
+                          </Match>
+                          <Match when={activeTransferTab() === "receive"}>
+                            <Motion.div
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              transition={{ duration: 0.2, easing: "ease-out" }}
+                            >
+                              <ReceiveTab isActive={true} />
+                            </Motion.div>
+                          </Match>
+                          <Match when={activeTransferTab() === "text"}>
+                            <Motion.div
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              transition={{ duration: 0.2, easing: "ease-out" }}
+                            >
+                              <TextTab />
+                            </Motion.div>
+                          </Match>
+                        </Switch>
+                      </Presence>
+                    </div>
+                  </Show>
+
+                  {/* History Tab Content */}
+                  <Show when={activeAppTab() === "history"}>
+                    <div class="py-8 text-center">
+                      <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+                        <TbOutlineHistory size={32} class="text-gray-400 dark:text-white/20" />
+                      </div>
+                      <p class="text-gray-500 dark:text-white/40">No transfers yet</p>
+                      <p class="text-sm text-gray-400 dark:text-white/30 mt-1">
+                        Your shared and received files will appear here
+                      </p>
+                    </div>
+                  </Show>
+
+                  {/* Settings Tab Content */}
+                  <Show when={activeAppTab() === "settings"}>
+                    <div class="space-y-6 py-4">
+                      <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-2xl">
+                        <div>
+                          <p class="font-medium text-gray-900 dark:text-white">Theme</p>
+                          <p class="text-sm text-gray-500 dark:text-white/40">Choose appearance</p>
+                        </div>
+                        <div class="flex gap-1 p-1 bg-gray-200 dark:bg-white/5 rounded-lg">
+                          <button
+                            onClick={() => { setTheme("light"); applyTheme("light"); localStorage.setItem("theme", "light"); }}
+                            class={`px-3 py-1.5 rounded-md text-sm transition-all ${
+                              theme() === "light"
+                                ? "bg-white dark:bg-white/10 text-purple-600 dark:text-purple-400 shadow-sm"
+                                : "text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white"
+                            }`}
+                          >
+                            Light
+                          </button>
+                          <button
+                            onClick={() => { setTheme("dark"); applyTheme("dark"); localStorage.setItem("theme", "dark"); }}
+                            class={`px-3 py-1.5 rounded-md text-sm transition-all ${
+                              theme() === "dark"
+                                ? "bg-white dark:bg-white/10 text-purple-600 dark:text-purple-400 shadow-sm"
+                                : "text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white"
+                            }`}
+                          >
+                            Dark
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </Show>
                 </div>
               </Motion.div>
             )}
@@ -219,19 +371,19 @@ export default function AppPage() {
           class="relative z-10 mt-auto py-12 text-center"
         >
           <div class="flex items-center justify-center gap-4 mb-4">
-            <div class="h-px w-8 bg-white/10" />
-            <span class="text-[10px] uppercase tracking-[0.2em] text-white/30 font-bold">
+            <div class="h-px w-8 bg-gray-300 dark:bg-white/10" />
+            <span class="text-[10px] uppercase tracking-[0.2em] text-gray-500 dark:text-white/30 font-bold">
               Secure Protocol
             </span>
-            <div class="h-px w-8 bg-white/10" />
+            <div class="h-px w-8 bg-gray-300 dark:bg-white/10" />
           </div>
-          <p class="text-sm text-white/40">
+          <p class="text-sm text-gray-500 dark:text-white/40">
             Powered by{" "}
             <a
               href="https://iroh.computer"
               target="_blank"
               rel="noopener noreferrer"
-              class="text-purple-400/80 hover:text-purple-300 transition-colors font-medium underline underline-offset-4 decoration-purple-500/30"
+              class="text-purple-500 dark:text-purple-400/80 hover:text-purple-400 transition-colors font-medium underline underline-offset-4 decoration-purple-500/30"
             >
               iroh.computer
             </a>
@@ -240,7 +392,7 @@ export default function AppPage() {
       </main>
 
       {/* Device List Modal */}
-      <Show when={auth.isAuthenticated()}>
+      <Show when={false /* auth.isAuthenticated() */}>
         <DeviceListModal
           isOpen={isDeviceModalOpen()}
           onClose={() => setIsDeviceModalOpen(false)}

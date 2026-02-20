@@ -24,6 +24,41 @@
   --font-body: "Inter", system-ui, sans-serif;
 }
 
+/* Light mode */
+html.light,
+.light {
+  --color-background: oklch(0.98 0.01 260);
+  --color-foreground: oklch(0.15 0.02 260);
+  --color-muted: oklch(0.92 0.02 260);
+  --color-muted-foreground: oklch(0.5 0.03 260);
+  --color-border: oklch(0.88 0.02 260);
+  --color-card: oklch(1 0 0);
+}
+
+/* Light theme glass */
+html.light .glass,
+.light .glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+}
+
+html.light .glass-inset,
+.light .glass-inset {
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* Light theme background */
+html.light .bg-animate,
+.light .bg-animate {
+  background: linear-gradient(-45deg, #f5f5fa, #e8e8f0, #f0e8f8, #f5f5fa);
+  background-size: 400% 400%;
+}
+
 /* Base styles */
 @layer base {
   * {

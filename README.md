@@ -60,8 +60,8 @@ cargo install sendme
 
 #### Build from source
 ```bash
-git clone https://github.com/sternelee/iroh-sendme.git
-cd iroh-sendme
+git clone https://github.com/sternelee/sendme-app.git
+cd sendme-app
 cargo build --release -p cli
 # Binary will be at: target/release/sendme
 ```
@@ -69,15 +69,15 @@ cargo build --release -p cli
 ### Desktop Application
 
 #### Pre-built Releases
-Download the latest release for your platform from the [Releases](https://github.com/sternelee/iroh-sendme/releases) page:
+Download the latest release for your platform from the [Releases](https://github.com/sternelee/sendme-app/releases) page:
 - **Windows**: `.msi` installer
 - **macOS**: `.dmg` or `.app` bundle
 - **Linux**: `.deb`, `.rpm`, or `.AppImage`
 
 #### Build from source
 ```bash
-git clone https://github.com/sternelee/iroh-sendme.git
-cd iroh-sendme/app
+git clone https://github.com/sternelee/sendme-app.git
+cd sendme-app/app
 pnpm install
 pnpm run tauri build
 ```
@@ -192,7 +192,7 @@ Open `http://localhost:8080` to use the web interface.
 This is a Cargo workspace with multiple components:
 
 ```
-iroh-sendme/
+sendme-app/
 ├── lib/                    # Core library (sendme-lib)
 │   ├── send.rs            # Send/host functionality
 │   ├── receive.rs         # Receive/download functionality

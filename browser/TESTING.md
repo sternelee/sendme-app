@@ -69,7 +69,7 @@ The server will start on a random port (e.g., `http://localhost:49667`).
 **Steps**:
 1. From terminal, send a file using CLI:
    ```bash
-   cd /path/to/iroh-sendme
+   cd /path/to/sendme-app
    cargo run --bin sendme send test-file.txt
    ```
    
@@ -104,7 +104,7 @@ The server will start on a random port (e.g., `http://localhost:49667`).
 
 2. From terminal, receive the file:
    ```bash
-   cd /path/to/iroh-sendme
+   cd /path/to/sendme-app
    cargo run --bin sendme receive <paste-ticket-here>
    ```
 

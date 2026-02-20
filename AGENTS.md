@@ -13,7 +13,7 @@ Sendme is a **P2P file transfer system** built with [iroh](https://crates.io/cra
 ### Cargo Workspace Structure
 
 ```
-iroh-sendme/
+sendme-app/
 ├── lib/                    # sendme-lib - Core library (send/receive/nearby)
 ├── cli/                    # sendme CLI - Binary using sendme-lib
 ├── app/src-tauri/          # Tauri backend
