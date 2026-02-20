@@ -22,13 +22,34 @@
   /* New premium tokens */
   --font-heading: "Outfit", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
-  
+
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
   --radius-2xl: 2rem;
   --radius-3xl: 2.5rem;
+}
+
+/* Light theme color overrides */
+html.light,
+.light {
+  --color-primary: oklch(0.6 0.2 280);
+  --color-primary-foreground: oklch(0.98 0 0);
+  --color-secondary: oklch(0.95 0.02 280);
+  --color-secondary-foreground: oklch(0.2 0.05 280);
+  --color-background: oklch(0.98 0.01 260);
+  --color-foreground: oklch(0.15 0.02 260);
+  --color-muted: oklch(0.92 0.02 260);
+  --color-muted-foreground: oklch(0.5 0.03 260);
+  --color-accent: oklch(0.85 0.05 280);
+  --color-accent-foreground: oklch(0.2 0.05 280);
+  --color-destructive: oklch(0.6 0.18 20);
+  --color-border: oklch(0.88 0.02 260);
+  --color-input: oklch(0.92 0.02 260);
+  --color-ring: oklch(0.6 0.2 280);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.15 0.02 260);
 }
 
 /* Base styles */
@@ -85,6 +106,13 @@
   background: linear-gradient(-45deg, #120e26, #1a1a3a, #2e1a47, #120e26);
   background-size: 400% 400%;
   animation: mesh-gradient 15s ease infinite;
+}
+
+/* Light theme background */
+html.light .bg-animate,
+.light .bg-animate {
+  background: linear-gradient(-45deg, #f0f4f8, #e2e8f0, #cbd5e1, #f0f4f8);
+  background-size: 400% 400%;
 }
 
 /* Float animation */
@@ -165,6 +193,11 @@
 /* Text glow */
 .text-glow {
   text-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+}
+
+html.light .text-glow,
+.light .text-glow {
+  text-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
 }
 
 /* ========================
