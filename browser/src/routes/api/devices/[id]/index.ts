@@ -9,13 +9,13 @@
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
 import { deleteDevice as deleteDeviceFromDb } from "~/lib/api/devices";
-import { createAuth, type CloudflareBindings } from "~/../better-auth.config";
+import { authenticateRequest, type Env } from "~/lib/auth";
 
 /**
  * Cloudflare context interface
  */
 interface CloudflareContext {
-  env: CloudflareBindings;
+  env: Env;
   cf?: IncomingRequestCfProperties;
 }
 
@@ -40,24 +40,19 @@ interface RequestEvent {
 export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const cf = requestEvent.nativeEvent.context.cloudflare.cf;
-    const auth = createAuth(env, cf);
 
-    const session = await auth.api.getSession({
-      headers: requestEvent.request.headers,
-    });
+    const { userId, status } = await authenticateRequest(requestEvent.request, env);
 
-    if (!session) {
+    if (!userId) {
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized", status }),
         { status: 401, headers: { "Content-Type": "application/json" } }
       );
     }
 
     const deviceId = requestEvent.params.id;
-    const userId = session.user.id;
 
-    const db = drizzle(env.DB, { schema });
+    const db = drizzle(env.DB!, { schema });
 
     // Verify the device belongs to the user before deleting
     const device = await db.query.devices.findFirst({

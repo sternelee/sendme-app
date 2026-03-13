@@ -2,7 +2,8 @@ import { Router } from "@solidjs/router";
 import { FileRoutes } from "@solidjs/start/router";
 import { Suspense } from "solid-js";
 import { Toaster } from "solid-toast";
-import { AuthProvider } from "./lib/contexts/user-better-auth";
+import { AuthProvider } from "./lib/contexts/user-clerk";
+import { ClerkProvider } from "./lib/clerk-provider";
 import { Title, Meta, MetaProvider } from "@solidjs/meta";
 import PWAInstallPrompt from "./components/pwa/PWAInstallPrompt";
 import PWAUpdateNotification from "./components/pwa/PWAUpdateNotification";
@@ -10,7 +11,8 @@ import "./app.css";
 
 export default function App() {
   return (
-    <AuthProvider>
+    <ClerkProvider>
+      <AuthProvider>
       <MetaProvider>
         <Title>Sendme - P2P File Transfer</Title>
         <Meta
@@ -62,5 +64,6 @@ export default function App() {
         </Router>
       </MetaProvider>
     </AuthProvider>
+    </ClerkProvider>
   );
 }

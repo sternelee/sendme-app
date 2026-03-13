@@ -1,6 +1,5 @@
 import { createSignal, onMount, Show, Switch, Match } from "solid-js";
-import { initWasm, sendText, receiveText } from "../../lib/commands";
-import { useAuth } from "../../lib/contexts/contexts";
+import { initWasm } from "../../lib/commands";
 import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
 import TextTab from "../../components/sendme/TextTab";
@@ -17,32 +16,17 @@ import {
   TbOutlineMessage,
   TbOutlineHistory,
   TbOutlineSettings,
-  TbOutlineHome,
 } from "solid-icons/tb";
 
 type Theme = "light" | "dark";
-type AppTab = "home" | "history" | "settings";
-type TransferTab = "send" | "receive" | "text";
-
-interface Transfer {
-  id: string;
-  transfer_type: string;
-  path: string;
-  status: string;
-  created_at: number;
-}
+type ActiveTab = "send" | "receive" | "text" | "history" | "settings";
 
 export default function AppPage() {
-  const [activeAppTab, setActiveAppTab] = createSignal<AppTab>("home");
-  const [activeTransferTab, setActiveTransferTab] = createSignal<TransferTab>("send");
+  const [activeTab, setActiveTab] = createSignal<ActiveTab>("send");
   const [isInitializing, setIsInitializing] = createSignal(true);
   const [mousePos, setMousePos] = createSignal({ x: 0, y: 0 });
   const [isDeviceModalOpen, setIsDeviceModalOpen] = createSignal(false);
   const [theme, setTheme] = createSignal<Theme>("dark");
-  const [transfers, setTransfers] = createSignal<Transfer[]>([]);
-
-  // Mock transfers for demo (in real app, this would come from backend)
-  const mockTransfers: Transfer[] = [];
 
   onMount(async () => {
     try {
@@ -127,7 +111,10 @@ export default function AppPage() {
               class="p-2.5 rounded-xl bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:text-gray-900 dark:hover:text-white transition-colors"
               title={`Current theme: ${theme()}`}
             >
-              <Show when={theme() === "dark"} fallback={<TbOutlineMoon size={20} />}>
+              <Show
+                when={theme() === "dark"}
+                fallback={<TbOutlineMoon size={20} />}
+              >
                 <TbOutlineSun size={20} />
               </Show>
             </Motion.button>
@@ -172,7 +159,10 @@ export default function AppPage() {
                 transition={{ duration: 0.2 }}
                 class="glass-liquid glass-frost rounded-3xl border border-gray-200 dark:border-white/10 p-8 text-center"
               >
-                <TbOutlineSparkles class="mx-auto mb-4 text-purple-400 animate-spin" size={40} />
+                <TbOutlineSparkles
+                  class="mx-auto mb-4 text-purple-400 animate-spin"
+                  size={40}
+                />
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                   Initializing
                 </h3>
@@ -187,177 +177,186 @@ export default function AppPage() {
                 class="glass-liquid glass-frost rounded-3xl border border-gray-200 dark:border-white/10 shadow-2xl"
               >
                 <div class="p-8">
-                  {/* App Tabs (Home/History/Settings) */}
-                  <div class="flex gap-1 p-1.5 mb-8 bg-gray-100 dark:bg-white/5 rounded-xl">
-                    <button
-                      onClick={() => setActiveAppTab("home")}
-                      class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold transition-all ${
-                        activeAppTab() === "home"
-                          ? "bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm"
-                          : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
-                      }`}
-                    >
-                      <TbOutlineHome size={18} />
-                      Home
-                    </button>
-                    <button
-                      onClick={() => setActiveAppTab("history")}
-                      class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold transition-all ${
-                        activeAppTab() === "history"
-                          ? "bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm"
-                          : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
-                      }`}
-                    >
-                      <TbOutlineHistory size={18} />
-                      History
-                    </button>
-                    <button
-                      onClick={() => setActiveAppTab("settings")}
-                      class={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold transition-all ${
-                        activeAppTab() === "settings"
-                          ? "bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm"
-                          : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
-                      }`}
-                    >
-                      <TbOutlineSettings size={18} />
-                      Settings
-                    </button>
-                  </div>
-
-                  {/* Home Tab Content */}
-                  <Show when={activeAppTab() === "home"}>
-                    {/* Transfer Tabs (Send/Receive/Text) */}
-                    <div class="relative mb-8 flex gap-1 overflow-hidden p-1.5 bg-gray-100 dark:bg-white/5 rounded-xl">
+                  {/* Single-level Tabs */}
+                  <div class="relative mb-8 flex gap-1 overflow-hidden p-1.5 bg-gray-100 dark:bg-white/5 rounded-xl">
                       <Motion.div
                         animate={{
                           left:
-                            activeTransferTab() === "send"
+                            activeTab() === "send"
                               ? "2px"
-                              : activeTransferTab() === "receive"
-                                ? "calc(33.33% + 1px)"
-                                : "calc(66.66% + 1px)",
-                          width: "calc(33.33% - 4px)",
+                              : activeTab() === "receive"
+                                ? "calc(20% + 1px)"
+                                : activeTab() === "text"
+                                  ? "calc(40% + 1px)"
+                                  : activeTab() === "history"
+                                    ? "calc(60% + 1px)"
+                                    : "calc(80% + 1px)",
+                          width: "calc(20% - 4px)",
                         }}
                         transition={{ duration: 0.2, easing: "ease-out" }}
                         class="absolute top-1.5 bottom-1.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/20"
                       />
                       <button
-                        onClick={() => setActiveTransferTab("send")}
-                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3.5 font-semibold transition-all ${
-                          activeTransferTab() === "send"
+                        onClick={() => setActiveTab("send")}
+                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-2 py-3.5 font-semibold transition-all text-xs ${
+                          activeTab() === "send"
                             ? "text-white"
                             : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
                         }`}
                       >
-                        <TbOutlineUpload size={20} />
+                        <TbOutlineUpload size={18} />
                         Send
                       </button>
                       <button
-                        onClick={() => setActiveTransferTab("receive")}
-                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3.5 font-semibold transition-all ${
-                          activeTransferTab() === "receive"
+                        onClick={() => setActiveTab("receive")}
+                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-2 py-3.5 font-semibold transition-all text-xs ${
+                          activeTab() === "receive"
                             ? "text-white"
                             : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
                         }`}
                       >
-                        <TbOutlineDownload size={20} />
+                        <TbOutlineDownload size={18} />
                         Receive
                       </button>
                       <button
-                        onClick={() => setActiveTransferTab("text")}
-                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3.5 font-semibold transition-all ${
-                          activeTransferTab() === "text"
+                        onClick={() => setActiveTab("text")}
+                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-2 py-3.5 font-semibold transition-all text-xs ${
+                          activeTab() === "text"
                             ? "text-white"
                             : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
                         }`}
                       >
-                        <TbOutlineMessage size={20} />
+                        <TbOutlineMessage size={18} />
                         Text
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("history")}
+                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-2 py-3.5 font-semibold transition-all text-xs ${
+                          activeTab() === "history"
+                            ? "text-white"
+                            : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
+                        }`}
+                      >
+                        <TbOutlineHistory size={18} />
+                        History
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("settings")}
+                        class={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl px-2 py-3.5 font-semibold transition-all text-xs ${
+                          activeTab() === "settings"
+                            ? "text-white"
+                            : "text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80"
+                        }`}
+                      >
+                        <TbOutlineSettings size={18} />
+                        Settings
                       </button>
                     </div>
 
-                    {/* Transfer Content */}
-                    <div class="relative">
-                      <Presence exitBeforeEnter>
-                        <Switch fallback={null}>
-                          <Match when={activeTransferTab() === "send"}>
-                            <Motion.div
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                              transition={{ duration: 0.2, easing: "ease-out" }}
-                            >
-                              <SendTab />
-                            </Motion.div>
-                          </Match>
-                          <Match when={activeTransferTab() === "receive"}>
-                            <Motion.div
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                              transition={{ duration: 0.2, easing: "ease-out" }}
-                            >
-                              <ReceiveTab isActive={true} />
-                            </Motion.div>
-                          </Match>
-                          <Match when={activeTransferTab() === "text"}>
-                            <Motion.div
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                              transition={{ duration: 0.2, easing: "ease-out" }}
-                            >
-                              <TextTab />
-                            </Motion.div>
-                          </Match>
-                        </Switch>
-                      </Presence>
-                    </div>
-                  </Show>
-
-                  {/* History Tab Content */}
-                  <Show when={activeAppTab() === "history"}>
-                    <div class="py-8 text-center">
-                      <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-                        <TbOutlineHistory size={32} class="text-gray-400 dark:text-white/20" />
-                      </div>
-                      <p class="text-gray-500 dark:text-white/40">No transfers yet</p>
-                      <p class="text-sm text-gray-400 dark:text-white/30 mt-1">
-                        Your shared and received files will appear here
-                      </p>
-                    </div>
-                  </Show>
-
-                  {/* Settings Tab Content */}
-                  <Show when={activeAppTab() === "settings"}>
-                    <div class="space-y-6 py-4">
-                      <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-2xl">
-                        <div>
-                          <p class="font-medium text-gray-900 dark:text-white">Theme</p>
-                          <p class="text-sm text-gray-500 dark:text-white/40">Choose appearance</p>
-                        </div>
-                        <div class="flex gap-1 p-1 bg-gray-200 dark:bg-white/5 rounded-lg">
-                          <button
-                            onClick={() => { setTheme("light"); applyTheme("light"); localStorage.setItem("theme", "light"); }}
-                            class={`px-3 py-1.5 rounded-md text-sm transition-all ${
-                              theme() === "light"
-                                ? "bg-white dark:bg-white/10 text-purple-600 dark:text-purple-400 shadow-sm"
-                                : "text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white"
-                            }`}
-                          >
-                            Light
-                          </button>
-                          <button
-                            onClick={() => { setTheme("dark"); applyTheme("dark"); localStorage.setItem("theme", "dark"); }}
-                            class={`px-3 py-1.5 rounded-md text-sm transition-all ${
-                              theme() === "dark"
-                                ? "bg-white dark:bg-white/10 text-purple-600 dark:text-purple-400 shadow-sm"
-                                : "text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white"
-                            }`}
-                          >
-                            Dark
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </Show>
+                  {/* Tab Content */}
+                  <Presence exitBeforeEnter>
+                    <Switch fallback={null}>
+                      <Match when={activeTab() === "send"}>
+                        <Motion.div
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                        >
+                          <SendTab />
+                        </Motion.div>
+                      </Match>
+                      <Match when={activeTab() === "receive"}>
+                        <Motion.div
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                        >
+                          <ReceiveTab isActive={true} />
+                        </Motion.div>
+                      </Match>
+                      <Match when={activeTab() === "text"}>
+                        <Motion.div
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                        >
+                          <TextTab />
+                        </Motion.div>
+                      </Match>
+                      <Match when={activeTab() === "history"}>
+                        <Motion.div
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                        >
+                          <div class="py-8 text-center">
+                            <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+                              <TbOutlineHistory
+                                size={32}
+                                class="text-gray-400 dark:text-white/20"
+                              />
+                            </div>
+                            <p class="text-gray-500 dark:text-white/40">
+                              No transfers yet
+                            </p>
+                            <p class="text-sm text-gray-400 dark:text-white/30 mt-1">
+                              Your shared and received files will appear here
+                            </p>
+                          </div>
+                        </Motion.div>
+                      </Match>
+                      <Match when={activeTab() === "settings"}>
+                        <Motion.div
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, easing: "ease-out" }}
+                        >
+                          <div class="space-y-6 py-4">
+                            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-2xl">
+                              <div>
+                                <p class="font-medium text-gray-900 dark:text-white">
+                                  Theme
+                                </p>
+                                <p class="text-sm text-gray-500 dark:text-white/40">
+                                  Choose appearance
+                                </p>
+                              </div>
+                              <div class="flex gap-1 p-1 bg-gray-200 dark:bg-white/5 rounded-lg">
+                                <button
+                                  onClick={() => {
+                                    setTheme("light");
+                                    applyTheme("light");
+                                    localStorage.setItem("theme", "light");
+                                  }}
+                                  class={`px-3 py-1.5 rounded-md text-sm transition-all ${
+                                    theme() === "light"
+                                      ? "bg-white dark:bg-white/10 text-purple-600 dark:text-purple-400 shadow-sm"
+                                      : "text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white"
+                                  }`}
+                                >
+                                  Light
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setTheme("dark");
+                                    applyTheme("dark");
+                                    localStorage.setItem("theme", "dark");
+                                  }}
+                                  class={`px-3 py-1.5 rounded-md text-sm transition-all ${
+                                    theme() === "dark"
+                                      ? "bg-white dark:bg-white/10 text-purple-600 dark:text-purple-400 shadow-sm"
+                                      : "text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white"
+                                  }`}
+                                >
+                                  Dark
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </Motion.div>
+                      </Match>
+                    </Switch>
+                  </Presence>
                 </div>
               </Motion.div>
             )}

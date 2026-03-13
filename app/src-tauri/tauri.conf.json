@@ -12,10 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "Sendme - P2P File Transfer",
-        "width": 800,
-        "height": 600,
+        "title": "Sendme by P2P",
+        "width": 400,
+        "height": 560,
         "resizable": true,
+        "alwaysOnTop": true,
         "fullscreen": false
       }
     ],

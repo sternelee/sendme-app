@@ -1,17 +1,14 @@
-# Better Auth Configuration for Local Development
+# Clerk Configuration for Local Development
 # Copy this file to .dev.vars and update with your actual credentials
 
-# Better Auth Secret (generate a random string)
-BETTER_AUTH_SECRET=your-better-auth-secret-key-change-this-in-production
+# Clerk Publishable Key (starts with pk_test_ or pk_live_)
+# Get from https://clerk.com -> Applications -> API Keys
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_your-publishable-key
 
-# Better Auth URLs (for local development)
-BETTER_AUTH_URL=http://localhost:5173
-BETTER_AUTH_APP_URL=http://localhost:5173
+# Clerk Secret Key (starts with sk_test_ or sk_live_)
+# Get from https://clerk.com -> Applications -> API Keys
+CLERK_SECRET_KEY=sk_test_your-secret-key
 
-# GitHub OAuth (get from https://github.com/settings/developers)
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-
-# Google OAuth (get from https://console.cloud.google.com/apis/credentials)
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
+# Clerk JWT Key (optional, for verifying JWTs)
+# Get from https://clerk.com -> Applications -> JWT Templates
+CLERK_JWT_KEY=your-jwt-key

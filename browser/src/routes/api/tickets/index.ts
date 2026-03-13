@@ -7,13 +7,13 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
 import { devices, tickets } from "~/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { createAuth, type CloudflareBindings } from "~/../better-auth.config";
+import { authenticateRequest, type Env } from "~/lib/auth";
 
 /**
  * Cloudflare context interface
  */
 interface CloudflareContext {
-  env: CloudflareBindings;
+  env: Env;
   cf?: IncomingRequestCfProperties;
 }
 
@@ -50,16 +50,12 @@ interface PostTicketBody {
 export async function POST(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const cf = requestEvent.nativeEvent.context.cloudflare.cf;
-    const auth = createAuth(env, cf);
 
-    const session = await auth.api.getSession({
-      headers: requestEvent.request.headers,
-    });
+    const { userId, status } = await authenticateRequest(requestEvent.request, env);
 
-    if (!session) {
+    if (!userId) {
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized", status }),
         { status: 401, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -73,12 +69,12 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       );
     }
 
-    const db = drizzle(env.DB, { schema });
+    const db = drizzle(env.DB!, { schema });
 
     // Verify the target device belongs to the user
     const targetDevice = await db.query.devices.findFirst({
       where: (devices, { eq, and }) =>
-        and(eq(devices.id, body.deviceId), eq(devices.userId, session.user.id)),
+        and(eq(devices.id, body.deviceId), eq(devices.userId, userId)),
     });
 
     if (!targetDevice) {
@@ -101,7 +97,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       .insert(schema.tickets)
       .values({
         id: crypto.randomUUID(),
-        userId: session.user.id,
+        userId: userId,
         fromDeviceId: body.deviceId,
         ticket: body.ticket,
         filename: body.filename || null,
@@ -141,16 +137,12 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
 export async function GET(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const cf = requestEvent.nativeEvent.context.cloudflare.cf;
-    const auth = createAuth(env, cf);
 
-    const session = await auth.api.getSession({
-      headers: requestEvent.request.headers,
-    });
+    const { userId, status } = await authenticateRequest(requestEvent.request, env);
 
-    if (!session) {
+    if (!userId) {
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized", status }),
         { status: 401, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -165,7 +157,7 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
       );
     }
 
-    const db = drizzle(env.DB, { schema });
+    const db = drizzle(env.DB!, { schema });
 
     // Get pending tickets for this device
     const pendingTickets = await db.query.tickets.findMany({
@@ -173,7 +165,7 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
         and(
           eq(tickets.fromDeviceId, deviceId),
           eq(tickets.status, "pending"),
-          eq(tickets.userId, session.user.id),
+          eq(tickets.userId, userId),
         ),
       orderBy: [desc(schema.tickets.createdAt)],
     });
