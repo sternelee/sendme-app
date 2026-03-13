@@ -1,4 +1,4 @@
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, Show, For, createMemo } from "solid-js";
 import toast from "solid-toast";
 import { receiveFile, downloadFile } from "../../lib/commands";
 import { Motion, Presence } from "solid-motionone";
@@ -11,8 +11,77 @@ import {
   TbOutlineShieldLock,
   TbOutlineSparkles,
   TbOutlineDeviceMobile,
+  TbOutlineFile,
+  TbOutlineFileTypePdf,
+  TbOutlinePhoto,
+  TbOutlineVideo,
+  TbOutlineFileMusic,
 } from "solid-icons/tb";
 import { useTicketPolling } from "~/lib/composables/useTicketPolling";
+
+// Infer mime type from filename extension
+function getMimeType(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const mimeTypes: Record<string, string> = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml',
+    'bmp': 'image/bmp',
+    'ico': 'image/x-icon',
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'avi': 'video/x-msvideo',
+    'mov': 'video/quicktime',
+    'mkv': 'video/x-matroska',
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'ogg': 'audio/ogg',
+    'flac': 'audio/flac',
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'zip': 'application/zip',
+    'rar': 'application/x-rar-compressed',
+    '7z': 'application/x-7z-compressed',
+    'tar': 'application/x-tar',
+    'gz': 'application/gzip',
+    'txt': 'text/plain',
+    'html': 'text/html',
+    'css': 'text/css',
+    'js': 'application/javascript',
+    'json': 'application/json',
+    'xml': 'application/xml',
+  };
+  return mimeTypes[ext] || 'application/octet-stream';
+}
+
+// Check if file is previewable (image/video)
+function isPreviewable(filename: string): boolean {
+  const mime = getMimeType(filename);
+  return mime.startsWith('image/') || mime.startsWith('video/');
+}
+
+// Create preview URL from received data
+function createPreviewUrl(data: Uint8Array, filename: string): string {
+  const mime = getMimeType(filename);
+  const blob = new Blob([data], { type: mime });
+  return URL.createObjectURL(blob);
+}
+
+// Get file icon based on filename
+function getFileIcon(filename: string) {
+  const mime = getMimeType(filename);
+  if (mime.startsWith('image/')) return TbOutlinePhoto;
+  if (mime.startsWith('video/')) return TbOutlineVideo;
+  if (mime.startsWith('audio/')) return TbOutlineFileMusic;
+  if (mime === 'application/pdf') return TbOutlineFileTypePdf;
+  return TbOutlineFile;
+}
 
 interface ReceiveTabProps {
   isActive?: boolean;
@@ -235,16 +304,52 @@ export default function ReceiveTab(props: ReceiveTabProps) {
               <span class="font-bold text-white">File Available</span>
             </div>
 
+            {/* File preview with thumbnail */}
             <div class="glass-inset rounded-2xl p-5 flex items-center gap-4">
-              <div class="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center text-white/40">
-                <TbOutlineFileDownload size={24} />
-              </div>
+              {/* Thumbnail preview */}
+              <Show when={isPreviewable(receivedFile()!.filename)}>
+                <div class="w-16 h-16 rounded-xl overflow-hidden bg-black/20 flex-shrink-0">
+                  <img
+                    src={createPreviewUrl(receivedFile()!.data, receivedFile()!.filename)}
+                    alt={receivedFile()!.filename}
+                    class="w-full h-full object-cover"
+                  />
+                </div>
+              </Show>
+
+              {/* Icon for non-previewable files */}
+              <Show when={!isPreviewable(receivedFile()!.filename)}>
+                <div class="w-16 h-16 rounded-xl bg-green-500/20 flex items-center justify-center flex-shrink-0 text-green-400">
+                  <Show
+                    when={getMimeType(receivedFile()!.filename).startsWith('image/')}
+                    fallback={
+                      <Show
+                        when={getMimeType(receivedFile()!.filename).startsWith('video/')}
+                        fallback={
+                          <Show
+                            when={getMimeType(receivedFile()!.filename) === 'application/pdf'}
+                            fallback={<TbOutlineFile size={28} />}
+                          >
+                            <TbOutlineFileTypePdf size={28} />
+                          </Show>
+                        }
+                      >
+                        <TbOutlineVideo size={28} />
+                      </Show>
+                    }
+                  >
+                    <TbOutlinePhoto size={28} />
+                  </Show>
+                </div>
+              </Show>
+
+              {/* File info */}
               <div class="flex-1 min-w-0">
                 <div class="font-semibold text-white truncate">
                   {receivedFile()!.filename}
                 </div>
                 <div class="text-xs text-white/40 mt-1">
-                  Ready to download • {formatFileSize(receivedFile()!.data)}
+                  {formatFileSize(receivedFile()!.data)} • Ready to download
                 </div>
               </div>
             </div>
