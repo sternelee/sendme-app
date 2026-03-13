@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show } from "solid-js";
+import { createSignal, createMemo, Show, For, onCleanup } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
 import { useAuth } from "../../lib/contexts/user-clerk";
@@ -12,6 +12,11 @@ import {
   TbOutlineSparkles,
   TbOutlineDevices,
   TbOutlineFolder,
+  TbOutlineFile,
+  TbOutlineFileTypePdf,
+  TbOutlinePhoto,
+  TbOutlineVideo,
+  TbOutlineFileMusic,
 } from "solid-icons/tb";
 import DeviceListModal from "../devices/DeviceListModal";
 
@@ -32,6 +37,35 @@ interface Device {
 
 interface SendTabProps {}
 
+// Cache for preview URLs
+const previewUrlCache = new Map<string, string>();
+
+function getPreviewUrl(file: File): string {
+  // Check cache first
+  const cached = previewUrlCache.get(file.name + file.size);
+  if (cached) return cached;
+
+  // Generate preview URL for images and videos
+  if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+    const url = URL.createObjectURL(file);
+    previewUrlCache.set(file.name + file.size, url);
+    return url;
+  }
+  return '';
+}
+
+function getFileIcon(file: File) {
+  if (file.type.startsWith('image/')) return TbOutlinePhoto;
+  if (file.type.startsWith('video/')) return TbOutlineVideo;
+  if (file.type.startsWith('audio/')) return TbOutlineFileMusic;
+  if (file.type === 'application/pdf') return TbOutlineFileTypePdf;
+  return TbOutlineFile;
+}
+
+function isPreviewable(file: File): boolean {
+  return file.type.startsWith('image/') || file.type.startsWith('video/');
+}
+
 export default function SendTab(_props: SendTabProps) {
   const auth = useAuth();
   const [file, setFile] = createSignal<File | null>(null);
@@ -43,6 +77,12 @@ export default function SendTab(_props: SendTabProps) {
   const [isDeviceModalOpen, setIsDeviceModalOpen] = createSignal(false);
   let fileInputRef: HTMLInputElement | undefined;
   let folderInputRef: HTMLInputElement | undefined;
+
+  // Clean up preview URLs on unmount
+  onCleanup(() => {
+    previewUrlCache.forEach(url => URL.revokeObjectURL(url));
+    previewUrlCache.clear();
+  });
 
   const dropZoneClass = createMemo(() =>
     isDragging()
@@ -213,54 +253,168 @@ export default function SendTab(_props: SendTabProps) {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.1 }}
                 transition={{ duration: 0.2 }}
-                class={`relative border-2 border-dashed rounded-3xl p-10 text-center transition-all duration-300 overflow-hidden ${dropZoneClass()}`}
+                class={`relative border-2 border-dashed rounded-3xl p-6 transition-all duration-300 overflow-hidden ${dropZoneClass()}`}
               >
-                <div class="flex flex-col items-center gap-4 py-2">
-                  <Motion.div
-                    initial={{ scale: 0.8 }}
-                    animate={{ scale: 1 }}
-                    class="w-16 h-16 rounded-2xl bg-green-500/20 text-green-400 flex items-center justify-center relative"
-                  >
-                    <Show
-                      when={file()}
-                      fallback={<TbOutlineFolder size={32} />}
+                {/* Single file preview with thumbnail */}
+                <Show when={file()}>
+                  <div class="flex flex-col items-center">
+                    <Motion.div
+                      initial={{ scale: 0.8 }}
+                      animate={{ scale: 1 }}
+                      class="relative group/preview"
                     >
-                      <TbOutlineFileText size={32} />
-                    </Show>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        resetFile();
-                      }}
-                      class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white/60 flex items-center justify-center backdrop-blur-md border border-white/10"
-                    >
-                      <TbOutlineX size={12} />
-                    </button>
-                  </Motion.div>
-                  <div class="max-w-xs">
-                    <Show
-                      when={file()}
-                      fallback={
-                        <>
+                      {/* Thumbnail preview for images/videos */}
+                      <Show when={isPreviewable(file()!)}>
+                        <div class="w-32 h-32 rounded-2xl overflow-hidden bg-black/20 mb-4">
+                          <img
+                            src={getPreviewUrl(file()!)}
+                            alt={file()!.name}
+                            class="w-full h-full object-cover"
+                          />
+                        </div>
+                      </Show>
+
+                      {/* Icon for non-previewable files */}
+                      <Show when={!isPreviewable(file()!)}>
+                        <div class="w-32 h-32 rounded-2xl bg-green-500/20 text-green-400 flex items-center justify-center mb-4">
+                          <Show
+                            when={file()!.type.startsWith('image/')}
+                            fallback={
+                              <Show
+                                when={file()!.type.startsWith('video/')}
+                                fallback={
+                                  <Show
+                                    when={file()!.type === 'application/pdf'}
+                                    fallback={<TbOutlineFile size={48} />}
+                                  >
+                                    <TbOutlineFileTypePdf size={48} />
+                                  </Show>
+                                }
+                              >
+                                <TbOutlineVideo size={48} />
+                              </Show>
+                            }
+                          >
+                            <TbOutlinePhoto size={48} />
+                          </Show>
+                        </div>
+                      </Show>
+
+                      {/* Remove button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          resetFile();
+                        }}
+                        class="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white/60 flex items-center justify-center backdrop-blur-md border border-white/10 transition-colors"
+                      >
+                        <TbOutlineX size={14} />
+                      </button>
+                    </Motion.div>
+
+                    {/* File name and size */}
+                    <div class="text-center max-w-xs">
+                      <p class="font-semibold text-white truncate px-2">
+                        {file()!.name}
+                      </p>
+                      <p class="text-xs text-white/50 mt-1">
+                        {formatFileSize(file()!.size)}
+                      </p>
+                    </div>
+                  </div>
+                </Show>
+
+                {/* Multiple files preview */}
+                <Show when={files().length > 0 && !file()}>
+                  <div class="space-y-4">
+                    {/* Header with folder info and remove button */}
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-green-500/20 text-green-400 flex items-center justify-center">
+                          <TbOutlineFolder size={20} />
+                        </div>
+                        <div class="text-left">
                           <p class="font-semibold text-white">
                             {files().length} files selected
                           </p>
-                          <p class="text-xs text-white/40 mt-1">
-                            {files()[0]?.webkitRelativePath?.split("/")[0] ||
-                              "Folder"}
+                          <p class="text-xs text-white/50">
+                            {formatFileSize(files().reduce((acc, f) => acc + f.size, 0))} total
                           </p>
-                        </>
-                      }
-                    >
-                      <p class="font-semibold text-white truncate px-4">
-                        {file()!.name}
-                      </p>
-                      <p class="text-xs text-white/40 mt-1">
-                        {formatFileSize(file()!.size)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          resetFile();
+                        }}
+                        class="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                      >
+                        <TbOutlineX size={18} />
+                      </button>
+                    </div>
+
+                    {/* File list with thumbnails */}
+                    <div class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                      <For each={files().slice(0, 8)}>
+                        {(f) => (
+                          <div class="flex items-center gap-2 p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
+                            {/* Thumbnail */}
+                            <Show when={isPreviewable(f)}>
+                              <div class="w-10 h-10 rounded-lg overflow-hidden bg-black/20 flex-shrink-0">
+                                <img
+                                  src={getPreviewUrl(f)}
+                                  alt={f.name}
+                                  class="w-full h-full object-cover"
+                                />
+                              </div>
+                            </Show>
+                            <Show when={!isPreviewable(f)}>
+                              <div class="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0 text-white/40">
+                                <Show
+                                  when={f.type.startsWith('image/')}
+                                  fallback={
+                                    <Show
+                                      when={f.type.startsWith('video/')}
+                                      fallback={
+                                        <Show
+                                          when={f.type === 'application/pdf'}
+                                          fallback={<TbOutlineFile size={18} />}
+                                        >
+                                          <TbOutlineFileTypePdf size={18} />
+                                        </Show>
+                                      }
+                                    >
+                                      <TbOutlineVideo size={18} />
+                                    </Show>
+                                  }
+                                >
+                                  <TbOutlinePhoto size={18} />
+                                </Show>
+                              </div>
+                            </Show>
+
+                            {/* File info */}
+                            <div class="min-w-0 flex-1">
+                              <p class="text-xs text-white truncate font-medium">
+                                {f.name}
+                              </p>
+                              <p class="text-[10px] text-white/40">
+                                {formatFileSize(f.size)}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+
+                    {/* Show more indicator */}
+                    <Show when={files().length > 8}>
+                      <p class="text-xs text-white/50 text-center">
+                        + {files().length - 8} more files
                       </p>
                     </Show>
                   </div>
-                </div>
+                </Show>
               </Motion.div>
             }
           >
