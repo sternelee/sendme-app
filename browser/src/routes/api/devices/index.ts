@@ -12,13 +12,13 @@ import {
   detectPlatform,
   generateDeviceName,
 } from "~/lib/api/devices";
-import { createAuth, type CloudflareBindings } from "~/../better-auth.config";
+import { authenticateRequest, type Env } from "~/lib/auth";
 
 /**
  * Cloudflare context interface
  */
 interface CloudflareContext {
-  env: CloudflareBindings;
+  env: Env;
   cf?: IncomingRequestCfProperties;
 }
 
@@ -41,34 +41,23 @@ interface PostDeviceBody {
 }
 
 /**
- * Get auth instance with Cloudflare bindings
- */
-function getAuthInstance(env: CloudflareBindings, cf?: IncomingRequestCfProperties) {
-  return createAuth(env, cf);
-}
-
-/**
  * GET /api/devices - List all devices for the authenticated user
  */
 export async function GET(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const cf = requestEvent.nativeEvent.context.cloudflare.cf;
-    const auth = getAuthInstance(env, cf);
 
-    const session = await auth.api.getSession({
-      headers: requestEvent.request.headers,
-    });
+    const { userId, status } = await authenticateRequest(requestEvent.request, env);
 
-    if (!session) {
+    if (!userId) {
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized", status }),
         { status: 401, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    const db = drizzle(env.DB, { schema });
-    const userDevices = await getUserDevices(db, session.user.id);
+    const db = drizzle(env.DB!, { schema });
+    const userDevices = await getUserDevices(db, userId);
 
     return new Response(JSON.stringify(userDevices), {
       status: 200,
@@ -102,15 +91,12 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
     const cf = requestEvent.nativeEvent.context.cloudflare.cf;
-    const auth = getAuthInstance(env, cf);
 
-    const session = await auth.api.getSession({
-      headers: requestEvent.request.headers,
-    });
+    const { userId, status } = await authenticateRequest(requestEvent.request, env);
 
-    if (!session) {
+    if (!userId) {
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized", status }),
         { status: 401, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -137,9 +123,9 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       body.name ||
       generateDeviceName(platform, userAgent);
 
-    const db = drizzle(env.DB, { schema });
+    const db = drizzle(env.DB!, { schema });
 
-    const device = await upsertDevice(db, session.user.id, {
+    const device = await upsertDevice(db, userId, {
       platform,
       deviceId,
       name: deviceName,

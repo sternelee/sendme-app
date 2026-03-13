@@ -4,7 +4,7 @@
  */
 
 import { createSignal, createEffect, onCleanup } from "solid-js";
-import { useAuth } from "../contexts/user-better-auth";
+import { useAuth } from "../contexts/user-clerk";
 
 /**
  * Ticket interface
@@ -55,7 +55,7 @@ export function useTicketPolling(enabled: () => boolean, interval: number = 5000
    * Fetch tickets for current device
    */
   const fetchTickets = async () => {
-    if (!auth.isAuthenticated()) {
+    if (!auth.isSignedIn()) {
       return;
     }
 
@@ -125,9 +125,9 @@ export function useTicketPolling(enabled: () => boolean, interval: number = 5000
   // Start/stop polling based on enabled signal and auth state
   createEffect(() => {
     const isEnabled = enabled();
-    const isAuthenticated = auth.isAuthenticated();
+    const isSignedIn = auth.isSignedIn();
 
-    if (isEnabled && isAuthenticated) {
+    if (isEnabled && isSignedIn) {
       startPolling();
     } else {
       stopPolling();

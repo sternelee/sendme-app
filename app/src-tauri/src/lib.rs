@@ -221,14 +221,22 @@ async fn copy_files_to_content_uri(
             log_info!("✅ File exists: {:?} -> {}", source_path, name);
             files_to_copy.push((name.to_string(), source_path));
         } else {
-            log_error!("❌ File NOT found: {:?} (looking for: {})", source_path, name);
+            log_error!(
+                "❌ File NOT found: {:?} (looking for: {})",
+                source_path,
+                name
+            );
             missing_files.push(name.to_string());
         }
     }
 
     // If any files are missing, log error and bail
     if !missing_files.is_empty() {
-        log_error!("❌ Missing {} files out of {}", missing_files.len(), collection.len());
+        log_error!(
+            "❌ Missing {} files out of {}",
+            missing_files.len(),
+            collection.len()
+        );
         if let Ok(entries) = std::fs::read_dir(temp_dir) {
             log_error!("Contents of temp_dir:");
             for entry in entries.flatten() {
@@ -247,7 +255,10 @@ async fn copy_files_to_content_uri(
         return Ok(());
     }
 
-    log_info!("📋 Ready to copy {} files to content URI", files_to_copy.len());
+    log_info!(
+        "📋 Ready to copy {} files to content URI",
+        files_to_copy.len()
+    );
 
     for (name, source_path) in &files_to_copy {
         log_info!("Copying {} ({:?}) to content URI", name, source_path);
@@ -262,32 +273,41 @@ async fn copy_files_to_content_uri(
 
         // Create the file in the target directory using the plugin API
         // create_new_file automatically creates parent directories for nested paths
-        let file_uri = api.create_new_file(&dir_uri, name, None)
+        let file_uri = api
+            .create_new_file(&dir_uri, name, None)
             .await
             .map_err(|e| {
-                log_error!("❌ Failed to create file '{}' in content URI: {:?}", name, e);
+                log_error!(
+                    "❌ Failed to create file '{}' in content URI: {:?}",
+                    name,
+                    e
+                );
                 anyhow::anyhow!(
                     "Failed to create file '{}' in selected directory: {:?}. \
                      The directory may not be writable or permission may have expired.",
-                    name, e
+                    name,
+                    e
                 )
             })?;
 
         log_info!("Created file URI: {:?}", file_uri);
 
         // Write content to the created file
-        api.write(&file_uri, &content)
-            .await
-            .map_err(|e| {
-                log_error!("❌ Failed to write to file '{}': {:?}", name, e);
-                anyhow::anyhow!(
-                    "Failed to write to file '{}': {:?}. \
+        api.write(&file_uri, &content).await.map_err(|e| {
+            log_error!("❌ Failed to write to file '{}': {:?}", name, e);
+            anyhow::anyhow!(
+                "Failed to write to file '{}': {:?}. \
                      Check device storage space and directory permissions.",
-                    name, e
-                )
-            })?;
+                name,
+                e
+            )
+        })?;
 
-        log_info!("✅ Copied {} ({} bytes) to content URI", name, content.len());
+        log_info!(
+            "✅ Copied {} ({} bytes) to content URI",
+            name,
+            content.len()
+        );
 
         // Clean up the temp file
         if let Err(e) = std::fs::remove_file(source_path) {
@@ -298,7 +318,6 @@ async fn copy_files_to_content_uri(
     log_info!("✅ All {} files copied successfully", files_to_copy.len());
     Ok(())
 }
-
 
 /// Send text request
 #[derive(Debug, Serialize, Deserialize)]
@@ -785,7 +804,10 @@ async fn receive_file(
                     (Some(std::path::PathBuf::from(dir)), None)
                 }
                 Err(e) => {
-                    log_error!("Failed to get Documents directory: {}, falling back to temp_dir", e);
+                    log_error!(
+                        "Failed to get Documents directory: {}, falling back to temp_dir",
+                        e
+                    );
                     (None, None)
                 }
             }
@@ -949,7 +971,9 @@ async fn receive_file(
             if let Some(content_uri) = content_uri_output {
                 log_info!("Copying files to content URI: {}", content_uri);
                 log_info!("Temp directory used for export: {:?}", temp_dir);
-                match copy_files_to_content_uri(&app, &temp_dir, &content_uri, &result.collection).await {
+                match copy_files_to_content_uri(&app, &temp_dir, &content_uri, &result.collection)
+                    .await
+                {
                     Ok(_) => {
                         log_info!("✅ Files copied to content URI successfully");
                     }
@@ -1542,7 +1566,8 @@ async fn open_received_file(
         log_info!("🍎 iOS platform detected, using Documents directory");
 
         let fs_ios = app.fs_ios();
-        let docs_dir = fs_ios.current_dir()
+        let docs_dir = fs_ios
+            .current_dir()
             .map_err(|e| format!("Failed to get Documents directory: {}", e))?;
 
         log_info!("Documents directory: {:?}", docs_dir);
@@ -1658,7 +1683,9 @@ async fn list_received_files(app: AppHandle) -> Result<Vec<String>, String> {
         use tauri_plugin_fs_ios::FsIosExt;
 
         let fs_ios = app.fs_ios();
-        let docs_dir = fs_ios.current_dir().map_err(|e| format!("Failed to get Documents directory: {}", e))?;
+        let docs_dir = fs_ios
+            .current_dir()
+            .map_err(|e| format!("Failed to get Documents directory: {}", e))?;
 
         log_info!("Documents directory: {:?}", docs_dir);
 
@@ -1844,7 +1871,9 @@ async fn pick_directory(
                     // Log as ERROR since this will cause write failures
                     log_error!("❌ Failed to take persistable URI permission: {}", e);
                     log_error!("❌ Writing to this directory will likely FAIL!");
-                    log_error!("❌ This is a common cause of 'permission denied' errors on Android");
+                    log_error!(
+                        "❌ This is a common cause of 'permission denied' errors on Android"
+                    );
                     // Don't return error - some devices don't support this, but warn prominently
                 }
             }
@@ -1956,10 +1985,7 @@ fn pick_directory(
 
 /// Send text as a virtual file and return the ticket
 #[tauri::command]
-async fn send_text(
-    app: AppHandle,
-    request: SendTextRequest,
-) -> Result<String, String> {
+async fn send_text(app: AppHandle, request: SendTextRequest) -> Result<String, String> {
     log_info!("📝 SEND_TEXT STARTED");
     log_info!("Text length: {} chars", request.text.len());
 
@@ -1967,7 +1993,9 @@ async fn send_text(
     let bytes = request.text.as_bytes();
 
     // Create filename
-    let filename = request.filename.unwrap_or_else(|| "message.txt".to_string());
+    let filename = request
+        .filename
+        .unwrap_or_else(|| "message.txt".to_string());
     log_info!("Filename: {}", filename);
 
     // Get temp directory
@@ -2037,10 +2065,7 @@ async fn send_text(
 
 /// Receive text and return the content
 #[tauri::command]
-async fn receive_text(
-    app: AppHandle,
-    request: ReceiveTextRequest,
-) -> Result<TextResult, String> {
+async fn receive_text(app: AppHandle, request: ReceiveTextRequest) -> Result<TextResult, String> {
     log_info!("📥 RECEIVE_TEXT STARTED");
     log_info!("Ticket length: {} chars", request.ticket.len());
 

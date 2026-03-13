@@ -1,7 +1,7 @@
 import { createSignal, createMemo, Show } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
-import { useAuth } from "../../lib/contexts/user-better-auth";
+import { useAuth } from "../../lib/contexts/user-clerk";
 import { Motion, Presence } from "solid-motionone";
 import {
   TbOutlineUpload,
@@ -30,7 +30,7 @@ interface Device {
   updatedAt: string;
 }
 
-interface SendTabProps { }
+interface SendTabProps {}
 
 export default function SendTab(_props: SendTabProps) {
   const auth = useAuth();
@@ -375,7 +375,7 @@ export default function SendTab(_props: SendTabProps) {
                     class="text-white/60 group-hover:text-white"
                   />
                 </button>
-                <Show when={auth.isAuthenticated()}>
+                <Show when={auth.isSignedIn()}>
                   <button
                     onClick={() => setIsDeviceModalOpen(true)}
                     class="p-4 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-2xl transition-all group active:scale-90"

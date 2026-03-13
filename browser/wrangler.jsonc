@@ -20,16 +20,16 @@
     },
   ],
   "vars": {
-    "BETTER_AUTH_URL": "http://localhost:8788",
-    "BETTER_AUTH_APP_URL": "http://localhost:8788",
-    "BETTER_AUTH_SECRET": "dev-secret-change-in-production",
+    "CLERK_SECRET_KEY": "sk_test_dev-key",
+    "CLERK_PUBLISHABLE_KEY": "pk_test_dev-key",
+    "VITE_CLERK_PUBLISHABLE_KEY": "pk_test_dev-key"
   },
   "env": {
     "production": {
       "vars": {
-        "BETTER_AUTH_URL": "https://sendme.leeapp.dev",
-        "BETTER_AUTH_APP_URL": "https://sendme.leeapp.dev",
-        "BETTER_AUTH_SECRET": "123456789",
+        "CLERK_SECRET_KEY": "",
+        "CLERK_PUBLISHABLE_KEY": "",
+        "VITE_CLERK_PUBLISHABLE_KEY": ""
       },
     },
   },
