@@ -28,6 +28,7 @@
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.0",
     "@solidjs/start": "^1.1.0",
+    "clerk-solidjs": "^2.0.10",
     "drizzle-orm": "^0.45.1",
     "solid-icons": "^1.2.0",
     "solid-js": "^1.9.5",

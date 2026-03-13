@@ -3,15 +3,18 @@ import { FileRoutes } from "@solidjs/start/router";
 import { Suspense } from "solid-js";
 import { Toaster } from "solid-toast";
 import { AuthProvider } from "./lib/contexts/user-clerk";
-import { ClerkProvider } from "./lib/clerk-provider";
+import { ClerkProvider } from "clerk-solidjs";
 import { Title, Meta, MetaProvider } from "@solidjs/meta";
 import PWAInstallPrompt from "./components/pwa/PWAInstallPrompt";
 import PWAUpdateNotification from "./components/pwa/PWAUpdateNotification";
 import "./app.css";
 
+const CLERK_PUBLISHABLE_KEY =
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_your_key";
+
 export default function App() {
   return (
-    <ClerkProvider>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
       <AuthProvider>
       <MetaProvider>
         <Title>Sendme - P2P File Transfer</Title>
