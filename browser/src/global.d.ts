@@ -1,9 +1,18 @@
 /// <reference types="@solidjs/start/env" />
-declare module App {
+import type { AuthObject } from "@clerk/backend";
+
+declare module "@solidjs/start/server" {
+  export interface RequestEventLocals {
+    auth: AuthObject;
+  }
+}
+
+declare namespace App {
   interface RequestEventLocals {
     /**
-     * Declare your getRequestEvent().locals here
+     * Clerk auth object from middleware
      */
+    auth: AuthObject;
   }
 }
 
