@@ -1,4 +1,5 @@
 import { Motion } from "solid-motionone";
+import { createSignal, onMount, onCleanup, Show } from "solid-js";
 import {
   TbOutlineSparkles,
   TbOutlineUpload,
@@ -12,19 +13,41 @@ import {
   TbOutlineBolt,
   TbOutlineUsers,
   TbOutlineCopy,
+  TbOutlineChevronDown,
 } from "solid-icons/tb";
+import { SignedIn, SignedOut, SignInButton, SignUpButton } from "clerk-solidjs";
 
 export default function HomePage() {
+  const [isMenuOpen, setIsMenuOpen] = createSignal(false);
+  const menuRef: { current: HTMLDivElement | null } = { current: null };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
+
+  const handleClickOutside = (e: MouseEvent) => {
+    if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      setIsMenuOpen(false);
+    }
+  };
+
+  onMount(() => {
+    document.addEventListener("click", handleClickOutside);
+  });
+
+  onCleanup(() => {
+    document.removeEventListener("click", handleClickOutside);
+  });
 
   return (
     <div class="min-h-screen bg-animate text-white selection:bg-purple-500/30 overflow-hidden">
       {/* Dynamic Background */}
       <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[120px] animate-pulse" />
-        <div class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse" style="animation-delay: 1s" />
+        <div
+          class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse"
+          style="animation-delay: 1s"
+        />
         <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,transparent_0%,rgba(18,14,38,0.4)_100%)]" />
       </div>
 
@@ -32,10 +55,7 @@ export default function HomePage() {
       <header class="relative z-20 border-b border-white/5 backdrop-blur-md bg-black/10">
         <div class="container mx-auto px-6 py-4 flex items-center justify-between">
           <Motion.a
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
             hover={{ scale: 1.05 }}
-            press={{ scale: 0.95 }}
             class="flex items-center gap-3 group"
             href="/"
           >
@@ -47,19 +67,65 @@ export default function HomePage() {
             </span>
           </Motion.a>
 
-          <Motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            class="flex items-center gap-4"
-          >
-            <Motion.a
-              hover={{ scale: 1.05 }}
-              press={{ scale: 0.95 }}
-              href="/app"
-              class="px-6 py-2.5 rounded-xl bg-white/10 border border-white/10 text-white/90 hover:text-white hover:bg-white/15 transition-all font-medium"
+          <Motion.div animate={{ opacity: 1, x: 0 }} class="relative">
+            <Motion.button
+              hover={{ scale: 1.02 }}
+              onClick={() => setIsMenuOpen(!isMenuOpen())}
+              class="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-white/10 border border-white/10 text-white/90 hover:text-white hover:bg-white/15 transition-all font-medium"
             >
-              Launch App
-            </Motion.a>
+              <span>Menu</span>
+              <TbOutlineChevronDown size={18} />
+            </Motion.button>
+
+            <Show when={isMenuOpen()}>
+              <Motion.div
+                animate={{ opacity: 1, y: 0 }}
+                class="absolute right-0 mt-2 w-48 glass rounded-xl border border-white/10 overflow-hidden z-50"
+              >
+                <SignedOut>
+                  <Motion.a
+                    hover={{
+                      scale: 1.02,
+                      backgroundColor: "rgba(255, 255, 255, 0.15)",
+                    }}
+                    press={{ scale: 0.98 }}
+                    href="/app"
+                    class="block w-full px-4 py-3 text-left text-white/90 hover:text-white transition-all border-b border-white/5"
+                  >
+                    Launch App
+                  </Motion.a>
+                  <SignInButton mode="modal">
+                    <button
+                      type="button"
+                      class="w-full text-left px-4 py-3 text-white/90 hover:text-white hover:bg-white/15 transition-all border-b border-white/5"
+                    >
+                      Sign In
+                    </button>
+                  </SignInButton>
+                  <SignUpButton mode="modal">
+                    <button
+                      type="button"
+                      class="w-full text-left px-4 py-3 text-white/90 hover:text-white hover:bg-white/15 transition-all"
+                    >
+                      Sign Up
+                    </button>
+                  </SignUpButton>
+                </SignedOut>
+                <SignedIn>
+                  <Motion.a
+                    hover={{
+                      scale: 1.02,
+                      backgroundColor: "rgba(255, 255, 255, 0.15)",
+                    }}
+                    press={{ scale: 0.98 }}
+                    href="/app"
+                    class="block w-full px-4 py-3 text-left text-white/90 hover:text-white transition-all"
+                  >
+                    Go to App
+                  </Motion.a>
+                </SignedIn>
+              </Motion.div>
+            </Show>
           </Motion.div>
         </div>
       </header>
@@ -86,8 +152,9 @@ export default function HomePage() {
               </span>
             </h1>
             <p class="text-lg md:text-xl text-white/60 mb-10 max-w-2xl mx-auto leading-relaxed">
-              Secure, peer-to-peer file transfer powered by iroh. No cloud storage,
-              no file size limits, just direct transfers between devices.
+              Secure, peer-to-peer file transfer powered by iroh. No cloud
+              storage, no file size limits, just direct transfers between
+              devices.
             </p>
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Motion.a
@@ -100,7 +167,10 @@ export default function HomePage() {
                 Get Started Free
               </Motion.a>
               <Motion.a
-                hover={{ scale: 1.05, backgroundColor: "rgba(255, 255, 255, 0.15)" }}
+                hover={{
+                  scale: 1.05,
+                  backgroundColor: "rgba(255, 255, 255, 0.15)",
+                }}
                 press={{ scale: 0.95 }}
                 href="https://github.com/sternelee/sendme-app"
                 target="_blank"
@@ -135,17 +205,20 @@ export default function HomePage() {
             {
               icon: TbOutlineShield,
               title: "End-to-End Encrypted",
-              description: "BLAKE3 verified streaming ensures your files arrive intact and untouched.",
+              description:
+                "BLAKE3 verified streaming ensures your files arrive intact and untouched.",
             },
             {
               icon: TbOutlineBolt,
               title: "Lightning Fast",
-              description: "Direct P2P transfers with NAT hole-punching for maximum speed.",
+              description:
+                "Direct P2P transfers with NAT hole-punching for maximum speed.",
             },
             {
               icon: TbOutlineUsers,
               title: "Cross-Device Sync",
-              description: "Share tickets across your devices and continue transfers anywhere.",
+              description:
+                "Share tickets across your devices and continue transfers anywhere.",
             },
           ].map((feature, index) => (
             <Motion.div
@@ -217,13 +290,20 @@ export default function HomePage() {
             </div>
             <h3 class="text-lg font-semibold mb-2">CLI</h3>
             <p class="text-white/50 text-sm mb-4">For power users</p>
-            <div
-              class="bg-black/30 rounded-lg p-3 mb-3 font-mono text-xs text-white/70 cursor-pointer hover:bg-black/40 transition-all flex items-center justify-between group/command"
+            <button
+              type="button"
+              class="bg-black/30 rounded-lg p-3 mb-3 font-mono text-xs text-white/70 cursor-pointer hover:bg-black/40 transition-all flex items-center justify-between group/command w-full text-left"
               onClick={() => copyToClipboard("cargo install sendme")}
+              onKeyUp={(e) =>
+                e.key === "Enter" && copyToClipboard("cargo install sendme")
+              }
             >
               <span>$ cargo install sendme</span>
-              <TbOutlineCopy size={14} class="text-white/40 group-hover/command:text-white/70" />
-            </div>
+              <TbOutlineCopy
+                size={14}
+                class="text-white/40 group-hover/command:text-white/70"
+              />
+            </button>
           </Motion.div>
 
           {/* Desktop */}
@@ -302,19 +382,22 @@ export default function HomePage() {
               {
                 icon: TbOutlineUpload,
                 title: "Select Your File",
-                description: "Choose any file or folder from your device. No size restrictions apply.",
+                description:
+                  "Choose any file or folder from your device. No size restrictions apply.",
                 step: "01",
               },
               {
                 icon: TbOutlineSparkles,
                 title: "Generate Ticket",
-                description: "A unique ticket is created containing connection details for direct P2P transfer.",
+                description:
+                  "A unique ticket is created containing connection details for direct P2P transfer.",
                 step: "02",
               },
               {
                 icon: TbOutlineDownload,
                 title: "Share & Receive",
-                description: "Share the ticket with the recipient. They paste it to start the download instantly.",
+                description:
+                  "Share the ticket with the recipient. They paste it to start the download instantly.",
                 step: "03",
               },
             ].map((item, index) => (
@@ -396,10 +479,7 @@ export default function HomePage() {
               >
                 GitHub
               </a>
-              <a
-                href="/about"
-                class="hover:text-white/60 transition-colors"
-              >
+              <a href="/about" class="hover:text-white/60 transition-colors">
                 About
               </a>
             </div>

@@ -33,7 +33,7 @@ cargo build --release
 
 # Build specific packages
 cargo build -p sendme-lib      # Library only
-cargo build -p sendme          # CLI only (binary name: sendme)
+cargo build -p sendme          # CLI only
 cargo build -p app             # Tauri backend only
 
 # Format (REQUIRED before committing)
@@ -41,9 +41,6 @@ cargo fmt --all
 
 # Lint (warnings are errors in CI: RUSTFLAGS=-Dwarnings)
 cargo clippy --locked --workspace --all-targets --all-features
-
-# Check dependencies are correct
-cargo check --workspace --all-features --bins
 ```
 
 ### Running Tests
@@ -54,17 +51,12 @@ cargo test --locked --workspace --all-features
 
 # Run specific test by name
 cargo test send_recv_file
-cargo test send_recv_dir
 
 # Test specific package
-cargo test -p sendme-lib                     # Library tests only
-cargo test -p cli                            # CLI tests only
+cargo test -p sendme-lib
 
 # Run integration tests only
-cargo test --test cli                        # tests/cli.rs
-
-# Run library unit tests only
-cargo test --lib -p sendme-lib
+cargo test --test cli
 
 # Verbose output for debugging
 cargo test send_recv_file -- --nocapture
@@ -80,13 +72,11 @@ cd app
 pnpm install                       # Install dependencies
 pnpm run dev                       # Vinxi dev server on port 1420
 pnpm run tauri dev                 # Dev with hot reload
-pnpm run build                     # Build frontend (vinxi build)
 pnpm run tauri build               # Build complete desktop app
 pnpm run format                    # Prettier formatting
 
 # Mobile builds
 pnpm run tauri android build
-pnpm run tauri android build --target aarch64
 pnpm run tauri ios build
 ```
 
@@ -96,7 +86,6 @@ pnpm run tauri ios build
 cd browser-lib
 # macOS: Use LLVM Clang (NOT Apple Clang)
 export CC=/opt/homebrew/opt/llvm/bin/clang
-cargo build --target=wasm32-unknown-unknown
 cargo build --target=wasm32-unknown-unknown --release
 ```
 
@@ -108,16 +97,11 @@ Use ordered groups with blank lines between:
 
 ```rust
 // 1. Standard library
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
-    time::Instant,
-};
+use std::{collections::BTreeMap, sync::{Arc, Mutex}, time::Instant};
 
 // 2. External crates (alphabetical)
 use anyhow::Context;
 use iroh::{Endpoint, RelayMode};
-use iroh_blobs::{BlobFormat, BlobsProtocol};
 use tokio::select;
 
 // 3. Local crate imports
@@ -126,7 +110,7 @@ use crate::{progress::*, types::*};
 
 ### Rust Naming Conventions
 
-- Types/Structs/Enums: `PascalCase` (`SendResult`, `NearbyDevice`, `AddrInfoOptions`)
+- Types/Structs/Enums: `PascalCase` (`SendResult`, `NearbyDevice`)
 - Functions/Methods: `snake_case` (`send_with_progress`, `get_or_create_secret`)
 - Constants: `SCREAMING_SNAKE_CASE` (`MSRV`, `ALPN`, `TICK_RATE_MS`)
 - Modules: `snake_case` (`send`, `receive`, `progress`)
@@ -164,15 +148,12 @@ std::future::pending::<()>().await
 ```typescript
 // External packages first, then local imports
 import { invoke } from "@tauri-apps/api/core";
-import { createSignal, createEffect } from "solid-js";
+import { createSignal } from "solid-js";
 import { send_file, type SendFileRequest } from "~/lib/commands";
 
 // Explicit types for signals
 const [devices, setDevices] = createSignal<NearbyDevice[]>([]);
-const [isLoading, setIsLoading] = createSignal<boolean>(false);
 
-// SolidJS components use function components with TSX
-// Props: type Props = { onClose: () => void; onUpdate: (value: string) => void }
 // Import paths use ~/* alias for src/ (configured in tsconfig.json)
 ```
 
@@ -181,7 +162,7 @@ const [isLoading, setIsLoading] = createSignal<boolean>(false);
 - **MSRV**: 1.81 (Minimum Supported Rust Version)
 - **CI Environment**: `RUSTFLAGS: -Dwarnings` (all warnings are errors)
 - **CI Environment**: `IROH_FORCE_STAGING_RELAYS: 1` (use staging relays in tests)
-- **TypeScript**: Strict mode enabled (noUnusedLocals, noUnusedParameters, noFallthroughCasesInSwitch)
+- **TypeScript**: Strict mode enabled (noUnusedLocals, noUnusedParameters)
 - **Frontend Framework**: SolidJS (not Vue/React) with Vinxi bundler and Tailwind CSS v4
 - **Path Handling**: All temp directories use `.sendme-*` prefix
 - **Nearby Discovery**: Uses mDNS, requires same WiFi network
@@ -189,37 +170,36 @@ const [isLoading, setIsLoading] = createSignal<boolean>(false);
 
 ## Common Pitfalls
 
-1. **Router keep-alive**: Never remove `std::future::pending()` - critical for send functionality (lib/src/send.rs)
+1. **Router keep-alive**: Never remove `std::future::pending()` - critical for send functionality
 2. **Browser WASM**: Never add `browser-lib` to workspace members (conflicts with native builds)
 3. **Tauri errors**: Convert Rust errors to String with descriptive messages for frontend
 4. **Path validation**: Always validate user paths (see `canonicalized_path_to_string`)
-5. **Android content URIs**: Handle `content://` URIs specially in Tauri (see `app/src-tauri/src/lib.rs`)
+5. **Android content URIs**: Handle `content://` URIs specially in Tauri
 6. **Tokio RwLock**: Use `tokio::sync::RwLock` for shared async state, not `std::sync::RwLock`
 7. **Android temp directories**: Use `args.common.temp_dir` instead of `std::env::current_dir()`
-8. **Recursion limit**: If compilation fails with "recursion limit reached", add `#![recursion_limit = "256"]` to `app/src-tauri/src/lib.rs`
+8. **Recursion limit**: If compilation fails, add `#![recursion_limit = "256"]` to `app/src-tauri/src/lib.rs`
 9. **Android JNI**: Always use `push_local_frame()`/`pop_local_frame()` in loops to prevent local reference overflow
-10. **pnpm workspace**: References non-existent `tauri-plugin-mobile-file-picker` (legacy, can be ignored)
 
 ## Architecture Overview
 
 ### Core Library (`lib/`)
 
-- **`lib.rs`**: Public API exports, `get_or_create_secret()` function
+- **`lib.rs`**: Public API exports, `get_or_create_secret()`
 - **`send.rs`**: Send/host - creates endpoint, imports files, serves data, spawns keep-alive task
 - **`receive.rs`**: Receive/download - connects, downloads via `execute_get()`, exports to filesystem
 - **`import.rs`**: File/directory import into blob store (parallelized with `num_cpus`)
 - **`export.rs`**: Export from blob store to filesystem
-- **`progress.rs`**: Progress event types/channels (ImportProgress, ExportProgress, DownloadProgress, ConnectionStatus)
+- **`progress.rs`**: Progress event types/channels
 - **`types.rs`**: Common types (`AddrInfoOptions`, `CommonConfig`, `Format`)
 
 ### Tauri App (`app/`)
 
-**Frontend** (`app/src/`): SolidJS + Tailwind CSS v4. Key files:
+**Frontend** (`app/src/`): SolidJS + Tailwind CSS v4
 - **`routes/index.tsx`**: Main UI (Send/Receive tabs, transfers list)
 - **`bindings.ts`**: Type-safe Tauri command wrappers
 - **`lib/utils.ts`**: Utilities (formatFileSize, formatDate)
 
-**Backend** (`app/src-tauri/src/lib.rs`): Tauri commands wrapping `sendme-lib`:
+**Backend** (`app/src-tauri/src/lib.rs`): Tauri commands wrapping `sendme-lib`
 - `send_file`, `receive_file`, `cancel_transfer`, `get_transfers`, `get_transfer_status`
 - `start_nearby_discovery`, `get_nearby_devices`, `stop_nearby_discovery`
 - Uses `tokio::sync::RwLock<HashMap>` for transfer state
