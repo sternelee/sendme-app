@@ -2,7 +2,36 @@ import { defineConfig } from "@solidjs/start/config";
 import tailwindcss from "@tailwindcss/vite";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 // import { VitePWA } from "vite-plugin-pwa";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
+/**
+ * Rollup plugin that appends the UserDO named export to the worker entry
+ * so Cloudflare Workers can bind it as a Durable Object class.
+ */
+function cloudflareDoExportsPlugin() {
+  return {
+    name: "inject-durable-object-exports",
+    renderChunk(code: string, chunk: { isEntry: boolean }) {
+      if (chunk.isEntry) {
+        // Import and re-export UserDO so wrangler registers it
+        return {
+          code:
+            `import { UserDO as _UserDO } from ${JSON.stringify(
+              resolve(__dirname, "src/worker/durable-objects/user.ts"),
+            )};\n` +
+            code +
+            `\nexport { _UserDO as UserDO };\n`,
+          map: null,
+        };
+      }
+      return null;
+    },
+  };
+}
 
 export default defineConfig({
   vite: {
@@ -10,69 +39,16 @@ export default defineConfig({
       tailwindcss(),
       wasm(),
       topLevelAwait(),
-      // VitePWA({
-      //   registerType: "autoUpdate",
-      //   includeAssets: ["favicon.ico", "robots.txt", "apple-touch-icon.png"],
-      //   manifest: {
-      //     name: "Sendme - P2P File Transfer",
-      //     short_name: "Sendme",
-      //     description:
-      //       "Secure, peer-to-peer file transfer powered by iroh. Send files of any size without cloud storage.",
-      //     theme_color: "#a855f7",
-      //     background_color: "#0c0a1e",
-      //     display: "standalone",
-      //     orientation: "portrait",
-      //     scope: "/",
-      //     start_url: "/",
-      //     icons: [
-      //       {
-      //         src: "/icon-192x192.png",
-      //         sizes: "192x192",
-      //         type: "image/png",
-      //         purpose: "any maskable",
-      //       },
-      //       {
-      //         src: "/icon-512x512.png",
-      //         sizes: "512x512",
-      //         type: "image/png",
-      //         purpose: "any maskable",
-      //       },
-      //       {
-      //         src: "/apple-touch-icon.png",
-      //         sizes: "180x180",
-      //         type: "image/png",
-      //         purpose: "apple touch icon",
-      //       },
-      //     ],
-      //   },
-      //   workbox: {
-      //     maximumFileSizeToCacheInBytes: 30 * 1024 * 1024, // 30 MB - allow caching large WASM files
-      //     globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,wasm}"],
-      //     runtimeCaching: [
-      //       {
-      //         urlPattern: /^https:\/\/iroh\.computer\/.*/i,
-      //         handler: "NetworkFirst",
-      //         options: {
-      //           cacheName: "iroh-cache",
-      //           expiration: {
-      //             maxEntries: 10,
-      //             maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-      //           },
-      //         },
-      //       },
-      //     ],
-      //   },
-      //   devOptions: {
-      //     enabled: true,
-      //     type: "module",
-      //   },
-      // }),
     ],
   },
 
   server: {
     preset: "cloudflare_module",
     compatibilityDate: "2026-01-16",
+    // Expose UserDO class as a named export for the DO binding
+    rollupConfig: {
+      plugins: [cloudflareDoExportsPlugin()],
+    },
     // Cloudflare service bindings
     cloudflare: {
       bindings: {
@@ -86,6 +62,12 @@ export default defineConfig({
           DB: {
             type: "d1_database",
             id: process.env.CLOUDFLARE_D1_ID || "YOUR_D1_DATABASE_ID",
+          },
+        },
+        durableObjects: {
+          USER_DO: {
+            className: "UserDO",
+            scriptName: undefined, // same worker
           },
         },
       },

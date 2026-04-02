@@ -110,6 +110,21 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       .returning()
       .get();
 
+    // Broadcast new ticket to all this user's WS sessions via DO
+    try {
+      const doId = env.USER_DO.idFromName(userId);
+      const stub = env.USER_DO.get(doId);
+      await stub.fetch(
+        new Request("https://do/broadcast/tickets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        }),
+      );
+    } catch (broadcastErr) {
+      console.warn("[Tickets API] DO broadcast failed:", broadcastErr);
+    }
+
     return new Response(JSON.stringify(newTicket), {
       status: 200,
       headers: { "Content-Type": "application/json" },

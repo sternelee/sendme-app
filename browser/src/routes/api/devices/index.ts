@@ -134,6 +134,21 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       userAgent,
     });
 
+    // Broadcast updated device list to all this user's WS sessions via DO
+    try {
+      const doId = env.USER_DO.idFromName(userId);
+      const stub = env.USER_DO.get(doId);
+      await stub.fetch(
+        new Request("https://do/broadcast/devices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        }),
+      );
+    } catch (broadcastErr) {
+      console.warn("[Devices API] DO broadcast failed:", broadcastErr);
+    }
+
     return new Response(JSON.stringify(device), {
       status: 200,
       headers: { "Content-Type": "application/json" },
