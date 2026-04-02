@@ -4,7 +4,7 @@
  * Allows sending tickets to other devices
  */
 
-import { createSignal, onMount, For, Show } from "solid-js";
+import { createSignal, createEffect, For, Show } from "solid-js";
 import { Motion, Presence } from "solid-motionone";
 import {
   TbOutlineDeviceDesktop,
@@ -17,29 +17,9 @@ import {
   TbOutlineSend,
   TbOutlineClock,
 } from "solid-icons/tb";
-
-/**
- * Platform type
- */
-type Platform = "web" | "windows" | "mac" | "linux" | "android" | "ios";
-
-/**
- * Device interface
- */
-interface Device {
-  id: string;
-  userId: string;
-  platform: Platform;
-  deviceId: string;
-  name: string;
-  ipAddress: string | null;
-  hostname: string | null;
-  userAgent: string | null;
-  online: boolean;
-  lastSeenAt: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import { useAuth } from "clerk-solidjs";
+import { useWebSocket, getDeviceId } from "~/lib/composables/useWebSocket";
+import type { Device } from "~/lib/composables/useWebSocket";
 
 /**
  * Props for DeviceListModal
@@ -55,7 +35,7 @@ interface DeviceListModalProps {
 /**
  * Get platform icon
  */
-function getPlatformIcon(platform: Platform) {
+function getPlatformIcon(platform: string) {
   switch (platform) {
     case "android":
     case "ios":
@@ -74,7 +54,7 @@ function getPlatformIcon(platform: Platform) {
 /**
  * Format last seen time
  */
-function formatLastSeen(lastSeenAt: string): string {
+function formatLastSeen(lastSeenAt: Date | string): string {
   const now = Date.now();
   const lastSeen = new Date(lastSeenAt).getTime();
   const diff = now - lastSeen;
@@ -86,77 +66,46 @@ function formatLastSeen(lastSeenAt: string): string {
 }
 
 /**
- * Get current device ID (stored in localStorage)
- */
-function getCurrentDeviceId(): string {
-  let deviceId = localStorage.getItem("sendme_device_id");
-  if (!deviceId) {
-    deviceId = crypto.randomUUID();
-    localStorage.setItem("sendme_device_id", deviceId);
-  }
-  return deviceId;
-}
-
-/**
- * Register current device
- */
-async function registerCurrentDevice(): Promise<void> {
-  try {
-    const deviceId = getCurrentDeviceId();
-    await fetch("/api/devices", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ deviceId }),
-    });
-  } catch (error) {
-    console.error("Failed to register device:", error);
-  }
-}
-
-/**
  * DeviceListModal Component
  */
 export default function DeviceListModal(props: DeviceListModalProps) {
-  const [devices, setDevices] = createSignal<Device[]>([]);
-  const [isLoading, setIsLoading] = createSignal(false);
+  const { devices: wsDevices, isConnected } = useWebSocket();
+  const { getToken } = useAuth();
   const [error, setError] = createSignal<string | null>(null);
-  const [currentDeviceId, setCurrentDeviceId] = createSignal<string>("");
+  const currentDeviceId = getDeviceId();
 
-  // Load devices when modal opens
-  const loadDevices = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/devices");
-      if (!response.ok) {
-        throw new Error("Failed to load devices");
-      }
-      const data = (await response.json()) as Device[];
-      setDevices(data);
-
-      // Register current device if not in list
-      await registerCurrentDevice();
-      setCurrentDeviceId(getCurrentDeviceId());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load devices");
-    } finally {
-      setIsLoading(false);
+  // When the modal opens, register current device so it shows up in the list
+  createEffect(() => {
+    if (props.isOpen) {
+      getToken().then((token) => {
+        return fetch("/api/devices", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ deviceId: currentDeviceId }),
+        });
+      }).catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Failed to register device");
+      });
     }
-  };
+  });
 
-  // Delete device
+  const devices = wsDevices;
+  const isLoading = () => !isConnected();
+
+  // Delete device — after deletion the DO will broadcast an updated list
   const deleteDevice = async (deviceId: string) => {
     try {
+      const token = await getToken();
       const response = await fetch(`/api/devices/${deviceId}`, {
         method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!response.ok) {
         throw new Error("Failed to delete device");
       }
-      // Reload devices
-      await loadDevices();
     } catch (err) {
       console.error("Failed to delete device:", err);
     }
@@ -165,29 +114,12 @@ export default function DeviceListModal(props: DeviceListModalProps) {
   // Send ticket to device
   const sendToDevice = async (device: Device) => {
     if (props.ticket) {
-      // TODO: Implement ticket sending API
       console.log("Sending ticket to device:", device);
       if (props.onSendToDevice) {
         props.onSendToDevice(device);
       }
     }
   };
-
-  // Load devices when modal opens
-  let prevOpen = false;
-  const checkOpenChange = () => {
-    if (props.isOpen && !prevOpen) {
-      loadDevices();
-    }
-    prevOpen = props.isOpen;
-  };
-
-  onMount(() => {
-    checkOpenChange();
-    // Poll to check for modal opening
-    const interval = setInterval(checkOpenChange, 100);
-    return () => clearInterval(interval);
-  });
 
   return (
     <Presence>
@@ -223,7 +155,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                 <Motion.button
                   hover={{ scale: 1.05 }}
                   press={{ scale: 0.95 }}
-                  onClick={loadDevices}
+                  onClick={() => { /* data arrives via WS push */ }}
                   disabled={isLoading()}
                   class="p-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
                   title="Refresh"
@@ -263,7 +195,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                   <For each={devices()}>
                     {(device) => {
                       const PlatformIcon = getPlatformIcon(device.platform);
-                      const isCurrentDevice = device.deviceId === currentDeviceId();
+                      const isCurrentDevice = device.deviceId === currentDeviceId;
 
                       return (
                         <Motion.div

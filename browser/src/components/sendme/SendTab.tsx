@@ -19,21 +19,7 @@ import {
   TbOutlineFileMusic,
 } from "solid-icons/tb";
 import DeviceListModal from "../devices/DeviceListModal";
-
-interface Device {
-  id: string;
-  userId: string;
-  platform: string;
-  deviceId: string;
-  name: string;
-  ipAddress: string | null;
-  hostname: string | null;
-  userAgent: string | null;
-  online: boolean;
-  lastSeenAt: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { Device } from "../../lib/composables/useWebSocket";
 
 interface SendTabProps {}
 
