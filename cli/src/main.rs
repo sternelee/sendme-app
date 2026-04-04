@@ -1,17 +1,22 @@
 //! Sendme CLI - Send files over the internet using iroh.
 //!
-//! Interactive TUI version with ratatui.
+//! Supports both interactive TUI mode and command-line mode.
 
 use std::path::PathBuf;
 
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use indicatif::HumanBytes;
 use ratatui::{backend::CrosstermBackend, Terminal};
-use sendme_lib::{types::*, BlobTicket};
+use sendme_lib::{
+    types::{CommonConfig, Format, RelayModeOption},
+    BlobTicket, ReceiveArgs, SendArgs,
+};
 use tokio::sync::mpsc;
 
 mod tui;
@@ -21,10 +26,209 @@ use tui::{app::TransferType, App, EventHandler, Transfer};
 /// Tick rate for the event loop (ms).
 const TICK_RATE_MS: u64 = 250;
 
+#[derive(Parser, Debug)]
+#[command(name = "sendme")]
+#[command(version, about = "Send files over the internet using iroh")]
+struct Cli {
+    #[clap(subcommand)]
+    pub command: Option<Commands>,
+
+    /// Launch interactive TUI mode.
+    #[clap(long, short = 't')]
+    pub tui: bool,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Send a file or directory.
+    Send(SendArgs2),
+
+    /// Receive a file or directory.
+    #[clap(visible_alias = "recv")]
+    Receive(ReceiveArgs2),
+}
+
+#[derive(Parser, Debug)]
+pub struct CommonArgs {
+    /// The IPv4 address that magicsocket will listen on.
+    #[clap(long)]
+    pub magic_ipv4_addr: Option<std::net::SocketAddrV4>,
+
+    /// The IPv6 address that magicsocket will listen on.
+    #[clap(long)]
+    pub magic_ipv6_addr: Option<std::net::SocketAddrV6>,
+
+    /// Hash output format.
+    #[clap(long, default_value_t = Format::Hex)]
+    pub format: Format,
+
+    /// Verbosity level (can stack: -vv).
+    #[clap(short = 'v', long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
+
+    /// Suppress progress bars.
+    #[clap(long)]
+    pub no_progress: bool,
+
+    /// The relay URL to use as a home relay.
+    /// Can be set to "disabled", "default", or a custom URL.
+    #[clap(long, default_value_t = RelayModeOption::Default)]
+    pub relay: RelayModeOption,
+
+    /// Show the secret key on stderr.
+    #[clap(long)]
+    pub show_secret: bool,
+}
+
+#[derive(Parser, Debug)]
+pub struct SendArgs2 {
+    /// Path to the file or directory to send.
+    #[clap(required = true)]
+    pub path: PathBuf,
+
+    /// What type of ticket to use.
+    #[clap(long, default_value_t = sendme_lib::types::AddrInfoOptions::RelayAndAddresses)]
+    pub ticket_type: sendme_lib::types::AddrInfoOptions,
+
+    #[clap(flatten)]
+    pub common: CommonArgs,
+
+    /// Store the receive command in the clipboard.
+    #[cfg(feature = "clipboard")]
+    #[clap(short = 'c', long)]
+    pub clipboard: bool,
+}
+
+#[derive(Parser, Debug)]
+pub struct ReceiveArgs2 {
+    /// The ticket to use to connect to the sender.
+    #[clap(required = true)]
+    pub ticket: BlobTicket,
+
+    #[clap(flatten)]
+    pub common: CommonArgs,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    let cli = Cli::parse();
 
+    match &cli.command {
+        Some(Commands::Send(args)) => {
+            do_send(args).await?;
+        }
+        Some(Commands::Receive(args)) => {
+            do_receive(args).await?;
+        }
+        None => {
+            // No subcommand - launch TUI by default
+            run_tui().await?;
+        }
+    }
+
+    Ok(())
+}
+
+fn common_args_to_config(common: &CommonArgs) -> CommonConfig {
+    CommonConfig {
+        magic_ipv4_addr: common.magic_ipv4_addr,
+        magic_ipv6_addr: common.magic_ipv6_addr,
+        format: common.format,
+        relay: common.relay.clone(),
+        show_secret: common.show_secret,
+        temp_dir: None,
+    }
+}
+
+/// Command-line send implementation.
+async fn do_send(args: &SendArgs2) -> Result<()> {
+    let secret_key = sendme_lib::get_or_create_secret(args.common.verbose > 0)?;
+    if args.common.show_secret {
+        let secret_key = hex::encode(secret_key.to_bytes());
+        eprintln!("using secret key {secret_key}");
+    }
+
+    let send_args = SendArgs {
+        path: args.path.clone(),
+        ticket_type: args.ticket_type,
+        common: common_args_to_config(&args.common),
+    };
+
+    let result = sendme_lib::send_with_progress(send_args, mpsc::channel(32).0).await?;
+
+    let entry_type = if args.path.is_file() {
+        "file"
+    } else {
+        "directory"
+    };
+
+    println!(
+        "imported {} {}, {}, hash {}",
+        entry_type,
+        args.path.display(),
+        HumanBytes(result.total_size),
+        result.hash
+    );
+
+    println!("to get this data, use");
+    println!("sendme receive {}", result.ticket);
+
+    #[cfg(feature = "clipboard")]
+    if args.clipboard {
+        copy_to_clipboard(&format!("sendme receive {}", result.ticket));
+    }
+
+    // Wait for Ctrl+C to shut down
+    tokio::signal::ctrl_c().await?;
+
+    println!("shutting down");
+    Ok(())
+}
+
+/// Command-line receive implementation.
+async fn do_receive(args: &ReceiveArgs2) -> Result<()> {
+    let secret_key = sendme_lib::get_or_create_secret(args.common.verbose > 0)?;
+    if args.common.show_secret {
+        let secret_key = hex::encode(secret_key.to_bytes());
+        eprintln!("using secret key {secret_key}");
+    }
+
+    let receive_args = ReceiveArgs {
+        ticket: args.ticket.clone(),
+        common: common_args_to_config(&args.common),
+        export_dir: None,
+    };
+
+    let result = sendme_lib::receive_with_progress(receive_args, mpsc::channel(32).0).await?;
+
+    println!(
+        "downloaded {} files, {}",
+        result.total_files,
+        HumanBytes(result.payload_size)
+    );
+
+    Ok(())
+}
+
+#[cfg(feature = "clipboard")]
+fn copy_to_clipboard(content: &str) {
+    #[cfg(unix)]
+    {
+        use std::process::Command;
+        Command::new("pbcopy").arg(content).output().ok();
+    }
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        Command::new("cmd")
+            .args(["/C", &format!("echo {} | clip", content)])
+            .output()
+            .ok();
+    }
+}
+
+/// Interactive TUI implementation.
+async fn run_tui() -> Result<()> {
     // Setup terminal in a blocking task
     let backend = tokio::task::spawn_blocking(|| {
         enable_raw_mode()?;
@@ -224,6 +428,8 @@ struct ReceiveRequest {
 
 /// Handle a send request.
 async fn handle_send_request(request: SendRequest, event_handler: EventHandler) -> Result<()> {
+    use sendme_lib::types::{AddrInfoOptions, SendArgs};
+
     let path = PathBuf::from(&request.path);
 
     if !path.exists() {
@@ -265,6 +471,8 @@ async fn handle_receive_request(
     request: ReceiveRequest,
     event_handler: EventHandler,
 ) -> Result<()> {
+    use sendme_lib::types::{CommonConfig, ReceiveArgs};
+
     let args = ReceiveArgs {
         ticket: request.ticket,
         common: CommonConfig::default(),

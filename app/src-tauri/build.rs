@@ -16,7 +16,10 @@ fn main() {
         let mut android_gen_dir = out_dir.clone();
         // Go up 5 levels: out -> {crate-hash} -> build -> release -> {ARCH} -> target
         for _ in 0..5 {
-            android_gen_dir = android_gen_dir.parent().unwrap_or(&android_gen_dir).to_path_buf();
+            android_gen_dir = android_gen_dir
+                .parent()
+                .unwrap_or(&android_gen_dir)
+                .to_path_buf();
         }
         println!("cargo:warning=After 5 parents: {:?}", android_gen_dir);
 

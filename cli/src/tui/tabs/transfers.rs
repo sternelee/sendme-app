@@ -239,12 +239,10 @@ fn render_transfer_detail(f: &mut Frame, app: &App, area: Rect, transfer_id: &st
     let qr_text = generate_qr_string(ticket);
 
     // Main content area - ticket first, then QR code
-    let mut all_lines = vec![
-        Line::from(vec![Span::styled(
-            format!("Status: {}", transfer.status),
-            Style::default().fg(Color::Yellow),
-        )]),
-    ];
+    let mut all_lines = vec![Line::from(vec![Span::styled(
+        format!("Status: {}", transfer.status),
+        Style::default().fg(Color::Yellow),
+    )])];
 
     // Show file names if available (for receive transfers)
     if !transfer.file_names.is_empty() {
@@ -253,7 +251,7 @@ fn render_transfer_detail(f: &mut Frame, app: &App, area: Rect, transfer_id: &st
             format!("Files ({}):", transfer.file_names.len()),
             Style::default().fg(Color::Yellow),
         )]));
-        
+
         // Show up to 5 files
         for (i, name) in transfer.file_names.iter().take(5).enumerate() {
             all_lines.push(Line::from(vec![Span::styled(
@@ -261,7 +259,7 @@ fn render_transfer_detail(f: &mut Frame, app: &App, area: Rect, transfer_id: &st
                 Style::default().fg(Color::White),
             )]));
         }
-        
+
         // Show count of remaining files if more than 5
         if transfer.file_names.len() > 5 {
             all_lines.push(Line::from(vec![Span::styled(
