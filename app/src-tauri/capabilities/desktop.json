@@ -10,14 +10,6 @@
   ],
   "permissions": [
     "core:default",
-    "os:default",
-    "os:allow-hostname",
-    "notification:default",
-    "clipboard-manager:default",
-    "http:default",
-    "dialog:default",
-    "fs:default",
-    "opener:default",
-    "updater:default"
+    "clerk:default"
   ]
 }

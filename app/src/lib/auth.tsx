@@ -1,9 +1,10 @@
 /**
  * Clerk Auth for Tauri Desktop App
- * Uses Clerk JS SDK with mountUserButton and mountSignIn
+ * Uses tauri-plugin-clerk for native Tauri authentication
  */
 
-import { Clerk } from "@clerk/clerk-js";
+import { Clerk, ClerkOptions } from "@clerk/clerk-js";
+import { initClerk } from "tauri-plugin-clerk";
 import {
   createContext,
   useContext,
@@ -11,9 +12,6 @@ import {
   onMount,
   JSX,
 } from "solid-js";
-
-const CLERK_PUBLISHABLE_KEY =
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_your_key";
 
 export interface UserInfo {
   id: string;
@@ -34,6 +32,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue>();
 
+const CLERK_PUBLISHABLE_KEY =
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_placeholder";
+
 /**
  * Auth Provider for Tauri Desktop App
  */
@@ -44,44 +45,45 @@ export function AuthProvider(props: { children: JSX.Element }) {
   const [clerkInstance, setClerkInstance] = createSignal<Clerk | null>(null);
 
   onMount(async () => {
-    // Create Clerk instance
-    const clerk = new Clerk(CLERK_PUBLISHABLE_KEY);
-    setClerkInstance(clerk);
+    try {
+      // Initialize clerk using tauri-plugin-clerk
+      // initClerk returns a Promise<Clerk> that resolves when clerk is ready
+      const clerk = await initClerk({
+        publishableKey: CLERK_PUBLISHABLE_KEY,
+      });
+      setClerkInstance(clerk);
 
-    await clerk.load();
-
-    // Check sign-in status
-    if (clerk.isSignedIn) {
-      setIsSignedIn(true);
-
-      // Get user info
-      const userData = clerk.user;
-      if (userData) {
-        setUser({
-          id: userData.id,
-          email: userData.emailAddresses[0]?.emailAddress || "",
-          name: userData.fullName || userData.username || "",
-          imageUrl: userData.imageUrl,
-        });
-      }
-    }
-    setIsLoaded(true);
-
-    // Listen for session changes
-    clerk.addListener(({ user: clerkUser }) => {
-      if (clerkUser) {
-        setUser({
-          id: clerkUser.id,
-          email: clerkUser.emailAddresses[0]?.emailAddress || "",
-          name: clerkUser.fullName || clerkUser.username || "",
-          imageUrl: clerkUser.imageUrl,
-        });
+      // Check sign-in status
+      if (clerk.user) {
         setIsSignedIn(true);
-      } else {
-        setUser(null);
-        setIsSignedIn(false);
+        setUser({
+          id: clerk.user.id,
+          email: clerk.user.emailAddresses[0]?.emailAddress || "",
+          name: clerk.user.fullName || clerk.user.username || "",
+          imageUrl: clerk.user.imageUrl,
+        });
       }
-    });
+      setIsLoaded(true);
+
+      // Listen for session changes
+      clerk.addListener(({ user: clerkUser }) => {
+        if (clerkUser) {
+          setUser({
+            id: clerkUser.id,
+            email: clerkUser.emailAddresses[0]?.emailAddress || "",
+            name: clerkUser.fullName || clerkUser.username || "",
+            imageUrl: clerkUser.imageUrl,
+          });
+          setIsSignedIn(true);
+        } else {
+          setUser(null);
+          setIsSignedIn(false);
+        }
+      });
+    } catch (error) {
+      console.error("Failed to initialize Clerk:", error);
+      setIsLoaded(true);
+    }
   });
 
   const signIn = async () => {

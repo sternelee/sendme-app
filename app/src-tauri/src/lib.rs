@@ -400,6 +400,9 @@ pub fn run() {
 
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
 
+    let clerk_publishable_key = std::env::var("CLERK_PUBLISHABLE_KEY")
+        .unwrap_or_else(|_| "pk_test_placeholder".to_string());
+
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -408,7 +411,12 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_dialog::init());
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_clerk::ClerkPluginBuilder::new()
+                .publishable_key(clerk_publishable_key)
+                .build(),
+        );
 
     #[cfg(target_os = "android")]
     {

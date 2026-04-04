@@ -35,7 +35,7 @@ importers:
         version: 2.2.1(solid-js@1.9.10)
       '@solid-primitives/storage':
         specifier: ^4.3.3
-        version: 4.3.3(solid-js@1.9.10)
+        version: 4.3.3(@tauri-apps/plugin-store@2.4.2)(solid-js@1.9.10)
       '@solid-primitives/transition-group':
         specifier: ^1.1.2
         version: 1.1.2(solid-js@1.9.10)
@@ -58,8 +58,8 @@ importers:
         specifier: ^2.4.5
         version: 2.4.5
       '@tauri-apps/plugin-http':
-        specifier: ^2.5.6
-        version: 2.5.6
+        specifier: ^2.4.3
+        version: 2.4.3
       '@tauri-apps/plugin-notification':
         specifier: ^2.3.3
         version: 2.3.3
@@ -99,6 +99,9 @@ importers:
       tailwind-merge:
         specifier: ^3.4.0
         version: 3.4.0
+      tauri-plugin-clerk:
+        specifier: file:/Users/sternelee/Downloads/tauri-plugin-clerk-main
+        version: file:../../../Downloads/tauri-plugin-clerk-main(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@5.0.0)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-native@0.84.1(@babel/core@7.28.6)(bufferutil@4.1.0)(react@19.2.4)(utf-8-validate@6.0.6))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(utf-8-validate@6.0.6)(zod@4.3.5)
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2.9.6
@@ -162,7 +165,7 @@ importers:
         version: 2.2.1(solid-js@1.9.10)
       '@solid-primitives/storage':
         specifier: ^4.3.3
-        version: 4.3.3(solid-js@1.9.10)
+        version: 4.3.3(@tauri-apps/plugin-store@2.4.2)(solid-js@1.9.10)
       '@solid-primitives/transition-group':
         specifier: ^1.1.2
         version: 1.1.2(solid-js@1.9.10)
@@ -2787,6 +2790,9 @@ packages:
     peerDependencies:
       solid-js: ^1.6.0
 
+  '@tauri-apps/api@2.10.1':
+    resolution: {integrity: sha512-hKL/jWf293UDSUN09rR69hrToyIXBb8CjGaWC7gfinvnQrBVvnLr08FeFi38gxtugAVyVcTa5/FD/Xnkb1siBw==}
+
   '@tauri-apps/api@2.9.1':
     resolution: {integrity: sha512-IGlhP6EivjXHepbBic618GOmiWe4URJiIeZFlB7x3czM0yDHHYviH1Xvoiv4FefdkQtn6v7TuwWCRfOGdnVUGw==}
 
@@ -2878,8 +2884,11 @@ packages:
   '@tauri-apps/plugin-fs@2.4.5':
     resolution: {integrity: sha512-dVxWWGE6VrOxC7/jlhyE+ON/Cc2REJlM35R3PJX3UvFw2XwYhLGQVAIyrehenDdKjotipjYEVc4YjOl3qq90fA==}
 
-  '@tauri-apps/plugin-http@2.5.6':
-    resolution: {integrity: sha512-KhCK3TDNDF4vdz75/j+KNQipYKf+295Visa8r32QcXScg0+D3JwShcCM6D+FN8WuDF24X3KSiAB8QtRxW6jKRA==}
+  '@tauri-apps/plugin-http@2.4.3':
+    resolution: {integrity: sha512-Us8X+FikzpaZRNr4kH4HLwyXascHbM42p6LxAqRTQnHPrrqp1usaH4vxWAZalPvTbHJ3gBEMJPHusFJgtjGJjA==}
+
+  '@tauri-apps/plugin-http@2.5.7':
+    resolution: {integrity: sha512-+F2lEH/c9b0zSsOXKq+5hZNcd9F4IIKCK1T17RqMwpCmVnx2aoqY8yIBccCd25HTYUb3j6NPVbRax/m00hKG8A==}
 
   '@tauri-apps/plugin-notification@2.3.3':
     resolution: {integrity: sha512-Zw+ZH18RJb41G4NrfHgIuofJiymusqN+q8fGUIIV7vyCH+5sSn5coqRv/MWB9qETsUs97vmU045q7OyseCV3Qg==}
@@ -2889,6 +2898,9 @@ packages:
 
   '@tauri-apps/plugin-os@2.3.2':
     resolution: {integrity: sha512-n+nXWeuSeF9wcEsSPmRnBEGrRgOy6jjkSU+UVCOV8YUGKb2erhDOxis7IqRXiRVHhY8XMKks00BJ0OAdkpf6+A==}
+
+  '@tauri-apps/plugin-store@2.4.2':
+    resolution: {integrity: sha512-0ClHS50Oq9HEvLPhNzTNFxbWVOqoAp3dRvtewQBeqfIQ0z5m3JRnOISIn2ZVPCrQC0MyGyhTS9DWhHjpigQE7A==}
 
   '@tauri-apps/plugin-updater@2.9.0':
     resolution: {integrity: sha512-j++sgY8XpeDvzImTrzWA08OqqGqgkNyxczLD7FjNJJx/uXxMZFz5nDcfkyoI/rCjYuj2101Tci/r/HFmOmoxCg==}
@@ -4204,6 +4216,7 @@ packages:
 
   glob@10.5.0:
     resolution: {integrity: sha512-DfXN8DfhJ7NH3Oe7cFmu3NCu1wKbkReJ8TorzSAFbSKrlNaQSKfIzqYqVY8zlbs2NLBbWpRiU52GX2PbaBVNkg==}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@11.1.0:
@@ -6036,6 +6049,10 @@ packages:
   tar@7.5.6:
     resolution: {integrity: sha512-xqUeu2JAIJpXyvskvU3uvQW8PAmHrtXp2KDuMJwQqW8Sqq0CaZBAQ+dKS3RBXVhU4wC5NjAdKrmh84241gO9cA==}
     engines: {node: '>=18'}
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+
+  tauri-plugin-clerk@file:../../../Downloads/tauri-plugin-clerk-main:
+    resolution: {directory: ../../../Downloads/tauri-plugin-clerk-main, type: directory}
 
   temp-dir@2.0.0:
     resolution: {integrity: sha512-aoBAniQmmwtcKp/7BzsH8Cxzv8OL736p7v1ihGb5e9DJ9kTwGWHrQrVB5+lfVDzfGrdRzXch+ig7LHaY1JTOrg==}
@@ -8453,7 +8470,7 @@ snapshots:
       debug: 4.4.3
       invariant: 2.2.4
       metro: 0.83.5(bufferutil@4.1.0)
-      metro-config: 0.83.5(bufferutil@4.1.0)
+      metro-config: 0.83.5(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       metro-core: 0.83.5
       semver: 7.7.3
     transitivePeerDependencies:
@@ -9119,10 +9136,12 @@ snapshots:
     dependencies:
       solid-js: 1.9.10
 
-  '@solid-primitives/storage@4.3.3(solid-js@1.9.10)':
+  '@solid-primitives/storage@4.3.3(@tauri-apps/plugin-store@2.4.2)(solid-js@1.9.10)':
     dependencies:
       '@solid-primitives/utils': 6.3.2(solid-js@1.9.10)
       solid-js: 1.9.10
+    optionalDependencies:
+      '@tauri-apps/plugin-store': 2.4.2
 
   '@solid-primitives/transition-group@1.1.2(solid-js@1.9.10)':
     dependencies:
@@ -9375,8 +9394,8 @@ snapshots:
   '@tanstack/router-utils@1.143.11':
     dependencies:
       '@babel/core': 7.28.6
-      '@babel/generator': 7.28.6
-      '@babel/parser': 7.28.6
+      '@babel/generator': 7.29.1
+      '@babel/parser': 7.29.0
       ansis: 4.2.0
       diff: 8.0.3
       pathe: 2.0.3
@@ -9420,6 +9439,8 @@ snapshots:
     dependencies:
       '@tanstack/query-core': 5.90.20
       solid-js: 1.9.10
+
+  '@tauri-apps/api@2.10.1': {}
 
   '@tauri-apps/api@2.9.1': {}
 
@@ -9486,9 +9507,13 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.9.1
 
-  '@tauri-apps/plugin-http@2.5.6':
+  '@tauri-apps/plugin-http@2.4.3':
     dependencies:
-      '@tauri-apps/api': 2.9.1
+      '@tauri-apps/api': 2.10.1
+
+  '@tauri-apps/plugin-http@2.5.7':
+    dependencies:
+      '@tauri-apps/api': 2.10.1
 
   '@tauri-apps/plugin-notification@2.3.3':
     dependencies:
@@ -9501,6 +9526,11 @@ snapshots:
   '@tauri-apps/plugin-os@2.3.2':
     dependencies:
       '@tauri-apps/api': 2.9.1
+
+  '@tauri-apps/plugin-store@2.4.2':
+    dependencies:
+      '@tauri-apps/api': 2.10.1
+    optional: true
 
   '@tauri-apps/plugin-updater@2.9.0':
     dependencies:
@@ -9647,7 +9677,7 @@ snapshots:
 
   '@vinxi/plugin-directives@0.5.1(vinxi@0.5.11(@types/node@25.3.0)(better-sqlite3@12.6.2)(db0@0.3.4(better-sqlite3@12.6.2)(drizzle-orm@0.45.1(@cloudflare/workers-types@4.20260120.0)(@prisma/client@5.22.0)(@types/pg@8.16.0)(better-sqlite3@12.6.2)(gel@2.2.0)(kysely@0.28.10)(pg@8.17.2)))(drizzle-orm@0.45.1(@cloudflare/workers-types@4.20260120.0)(@prisma/client@5.22.0)(@types/pg@8.16.0)(better-sqlite3@12.6.2)(gel@2.2.0)(kysely@0.28.10)(pg@8.17.2))(idb-keyval@6.2.1)(ioredis@5.9.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.46.0)(yaml@2.8.2))':
     dependencies:
-      '@babel/parser': 7.28.6
+      '@babel/parser': 7.29.0
       acorn: 8.15.0
       acorn-jsx: 5.3.2(acorn@8.15.0)
       acorn-loose: 8.5.2
@@ -9852,9 +9882,9 @@ snapshots:
   babel-dead-code-elimination@1.0.12:
     dependencies:
       '@babel/core': 7.28.6
-      '@babel/parser': 7.28.6
-      '@babel/traverse': 7.28.6
-      '@babel/types': 7.28.6
+      '@babel/parser': 7.29.0
+      '@babel/traverse': 7.29.0
+      '@babel/types': 7.29.0
     transitivePeerDependencies:
       - supports-color
 
@@ -11629,14 +11659,14 @@ snapshots:
 
   magicast@0.2.11:
     dependencies:
-      '@babel/parser': 7.28.6
-      '@babel/types': 7.28.6
+      '@babel/parser': 7.29.0
+      '@babel/types': 7.29.0
       recast: 0.23.11
 
   magicast@0.5.1:
     dependencies:
-      '@babel/parser': 7.28.6
-      '@babel/types': 7.28.6
+      '@babel/parser': 7.29.0
+      '@babel/types': 7.29.0
       source-map-js: 1.2.1
 
   makeerror@1.0.12:
@@ -11697,21 +11727,6 @@ snapshots:
       metro-core: 0.83.5
     transitivePeerDependencies:
       - supports-color
-
-  metro-config@0.83.5(bufferutil@4.1.0):
-    dependencies:
-      connect: 3.7.0
-      flow-enums-runtime: 0.0.6
-      jest-validate: 29.7.0
-      metro: 0.83.5(bufferutil@4.1.0)
-      metro-cache: 0.83.5
-      metro-core: 0.83.5
-      metro-runtime: 0.83.5
-      yaml: 2.8.2
-    transitivePeerDependencies:
-      - bufferutil
-      - supports-color
-      - utf-8-validate
 
   metro-config@0.83.5(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     dependencies:
@@ -11864,7 +11879,7 @@ snapshots:
       metro-babel-transformer: 0.83.5
       metro-cache: 0.83.5
       metro-cache-key: 0.83.5
-      metro-config: 0.83.5(bufferutil@4.1.0)
+      metro-config: 0.83.5(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       metro-core: 0.83.5
       metro-file-map: 0.83.5
       metro-resolver: 0.83.5
@@ -13301,6 +13316,27 @@ snapshots:
       minipass: 7.1.2
       minizlib: 3.1.0
       yallist: 5.0.0
+
+  tauri-plugin-clerk@file:../../../Downloads/tauri-plugin-clerk-main(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@5.0.0)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-native@0.84.1(@babel/core@7.28.6)(bufferutil@4.1.0)(react@19.2.4)(utf-8-validate@6.0.6))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(utf-8-validate@6.0.6)(zod@4.3.5):
+    dependencies:
+      '@clerk/clerk-js': 6.3.0(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@5.0.0)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-native@0.84.1(@babel/core@7.28.6)(bufferutil@4.1.0)(react@19.2.4)(utf-8-validate@6.0.6))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(utf-8-validate@6.0.6)(zod@4.3.5)
+      '@clerk/shared': 4.3.0(react@19.2.4)
+      '@tauri-apps/api': 2.10.1
+      '@tauri-apps/plugin-http': 2.5.7
+    transitivePeerDependencies:
+      - '@solana/web3.js'
+      - '@types/react'
+      - bs58
+      - bufferutil
+      - fastestsmallesttextencoderdecoder
+      - immer
+      - react
+      - react-dom
+      - react-native
+      - typescript
+      - use-sync-external-store
+      - utf-8-validate
+      - zod
 
   temp-dir@2.0.0: {}
 
