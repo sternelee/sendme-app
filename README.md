@@ -53,6 +53,16 @@ Sendme is a complete file transfer solution that works across **CLI**, **Desktop
 
 ### CLI Tool
 
+#### Quick Install (Recommended)
+```bash
+curl -sSL https://raw.githubusercontent.com/sternelee/sendme-app/main/install.sh | bash
+```
+
+Or with a custom prefix:
+```bash
+curl -sSL https://raw.githubusercontent.com/sternelee/sendme-app/main/install.sh | bash -s -- --prefix ~/.local
+```
+
 #### From crates.io (coming soon)
 ```bash
 cargo install sendme
@@ -100,11 +110,15 @@ pnpm run tauri android build
 
 ### CLI - Terminal Interface
 
-The CLI provides an interactive TUI (Terminal User Interface) for file transfers:
+The CLI provides both interactive TUI mode and command-line mode:
 
+#### Interactive TUI Mode
 ```bash
 # Simply run sendme to open the TUI
 sendme
+
+# Or explicitly launch TUI
+sendme --tui
 ```
 
 **TUI Controls:**
@@ -117,6 +131,26 @@ sendme
 1. **Sender**: Run `sendme`, enter path to file/directory, get ticket
 2. Share the ticket with recipient (copy/paste, QR code, etc.)
 3. **Receiver**: Run `sendme`, paste ticket, files download automatically
+
+#### Command-Line Mode
+```bash
+# Send a file (waits for Ctrl+C to keep connection open)
+sendme send /path/to/file.txt
+
+# Receive a file
+sendme receive <ticket>
+
+# Short form (recv also works)
+sendme recv <ticket>
+```
+
+**Command-line options:**
+- `--ticket-type <type>` - Ticket format: `id`, `relay`, `addresses`, `relay+addresses` (default)
+- `--relay <mode>` - Relay mode: `disabled`, `default`, or custom URL
+- `--format <format>` - Hash output format: `hex` or `cid` (default: hex)
+- `-v, --verbose` - Verbosity level (can stack: -vv)
+- `-c, --clipboard` - Copy receive command to clipboard (send only)
+- `--show-secret` - Show the secret key on stderr
 
 ### Desktop Application
 
