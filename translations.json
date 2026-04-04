@@ -25,15 +25,59 @@
         "subtitle": "Secure, peer-to-peer file transfer powered by iroh. No cloud storage, no file size limits, just direct transfers between devices."
       },
       "features": {
-        "p2pTitle": "Peer-to-Peer",
-        "p2pDesc": "Direct connection between devices",
+        "title": "Why Sendme?",
+        "subtitle": "Fast, secure, and private file transfer built for the modern web",
         "encryptedTitle": "End-to-End Encrypted",
-        "encryptedDesc": "Your data stays private",
-        "fastTitle": "Blazing Fast",
-        "fastDesc": "Uses your full bandwidth"
+        "encryptedDesc": "BLAKE3 verified streaming ensures your files arrive intact and untouched.",
+        "fastTitle": "Lightning Fast",
+        "fastDesc": "Direct P2P transfers with NAT hole-punching for maximum speed.",
+        "syncTitle": "Cross-Device Sync",
+        "syncDesc": "Share tickets across your devices and continue transfers anywhere."
+      },
+      "install": {
+        "title": "Install Sendme",
+        "subtitle": "Choose your platform and start transferring files today",
+        "webApp": "Web App",
+        "webAppDesc": "No installation required",
+        "webAppAction": "Launch App",
+        "cli": "CLI",
+        "cliDesc": "For power users",
+        "cliAction": "Copy install command",
+        "desktop": "Desktop",
+        "desktopDesc": "macOS, Windows, Linux",
+        "desktopAction": "Download",
+        "mobile": "Mobile",
+        "mobileDesc": "iOS & Android",
+        "mobileAction": "Get App"
+      },
+      "howItWorks": {
+        "title": "How It Works",
+        "subtitle": "Three simple steps to secure file transfer",
+        "step1Title": "Select Your File",
+        "step1Desc": "Choose any file or folder from your device. No size restrictions apply.",
+        "step2Title": "Generate Ticket",
+        "step2Desc": "A unique ticket is created containing connection details for direct P2P transfer.",
+        "step3Title": "Share & Receive",
+        "step3Desc": "Share the ticket with the recipient. They paste it to start the download instantly."
+      },
+      "cta": {
+        "title": "Ready to Transfer?",
+        "subtitle": "Join thousands of users sending files securely with Sendme",
+        "action": "Launch Sendme"
+      },
+      "footer": {
+        "github": "GitHub",
+        "about": "About"
       },
       "getStarted": "Get Started",
-      "openApp": "Open App"
+      "openApp": "Open App",
+      "viewOnGithub": "View on GitHub",
+      "menu": {
+        "launchApp": "Launch App",
+        "goToApp": "Go to App",
+        "signIn": "Sign In",
+        "signUp": "Sign Up"
+      }
     },
     "send": {
       "title": "Share a File",
@@ -47,7 +91,8 @@
       "generateTicket": "Generate Shared Ticket",
       "targetLocked": "Target Locked",
       "copy": "Copy",
-      "sendToDevice": "Send to Device"
+      "sendToDevice": "Send to Device",
+      "failed": "Failed to share"
     },
     "receive": {
       "title": "Receive Files",
@@ -58,18 +103,29 @@
       "connecting": "Connecting...",
       "downloading": "Downloading...",
       "downloadComplete": "Download Complete",
-      "saveFile": "Save File"
+      "saveFile": "Save File",
+      "incomingTickets": "Incoming Ticket",
+      "unnamedFile": "Unnamed file",
+      "unknownSize": "Unknown size",
+      "pasteFromClipboard": "Paste from clipboard",
+      "readyToDownload": "Ready to download",
+      "clipboardError": "Failed to read clipboard"
     },
     "text": {
       "title": "Share Text",
       "subtitle": "Send text securely to any device.",
       "placeholder": "Enter text to share...",
-      "shareText": "Share Text",
+      "shareText": "Share",
       "textShared": "Text Shared!",
       "copiedTicket": "Ticket copied!",
-      "receiveText": "Receive Text",
+      "receiveText": "Receive",
       "pasteText": "Paste text ticket here",
-      "receive": "Receive"
+      "receive": "Receive",
+      "generateTicket": "Generate Ticket",
+      "receiveSuccess": "Text received!",
+      "sendFailed": "Failed to send text",
+      "receiveFailed": "Failed to receive text",
+      "received": "Received"
     },
     "history": {
       "title": "Transfer History",
@@ -117,15 +173,59 @@
         "subtitle": "安全、快速、点对点传输。无需云端、无需服务器、无忧操作。"
       },
       "features": {
-        "p2pTitle": "点对点传输",
-        "p2pDesc": "设备间直接连接",
+        "title": "为什么选择 Sendme？",
+        "subtitle": "为现代网络构建的快速、安全、私密的文件传输",
         "encryptedTitle": "端到端加密",
-        "encryptedDesc": "您的数据保持私密",
-        "fastTitle": "极速传输",
-        "fastDesc": "充分利用您的带宽"
+        "encryptedDesc": "BLAKE3 验证流确保您的文件完整无损地到达。",
+        "fastTitle": "闪电般的速度",
+        "fastDesc": "直接的 P2P 传输配合 NAT 打洞，实现最大速度。",
+        "syncTitle": "跨设备同步",
+        "syncDesc": "在您的设备间共享票据，随时继续传输。"
+      },
+      "install": {
+        "title": "安装 Sendme",
+        "subtitle": "选择您的平台，立即开始传输文件",
+        "webApp": "网页应用",
+        "webAppDesc": "无需安装",
+        "webAppAction": "启动应用",
+        "cli": "命令行工具",
+        "cliDesc": "适合高级用户",
+        "cliAction": "复制安装命令",
+        "desktop": "桌面端",
+        "desktopDesc": "macOS、Windows、Linux",
+        "desktopAction": "下载",
+        "mobile": "移动端",
+        "mobileDesc": "iOS 和 Android",
+        "mobileAction": "获取应用"
+      },
+      "howItWorks": {
+        "title": "工作原理",
+        "subtitle": "安全文件传输的三个简单步骤",
+        "step1Title": "选择您的文件",
+        "step1Desc": "从您的设备中选择任何文件或文件夹。无大小限制。",
+        "step2Title": "生成票据",
+        "step2Desc": "创建包含直接 P2P 传输连接详细信息的唯一票据。",
+        "step3Title": "分享和接收",
+        "step3Desc": "将票据分享给接收者。他们粘贴票据即可立即开始下载。"
+      },
+      "cta": {
+        "title": "准备传输了吗？",
+        "subtitle": "加入成千上万的用户，使用 Sendme 安全地发送文件",
+        "action": "启动 Sendme"
+      },
+      "footer": {
+        "github": "GitHub",
+        "about": "关于"
       },
       "getStarted": "开始使用",
-      "openApp": "打开应用"
+      "openApp": "打开应用",
+      "viewOnGithub": "在 GitHub 上查看",
+      "menu": {
+        "launchApp": "启动应用",
+        "goToApp": "进入应用",
+        "signIn": "登录",
+        "signUp": "注册"
+      }
     },
     "send": {
       "title": "分享文件",
@@ -139,7 +239,8 @@
       "generateTicket": "生成共享票据",
       "targetLocked": "目标已锁定",
       "copy": "复制",
-      "sendToDevice": "发送到设备"
+      "sendToDevice": "发送到设备",
+      "failed": "分享失败"
     },
     "receive": {
       "title": "接收文件",
@@ -150,18 +251,29 @@
       "connecting": "连接中...",
       "downloading": "下载中...",
       "downloadComplete": "下载完成",
-      "saveFile": "保存文件"
+      "saveFile": "保存文件",
+      "incomingTickets": "待接收票据",
+      "unnamedFile": "未命名文件",
+      "unknownSize": "大小未知",
+      "pasteFromClipboard": "从剪贴板粘贴",
+      "readyToDownload": "准备下载",
+      "clipboardError": "读取剪贴板失败"
     },
     "text": {
       "title": "分享文本",
       "subtitle": "安全地向任何设备发送文本。",
       "placeholder": "输入要分享的文本...",
-      "shareText": "分享文本",
+      "shareText": "发送",
       "textShared": "文本已分享！",
       "copiedTicket": "票据已复制！",
-      "receiveText": "接收文本",
+      "receiveText": "接收",
       "pasteText": "在此粘贴文本票据",
-      "receive": "接收"
+      "receive": "接收",
+      "generateTicket": "生成票据",
+      "receiveSuccess": "文本已接收！",
+      "sendFailed": "发送文本失败",
+      "receiveFailed": "接收文本失败",
+      "received": "已接收"
     },
     "history": {
       "title": "传输历史",

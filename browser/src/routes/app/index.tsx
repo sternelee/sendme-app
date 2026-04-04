@@ -4,6 +4,8 @@ import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
 import TextTab from "../../components/sendme/TextTab";
 import { ThemeSwitcher } from "../../lib/ThemeSwitcher";
+import { LanguageSwitcher } from "../../lib/LanguageSwitcher";
+import { i18n } from "../../lib/i18n";
 import { Presence } from "solid-motionone";
 import {
   TbOutlineSparkles,
@@ -13,6 +15,8 @@ import {
   TbOutlineHistory,
   TbOutlineSettings,
 } from "solid-icons/tb";
+
+const t = i18n.t;
 
 type ActiveTab = "send" | "receive" | "text" | "history" | "settings";
 
@@ -31,11 +35,11 @@ export default function AppPage() {
   });
 
   const tabs = [
-    { id: "send" as ActiveTab, icon: TbOutlineUpload, label: "Send" },
-    { id: "receive" as ActiveTab, icon: TbOutlineDownload, label: "Receive" },
-    { id: "text" as ActiveTab, icon: TbOutlineMessage, label: "Text" },
-    { id: "history" as ActiveTab, icon: TbOutlineHistory, label: "History" },
-    { id: "settings" as ActiveTab, icon: TbOutlineSettings, label: "Settings" },
+    { id: "send" as ActiveTab, icon: TbOutlineUpload, label: t("common.send") },
+    { id: "receive" as ActiveTab, icon: TbOutlineDownload, label: t("common.receive") },
+    { id: "text" as ActiveTab, icon: TbOutlineMessage, label: t("common.text") },
+    { id: "history" as ActiveTab, icon: TbOutlineHistory, label: t("common.history") },
+    { id: "settings" as ActiveTab, icon: TbOutlineSettings, label: t("common.settings") },
   ];
 
   return (
@@ -50,7 +54,8 @@ export default function AppPage() {
             <span>Sendme</span>
           </a>
         </div>
-        <div class="flex-none">
+        <div class="flex-none flex items-center gap-1">
+          <LanguageSwitcher />
           <ThemeSwitcher />
         </div>
       </header>
@@ -64,7 +69,7 @@ export default function AppPage() {
               <div class="card bg-base-200">
                 <div class="card-body items-center text-center py-16">
                   <span class="loading loading-spinner loading-lg text-primary"></span>
-                  <p class="text-base-content/60 mt-4">Initializing secure P2P node...</p>
+                  <p class="text-base-content/60 mt-4">{t("common.initializing")}</p>
                 </div>
               </div>
             }
@@ -98,23 +103,23 @@ export default function AppPage() {
                   <Show when={activeTab() === "history"}>
                     <div class="text-center py-12">
                       <TbOutlineHistory size={48} class="mx-auto mb-4 opacity-40" />
-                      <p class="text-base-content/60">No transfers yet</p>
+                      <p class="text-base-content/60">{t("history.empty")}</p>
                       <p class="text-sm text-base-content/40 mt-1">
-                        Your shared and received files will appear here
+                        {t("history.emptyDesc")}
                       </p>
                     </div>
                   </Show>
                   <Show when={activeTab() === "settings"}>
                     <div class="space-y-4">
                       <div class="flex items-center justify-between">
-                        <span class="font-bold">Version</span>
+                        <span class="font-bold">{t("settings.title")}</span>
                         <span class="text-base-content/60">v0.31.0</span>
                       </div>
                       <div class="flex items-center justify-between">
-                        <span class="font-bold">Protocol</span>
+                        <span class="font-bold">{t("common.protocol")}</span>
                         <span class="badge badge-success gap-1">
                           <span class="w-2 h-2 rounded-full bg-success-content animate-pulse"></span>
-                          P2P Ready
+                          {t("common.p2pReady")}
                         </span>
                       </div>
                     </div>
@@ -128,7 +133,7 @@ export default function AppPage() {
         {/* Footer */}
         <footer class="mt-auto pt-12 pb-8 text-center">
           <p class="text-sm text-base-content/40">
-            Powered by{" "}
+            {t("common.poweredBy")}{" "}
             <a
               href="https://iroh.computer"
               target="_blank"
