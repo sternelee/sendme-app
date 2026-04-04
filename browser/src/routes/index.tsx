@@ -16,6 +16,10 @@ import {
   TbOutlineCopy,
 } from "solid-icons/tb";
 import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
+import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
+import { i18n } from "~/lib/i18n";
+
+const t = i18n.t;
 
 export default function HomePage() {
   const copyToClipboard = (text: string) => {
@@ -36,6 +40,7 @@ export default function HomePage() {
         </div>
         <div class="flex-none">
           <div class="flex items-center gap-2">
+            <LanguageSwitcher />
             <ThemeSwitcher />
             <div class="dropdown dropdown-end relative">
               <div
@@ -88,19 +93,17 @@ export default function HomePage() {
               P2P File Transfer
             </div>
             <h1 class="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-              <span class="text-base-content">Send Files</span>
+              <span class="text-base-content">{t("landing.hero.titleLine1")}</span>
               <br />
-              <span class="text-primary">Without Limits</span>
+              <span class="text-primary">{t("landing.hero.titleLine2")}</span>
             </h1>
             <p class="text-lg md:text-xl text-base-content/60 mb-10 max-w-2xl mx-auto">
-              Secure, peer-to-peer file transfer powered by iroh. No cloud
-              storage, no file size limits, just direct transfers between
-              devices.
+              {t("landing.hero.subtitle")}
             </p>
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a href="/app" class="btn btn-primary btn-lg gap-2">
                 <TbOutlineSparkles size={20} />
-                Get Started Free
+                {t("landing.getStarted")}
               </a>
               <a
                 href="https://github.com/sternelee/sendme-app"
