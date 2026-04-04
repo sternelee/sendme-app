@@ -21,10 +21,11 @@ tauri-plugin-dialog = "2.6.0"
 tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-os = "2"
-tauri-plugin-http = "2"
+tauri-plugin-http = { version = "2.4", features = ["unsafe-headers"] }
 tauri-plugin-fs = "2"
 tauri-plugin-sharesheet = { git = "https://github.com/rittme/tauri-plugin-sharesheet" }
 tauri-plugin-opener = "2"
+tauri-plugin-clerk = "0.1"
 anyhow = "1"
 iroh-blobs.workspace = true
 
