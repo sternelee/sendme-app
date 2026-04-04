@@ -505,7 +505,7 @@ export default function MainPage() {
                       </h2>
 
                       <div class="form-control w-full">
-                        <label class="input input-bordered flex items-center gap-2">
+                        <label class="input input-bordered flex w-full items-center gap-2">
                           <Shield size={18} class="opacity-40" />
                           <input
                             type="text"
@@ -528,7 +528,7 @@ export default function MainPage() {
                       </div>
 
                       <div class="form-control w-full">
-                        <label class="input input-bordered flex items-center gap-2">
+                        <label class="input input-bordered flex w-full items-center gap-2">
                           <FolderOpen size={18} class="opacity-40" />
                           <input
                             type="text"
