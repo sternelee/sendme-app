@@ -1,6 +1,7 @@
 import { createSignal, Show, For } from "solid-js";
 import toast from "solid-toast";
 import { receiveFile, downloadFile } from "../../lib/commands";
+import { i18n } from "../../lib/i18n";
 import {
   TbOutlineDownload,
   TbOutlineCheck,
@@ -14,6 +15,8 @@ import {
   TbOutlineVideo,
 } from "solid-icons/tb";
 import { useTicketPolling } from "~/lib/composables/useTicketPolling";
+
+const t = i18n.t;
 
 function getMimeType(filename: string): string {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -56,7 +59,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
   async function handleReceive() {
     const ticketValue = ticket().trim();
     if (!ticketValue) {
-      toast.error("Please enter a ticket");
+      toast.error(t("receive.invalidTicket"));
       return;
     }
 
@@ -67,9 +70,9 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
     try {
       const result = await receiveFile(ticketValue);
       setReceivedFile(result);
-      toast.success("File received successfully!");
+      toast.success(t("receive.downloadComplete"));
     } catch (err) {
-      const errorMsg = (err as Error).message || "Failed to receive file";
+      const errorMsg = (err as Error).message || t("receive.invalidTicket");
       setError(errorMsg);
       toast.error(errorMsg);
     } finally {
@@ -81,16 +84,16 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
     const file = receivedFile();
     if (!file) return;
     downloadFile(file.data, file.filename);
-    toast.success(`Downloaded ${file.filename}`);
+    toast.success(t("receive.saveFile") + ": " + file.filename);
   }
 
   async function pasteTicket() {
     try {
       const text = await navigator.clipboard.readText();
       setTicket(text);
-      toast.success("Ticket pasted!");
+      toast.success(t("receive.pasteTicket") + "!");
     } catch (err) {
-      toast.error("Failed to read clipboard.");
+      toast.error(t("receive.clipboardError") || "Failed to read clipboard.");
     }
   }
 
@@ -111,9 +114,9 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
     <div class="space-y-6">
       {/* Header */}
       <div class="text-center">
-        <h2 class="text-2xl font-bold">Receive a File</h2>
+        <h2 class="text-2xl font-bold">{t("receive.title")}</h2>
         <p class="text-base-content/60 text-sm mt-1">
-          Enter a secure ticket to establish a P2P connection.
+          {t("receive.subtitle")}
         </p>
       </div>
 
@@ -123,7 +126,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
           <TbOutlineSparkles size={18} />
           <div class="flex-1">
             <span class="font-semibold">
-              {tickets().length} Incoming Ticket
+              {tickets().length} {t("receive.incomingTickets") || "Incoming Ticket"}
               {tickets().length > 1 ? "s" : ""}
             </span>
           </div>
@@ -145,12 +148,12 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
                 </div>
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium truncate">
-                    {incomingTicket.filename || "Unnamed file"}
+                    {incomingTicket.filename || t("receive.unnamedFile") || "Unnamed file"}
                   </p>
                   <p class="text-xs text-base-content/50">
                     {incomingTicket.fileSize
                       ? `${(incomingTicket.fileSize / 1024 / 1024).toFixed(2)} MB`
-                      : "Unknown size"}
+                      : t("receive.unknownSize") || "Unknown size"}
                   </p>
                 </div>
                 <TbOutlineCheck
@@ -171,7 +174,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
             type="text"
             value={ticket()}
             onInput={(e) => setTicket(e.currentTarget.value)}
-            placeholder="Enter or paste ticket code..."
+            placeholder={t("receive.pasteTicket")}
             class="grow font-mono text-sm"
             disabled={isReceiving()}
           />
@@ -179,7 +182,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
             onClick={pasteTicket}
             class="btn btn-ghost btn-sm"
             disabled={isReceiving()}
-            title="Paste from clipboard"
+            title={t("receive.pasteFromClipboard") || "Paste from clipboard"}
           >
             <TbOutlineClipboard size={16} />
           </button>
@@ -192,7 +195,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
         class={`btn btn-primary btn-block ${isReceiving() ? "loading" : ""}`}
       >
         <Show when={!isReceiving()}>
-          <TbOutlineDownload size={18} /> Retrieve File
+          <TbOutlineDownload size={18} /> {t("receive.receiveFile")}
         </Show>
       </button>
 
@@ -209,10 +212,10 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
         <div class="alert alert-success">
           <TbOutlineCheck size={18} />
           <div class="flex-1">
-            <p class="font-bold">File Available</p>
+            <p class="font-bold">{t("receive.downloadComplete")}</p>
             <p class="text-sm font-mono truncate">{receivedFile()!.filename}</p>
             <p class="text-xs opacity-60">
-              {formatFileSize(receivedFile()!.data)} • Ready to download
+              {formatFileSize(receivedFile()!.data)} • {t("receive.readyToDownload") || "Ready to download"}
             </p>
           </div>
         </div>
@@ -234,7 +237,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
           onClick={downloadReceivedFile}
           class="btn btn-success btn-block"
         >
-          <TbOutlineDownload size={18} /> Save to Device
+          <TbOutlineDownload size={18} /> {t("receive.saveFile")}
         </button>
       </Show>
     </div>

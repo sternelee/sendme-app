@@ -1,5 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import toast from "solid-toast";
+import { i18n } from "../../lib/i18n";
 import {
   TbOutlineMessage,
   TbOutlineCheck,
@@ -8,6 +9,8 @@ import {
   TbOutlineDownload,
   TbOutlineShieldLock,
 } from "solid-icons/tb";
+
+const t = i18n.t;
 
 async function mockSendText(_text: string): Promise<string> {
   await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -41,10 +44,10 @@ export default function TextTab() {
     try {
       const result = await mockSendText(sendTextContent());
       setTextSendTicket(result);
-      toast.success("Text ticket ready!");
+      toast.success(t("text.textShared"));
     } catch (error) {
       console.error("Send text failed:", error);
-      toast.error("Failed to send text: " + (error as Error).message);
+      toast.error(t("text.sendFailed") + ": " + (error as Error).message);
     } finally {
       setIsSendingText(false);
     }
@@ -58,10 +61,10 @@ export default function TextTab() {
       const result = await mockReceiveText(receiveTextTicket());
       setReceivedText(result.text);
       setReceivedTextFilename(result.filename);
-      toast.success("Text received!");
+      toast.success(t("text.receiveSuccess") || "Text received!");
     } catch (error) {
       console.error("Receive text failed:", error);
-      toast.error("Failed to receive text: " + (error as Error).message);
+      toast.error(t("text.receiveFailed") + ": " + (error as Error).message);
     } finally {
       setIsReceivingText(false);
     }
@@ -69,21 +72,21 @@ export default function TextTab() {
 
   function copyReceivedText() {
     navigator.clipboard.writeText(receivedText());
-    toast.success("Copied to clipboard!");
+    toast.success(t("common.copied"));
   }
 
   function copyTicket() {
     navigator.clipboard.writeText(textSendTicket());
-    toast.success("Copied to clipboard!");
+    toast.success(t("common.copied"));
   }
 
   return (
     <div class="space-y-6">
       {/* Header */}
       <div class="text-center">
-        <h2 class="text-2xl font-bold">Send Text</h2>
+        <h2 class="text-2xl font-bold">{t("text.title")}</h2>
         <p class="text-base-content/60 text-sm mt-1">
-          Share text securely via P2P connection.
+          {t("text.subtitle")}
         </p>
       </div>
 
@@ -93,13 +96,13 @@ export default function TextTab() {
           class={`tab gap-2 ${activeTextTab() === "send" ? "tab-active" : ""}`}
           onClick={() => setActiveTextTab("send")}
         >
-          <TbOutlineSparkles size={16} /> Send
+          <TbOutlineSparkles size={16} /> {t("text.shareText")}
         </button>
         <button
           class={`tab gap-2 ${activeTextTab() === "receive" ? "tab-active" : ""}`}
           onClick={() => setActiveTextTab("receive")}
         >
-          <TbOutlineDownload size={16} /> Receive
+          <TbOutlineDownload size={16} /> {t("text.receiveText")}
         </button>
       </div>
 
@@ -109,7 +112,7 @@ export default function TextTab() {
           <textarea
             value={sendTextContent()}
             onInput={(e) => setSendTextContent(e.currentTarget.value)}
-            placeholder="Enter text to send..."
+            placeholder={t("text.placeholder")}
             class="textarea textarea-bordered w-full h-32 font-mono text-sm"
           />
 
@@ -119,7 +122,7 @@ export default function TextTab() {
             class={`btn btn-primary btn-block ${isSendingText() ? "loading" : ""}`}
           >
             <Show when={!isSendingText()}>
-              <TbOutlineSparkles size={18} /> Generate Ticket
+              <TbOutlineSparkles size={18} /> {t("text.generateTicket") || "Generate Ticket"}
             </Show>
           </button>
 
@@ -127,7 +130,7 @@ export default function TextTab() {
             <div class="alert alert-success">
               <TbOutlineCheck size={18} />
               <div class="flex-1">
-                <p class="font-bold">Text Ticket Ready</p>
+                <p class="font-bold">{t("text.copiedTicket")}</p>
                 <p class="text-xs font-mono break-all">{textSendTicket()}</p>
               </div>
               <button onClick={copyTicket} class="btn btn-ghost btn-sm">
@@ -148,7 +151,7 @@ export default function TextTab() {
                 type="text"
                 value={receiveTextTicket()}
                 onInput={(e) => setReceiveTextTicket(e.currentTarget.value)}
-                placeholder="Paste text ticket..."
+                placeholder={t("text.pasteText")}
                 class="grow font-mono text-sm"
                 disabled={isReceivingText()}
               />
@@ -161,7 +164,7 @@ export default function TextTab() {
             class={`btn btn-secondary btn-block ${isReceivingText() ? "loading" : ""}`}
           >
             <Show when={!isReceivingText()}>
-              <TbOutlineDownload size={18} /> Receive Text
+              <TbOutlineDownload size={18} /> {t("text.receive")}
             </Show>
           </button>
 
@@ -169,7 +172,7 @@ export default function TextTab() {
             <div class="alert alert-secondary">
               <TbOutlineMessage size={18} />
               <div class="flex-1">
-                <p class="font-bold">Received: {receivedTextFilename()}</p>
+                <p class="font-bold">{t("text.received")}: {receivedTextFilename()}</p>
                 <pre class="font-mono text-sm whitespace-pre-wrap break-words mt-2">
                   {receivedText()}
                 </pre>

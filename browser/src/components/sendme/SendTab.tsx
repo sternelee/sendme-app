@@ -2,6 +2,7 @@ import { createSignal, Show, For, onCleanup } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
 import { useAuth } from "../../lib/contexts/user-clerk";
+import { i18n } from "../../lib/i18n";
 import {
   TbOutlineUpload,
   TbOutlineCheck,
@@ -16,6 +17,8 @@ import {
 } from "solid-icons/tb";
 import DeviceListModal from "../devices/DeviceListModal";
 import type { Device } from "../../lib/composables/useWebSocket";
+
+const t = i18n.t;
 
 const previewUrlCache = new Map<string, string>();
 
@@ -70,10 +73,10 @@ export default function SendTab() {
         throw new Error("No file or folder selected");
       }
       setTicket(result);
-      toast.success("Ticket ready to share!");
+      toast.success(t("send.targetLocked"));
     } catch (error) {
       console.error("Send failed:", error);
-      toast.error("Failed to share file: " + (error as Error).message);
+      toast.error(t("send.failed") + ": " + (error as Error).message);
     } finally {
       setIsSending(false);
     }
@@ -129,7 +132,7 @@ export default function SendTab() {
 
   function copyTicket() {
     navigator.clipboard.writeText(ticket());
-    toast.success("Copied to clipboard!");
+    toast.success(t("common.copied"));
   }
 
   function selectFile() {
@@ -173,7 +176,7 @@ export default function SendTab() {
       setIsDeviceModalOpen(false);
     } catch (error) {
       console.error("Failed to send ticket:", error);
-      toast.error("Failed to send ticket: " + (error as Error).message);
+      toast.error(t("send.sendToDevice") + ": " + (error as Error).message);
     }
   }
 
@@ -181,9 +184,9 @@ export default function SendTab() {
     <div class="space-y-6">
       {/* Header */}
       <div class="text-center">
-        <h2 class="text-2xl font-bold">Share a File</h2>
+        <h2 class="text-2xl font-bold">{t("send.title")}</h2>
         <p class="text-base-content/60 text-sm mt-1">
-          Everything is encrypted and sent directly peer-to-peer.
+          {t("send.subtitle")}
         </p>
       </div>
 
@@ -227,7 +230,7 @@ export default function SendTab() {
                   }}
                   class="btn btn-primary"
                 >
-                  Choose File
+                  {t("send.chooseFile")}
                 </button>
                 <button
                   onClick={(e) => {
@@ -236,11 +239,11 @@ export default function SendTab() {
                   }}
                   class="btn btn-outline"
                 >
-                  Choose Folder
+                  {t("send.chooseFolder")}
                 </button>
               </div>
               <p class="text-base-content/40 text-sm">
-                or drag & drop files or folders
+                {t("send.dragDrop")}
               </p>
             </div>
           </div>
@@ -289,9 +292,9 @@ export default function SendTab() {
                     <TbFolder size={20} />
                   </div>
                   <div>
-                    <p class="font-semibold">{files().length} files selected</p>
+                    <p class="font-semibold">{files().length} {t("send.filesSelected")}</p>
                     <p class="text-xs text-base-content/50">
-                      {formatFileSize(files().reduce((acc, f) => acc + f.size, 0))} total
+                      {formatFileSize(files().reduce((acc, f) => acc + f.size, 0))} {t("send.totalSize")}
                     </p>
                   </div>
                 </div>
@@ -329,7 +332,7 @@ export default function SendTab() {
               </div>
               <Show when={files().length > 8}>
                 <p class="text-xs text-base-content/50 text-center">
-                  + {files().length - 8} more files
+                  + {files().length - 8} {t("send.moreFiles")}
                 </p>
               </Show>
             </div>
@@ -345,7 +348,7 @@ export default function SendTab() {
           class={`btn btn-primary btn-block btn-lg ${isSending() ? "loading" : ""}`}
         >
           <Show when={!isSending()}>
-            <TbOutlineSparkles size={20} /> Generate Shared Ticket
+            <TbOutlineSparkles size={20} /> {t("send.generateTicket")}
           </Show>
         </button>
       </Show>
@@ -355,20 +358,20 @@ export default function SendTab() {
         <div class="alert alert-success">
           <TbOutlineCheck size={18} />
           <div class="flex-1">
-            <p class="font-bold">Target Locked</p>
+            <p class="font-bold">{t("send.targetLocked")}</p>
             <p class="text-xs opacity-60 break-all font-mono mt-1">{ticket()}</p>
           </div>
         </div>
         <div class="flex gap-2">
           <button onClick={copyTicket} class="btn btn-outline flex-1">
-            <TbOutlineCopy size={16} /> Copy
+            <TbOutlineCopy size={16} /> {t("send.copy")}
           </button>
           <Show when={auth.isSignedIn()}>
             <button
               onClick={() => setIsDeviceModalOpen(true)}
               class="btn btn-outline flex-1"
             >
-              <TbOutlineDevices size={16} /> Send to Device
+              <TbOutlineDevices size={16} /> {t("send.sendToDevice")}
             </button>
           </Show>
         </div>

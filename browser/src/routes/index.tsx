@@ -57,20 +57,20 @@ export default function HomePage() {
                 <SignedOut>
                   <li>
                     <a href="/app" class="font-bold">
-                      Launch App
+                      {t("landing.menu.launchApp")}
                     </a>
                   </li>
                   <li>
-                    <SignInButton mode="modal">Sign In</SignInButton>
+                    <SignInButton mode="modal">{t("landing.menu.signIn")}</SignInButton>
                   </li>
                   <li>
-                    <SignUpButton mode="modal">Sign Up</SignUpButton>
+                    <SignUpButton mode="modal">{t("landing.menu.signUp")}</SignUpButton>
                   </li>
                 </SignedOut>
                 <SignedIn>
                   <li>
                     <a href="/app" class="font-bold">
-                      Go to App
+                      {t("landing.menu.goToApp")}
                     </a>
                   </li>
                 </SignedIn>
@@ -112,7 +112,7 @@ export default function HomePage() {
                 class="btn btn-outline btn-lg gap-2"
               >
                 <TbOutlineTerminal size={20} />
-                View on GitHub
+                {t("landing.viewOnGithub")}
               </a>
             </div>
           </Motion.div>
@@ -123,9 +123,9 @@ export default function HomePage() {
       <section class="bg-base-200 py-24">
         <div class="container mx-auto px-4">
           <div class="text-center mb-16">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">Why Sendme?</h2>
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">{t("landing.features.title")}</h2>
             <p class="text-base-content/60 max-w-xl mx-auto">
-              Fast, secure, and private file transfer built for the modern web
+              {t("landing.features.subtitle")}
             </p>
           </div>
 
@@ -133,21 +133,18 @@ export default function HomePage() {
             {[
               {
                 icon: TbOutlineShield,
-                title: "End-to-End Encrypted",
-                description:
-                  "BLAKE3 verified streaming ensures your files arrive intact and untouched.",
+                title: t("landing.features.encryptedTitle"),
+                description: t("landing.features.encryptedDesc"),
               },
               {
                 icon: TbOutlineBolt,
-                title: "Lightning Fast",
-                description:
-                  "Direct P2P transfers with NAT hole-punching for maximum speed.",
+                title: t("landing.features.fastTitle"),
+                description: t("landing.features.fastDesc"),
               },
               {
                 icon: TbOutlineUsers,
-                title: "Cross-Device Sync",
-                description:
-                  "Share tickets across your devices and continue transfers anywhere.",
+                title: t("landing.features.syncTitle"),
+                description: t("landing.features.syncDesc"),
               },
             ].map((feature) => (
               <div class="card bg-base-100 shadow-lg">
@@ -168,9 +165,9 @@ export default function HomePage() {
       <section class="py-24">
         <div class="container mx-auto px-4">
           <div class="text-center mb-16">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">Install Sendme</h2>
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">{t("landing.install.title")}</h2>
             <p class="text-base-content/60 max-w-xl mx-auto">
-              Choose your platform and start transferring files today
+              {t("landing.install.subtitle")}
             </p>
           </div>
 
@@ -181,12 +178,12 @@ export default function HomePage() {
                 <div class="w-12 h-12 rounded-xl bg-info/10 flex items-center justify-center mb-4">
                   <TbOutlineWorld size={24} class="text-info" />
                 </div>
-                <h3 class="card-title">Web App</h3>
+                <h3 class="card-title">{t("landing.install.webApp")}</h3>
                 <p class="text-base-content/60 text-sm">
-                  No installation required
+                  {t("landing.install.webAppDesc")}
                 </p>
                 <a href="/app" class="btn btn-info btn-outline btn-sm mt-4">
-                  Launch App
+                  {t("landing.install.webAppAction")}
                 </a>
               </div>
             </div>
@@ -197,8 +194,8 @@ export default function HomePage() {
                 <div class="w-12 h-12 rounded-xl bg-success/10 flex items-center justify-center mb-4">
                   <TbOutlineTerminal size={24} class="text-success" />
                 </div>
-                <h3 class="card-title">CLI</h3>
-                <p class="text-base-content/60 text-sm">For power users</p>
+                <h3 class="card-title">{t("landing.install.cli")}</h3>
+                <p class="text-base-content/60 text-sm">{t("landing.install.cliDesc")}</p>
                 <button
                   type="button"
                   class="btn btn-outline btn-sm mt-4 font-mono"
@@ -216,9 +213,9 @@ export default function HomePage() {
                 <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                   <TbOutlineDeviceLaptop size={24} class="text-primary" />
                 </div>
-                <h3 class="card-title">Desktop</h3>
+                <h3 class="card-title">{t("landing.install.desktop")}</h3>
                 <p class="text-base-content/60 text-sm">
-                  macOS, Windows, Linux
+                  {t("landing.install.desktopDesc")}
                 </p>
                 <a
                   href="https://github.com/sternelee/sendme-app/releases"
@@ -226,7 +223,7 @@ export default function HomePage() {
                   rel="noopener noreferrer"
                   class="btn btn-primary btn-outline btn-sm mt-4"
                 >
-                  Download
+                  {t("landing.install.desktopAction")}
                 </a>
               </div>
             </div>
@@ -237,15 +234,15 @@ export default function HomePage() {
                 <div class="w-12 h-12 rounded-xl bg-warning/10 flex items-center justify-center mb-4">
                   <TbOutlineDeviceMobile size={24} class="text-warning" />
                 </div>
-                <h3 class="card-title">Mobile</h3>
-                <p class="text-base-content/60 text-sm">iOS & Android</p>
+                <h3 class="card-title">{t("landing.install.mobile")}</h3>
+                <p class="text-base-content/60 text-sm">{t("landing.install.mobileDesc")}</p>
                 <a
                   href="https://github.com/sternelee/sendme-app/releases"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="btn btn-warning btn-outline btn-sm mt-4"
                 >
-                  Get App
+                  {t("landing.install.mobileAction")}
                 </a>
               </div>
             </div>
@@ -257,9 +254,9 @@ export default function HomePage() {
       <section class="bg-base-200 py-24">
         <div class="container mx-auto px-4">
           <div class="text-center mb-16">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">How It Works</h2>
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">{t("landing.howItWorks.title")}</h2>
             <p class="text-base-content/60 max-w-xl mx-auto">
-              Three simple steps to secure file transfer
+              {t("landing.howItWorks.subtitle")}
             </p>
           </div>
 
@@ -267,23 +264,20 @@ export default function HomePage() {
             {[
               {
                 icon: TbOutlineUpload,
-                title: "Select Your File",
-                description:
-                  "Choose any file or folder from your device. No size restrictions apply.",
+                title: t("landing.howItWorks.step1Title"),
+                description: t("landing.howItWorks.step1Desc"),
                 step: "01",
               },
               {
                 icon: TbOutlineSparkles,
-                title: "Generate Ticket",
-                description:
-                  "A unique ticket is created containing connection details for direct P2P transfer.",
+                title: t("landing.howItWorks.step2Title"),
+                description: t("landing.howItWorks.step2Desc"),
                 step: "02",
               },
               {
                 icon: TbOutlineDownload,
-                title: "Share & Receive",
-                description:
-                  "Share the ticket with the recipient. They paste it to start the download instantly.",
+                title: t("landing.howItWorks.step3Title"),
+                description: t("landing.howItWorks.step3Desc"),
                 step: "03",
               },
             ].map((item, index) => (
@@ -314,12 +308,12 @@ export default function HomePage() {
         <div class="container mx-auto px-4">
           <div class="card bg-base-200 shadow-xl max-w-4xl mx-auto">
             <div class="card-body items-center text-center py-16">
-              <h2 class="card-title text-3xl mb-4">Ready to Transfer?</h2>
+              <h2 class="card-title text-3xl mb-4">{t("landing.cta.title")}</h2>
               <p class="text-base-content/60 mb-8 max-w-xl">
-                Join thousands of users sending files securely with Sendme
+                {t("landing.cta.subtitle")}
               </p>
               <a href="/app" class="btn btn-primary btn-lg gap-2">
-                Launch Sendme
+                {t("landing.cta.action")}
                 <TbOutlineArrowRight size={20} />
               </a>
             </div>
@@ -336,7 +330,7 @@ export default function HomePage() {
                 <TbOutlineSparkles size={18} />
               </div>
               <span class="text-base-content/60 text-sm">
-                Powered by{" "}
+                {t("common.poweredBy")}{" "}
                 <a
                   href="https://iroh.computer"
                   target="_blank"
@@ -354,10 +348,10 @@ export default function HomePage() {
                 rel="noopener noreferrer"
                 class="link"
               >
-                GitHub
+                {t("landing.footer.github")}
               </a>
               <a href="/about" class="link">
-                About
+                {t("landing.footer.about")}
               </a>
             </div>
           </div>
