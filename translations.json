@@ -1,0 +1,186 @@
+{
+  "en": {
+    "common": {
+      "appName": "Sendme",
+      "poweredBy": "Powered by iroh.computer",
+      "version": "Version",
+      "protocol": "Protocol",
+      "p2pReady": "P2P Ready",
+      "initializing": "Initializing secure P2P node...",
+      "copied": "Copied to clipboard!",
+      "send": "Send",
+      "receive": "Receive",
+      "text": "Text",
+      "history": "History",
+      "settings": "Settings",
+      "close": "Close",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "loading": "Loading..."
+    },
+    "landing": {
+      "hero": {
+        "titleLine1": "Send Files",
+        "titleLine2": "Without Limits",
+        "subtitle": "Secure, peer-to-peer file transfer powered by iroh. No cloud storage, no file size limits, just direct transfers between devices."
+      },
+      "features": {
+        "p2pTitle": "Peer-to-Peer",
+        "p2pDesc": "Direct connection between devices",
+        "encryptedTitle": "End-to-End Encrypted",
+        "encryptedDesc": "Your data stays private",
+        "fastTitle": "Blazing Fast",
+        "fastDesc": "Uses your full bandwidth"
+      },
+      "getStarted": "Get Started",
+      "openApp": "Open App"
+    },
+    "send": {
+      "title": "Share a File",
+      "subtitle": "Everything is encrypted and sent directly peer-to-peer.",
+      "chooseFile": "Choose File",
+      "chooseFolder": "Choose Folder",
+      "dragDrop": "or drag & drop files or folders",
+      "filesSelected": "files selected",
+      "totalSize": "total",
+      "moreFiles": "more files",
+      "generateTicket": "Generate Shared Ticket",
+      "targetLocked": "Target Locked",
+      "copy": "Copy",
+      "sendToDevice": "Send to Device"
+    },
+    "receive": {
+      "title": "Receive Files",
+      "subtitle": "Enter a ticket to receive a file directly from a peer.",
+      "pasteTicket": "Paste ticket here",
+      "receiveFile": "Receive File",
+      "invalidTicket": "Invalid ticket",
+      "connecting": "Connecting...",
+      "downloading": "Downloading...",
+      "downloadComplete": "Download Complete",
+      "saveFile": "Save File"
+    },
+    "text": {
+      "title": "Share Text",
+      "subtitle": "Send text securely to any device.",
+      "placeholder": "Enter text to share...",
+      "shareText": "Share Text",
+      "textShared": "Text Shared!",
+      "copiedTicket": "Ticket copied!",
+      "receiveText": "Receive Text",
+      "pasteText": "Paste text ticket here",
+      "receive": "Receive"
+    },
+    "history": {
+      "title": "Transfer History",
+      "empty": "No transfers yet",
+      "emptyDesc": "Your shared and received files will appear here",
+      "sent": "Sent",
+      "received": "Received"
+    },
+    "settings": {
+      "title": "Settings",
+      "theme": "Theme",
+      "language": "Language",
+      "about": "About"
+    },
+    "devices": {
+      "title": "Select Device",
+      "subtitle": "Choose a device to send the ticket to",
+      "noDevices": "No devices found",
+      "refresh": "Refresh"
+    }
+  },
+  "zh-CN": {
+    "common": {
+      "appName": "Sendme",
+      "poweredBy": "由 iroh.computer 提供支持",
+      "version": "版本",
+      "protocol": "协议",
+      "p2pReady": "P2P 已就绪",
+      "initializing": "正在初始化安全的 P2P 节点...",
+      "copied": "已复制到剪贴板！",
+      "send": "发送",
+      "receive": "接收",
+      "text": "文本",
+      "history": "历史",
+      "settings": "设置",
+      "close": "关闭",
+      "cancel": "取消",
+      "confirm": "确认",
+      "loading": "加载中..."
+    },
+    "landing": {
+      "hero": {
+        "titleLine1": "发送文件",
+        "titleLine2": "无限制",
+        "subtitle": "安全、快速、点对点传输。无需云端、无需服务器、无忧操作。"
+      },
+      "features": {
+        "p2pTitle": "点对点传输",
+        "p2pDesc": "设备间直接连接",
+        "encryptedTitle": "端到端加密",
+        "encryptedDesc": "您的数据保持私密",
+        "fastTitle": "极速传输",
+        "fastDesc": "充分利用您的带宽"
+      },
+      "getStarted": "开始使用",
+      "openApp": "打开应用"
+    },
+    "send": {
+      "title": "分享文件",
+      "subtitle": "所有内容均已加密，直接点对点发送。",
+      "chooseFile": "选择文件",
+      "chooseFolder": "选择文件夹",
+      "dragDrop": "或拖放文件或文件夹",
+      "filesSelected": "个文件已选择",
+      "totalSize": "总计",
+      "moreFiles": "更多文件",
+      "generateTicket": "生成共享票据",
+      "targetLocked": "目标已锁定",
+      "copy": "复制",
+      "sendToDevice": "发送到设备"
+    },
+    "receive": {
+      "title": "接收文件",
+      "subtitle": "输入票据直接从对等方接收文件。",
+      "pasteTicket": "在此粘贴票据",
+      "receiveFile": "接收文件",
+      "invalidTicket": "无效票据",
+      "connecting": "连接中...",
+      "downloading": "下载中...",
+      "downloadComplete": "下载完成",
+      "saveFile": "保存文件"
+    },
+    "text": {
+      "title": "分享文本",
+      "subtitle": "安全地向任何设备发送文本。",
+      "placeholder": "输入要分享的文本...",
+      "shareText": "分享文本",
+      "textShared": "文本已分享！",
+      "copiedTicket": "票据已复制！",
+      "receiveText": "接收文本",
+      "pasteText": "在此粘贴文本票据",
+      "receive": "接收"
+    },
+    "history": {
+      "title": "传输历史",
+      "empty": "暂无传输记录",
+      "emptyDesc": "您共享和接收的文件将显示在这里",
+      "sent": "已发送",
+      "received": "已接收"
+    },
+    "settings": {
+      "title": "设置",
+      "theme": "主题",
+      "language": "语言",
+      "about": "关于"
+    },
+    "devices": {
+      "title": "选择设备",
+      "subtitle": "选择要发送票据的设备",
+      "noDevices": "未找到设备",
+      "refresh": "刷新"
+    }
+  }
+}

@@ -66,6 +66,10 @@ import {
 } from "~/lib/utils";
 import { useAuth } from "~/lib/auth";
 import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
+import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
+import { i18n } from "~/lib/i18n";
+
+const t = i18n.t;
 
 interface Transfer {
   id: string;
@@ -347,6 +351,7 @@ export default function MainPage() {
             </div>
           </div>
           <div class="flex-none">
+            <LanguageSwitcher />
             <ThemeSwitcher />
           </div>
         </header>
