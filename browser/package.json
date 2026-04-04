@@ -43,6 +43,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250606.0",
     "@tailwindcss/vite": "^4.0.7",
+    "daisyui": "^5.5.19",
     "drizzle-kit": "^0.31.8",
     "tailwindcss": "^4.0.7",
     "wrangler": "^4.59.3"
