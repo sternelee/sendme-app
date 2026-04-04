@@ -61,10 +61,14 @@ export default function HomePage() {
                     </a>
                   </li>
                   <li>
-                    <SignInButton mode="modal">{t("landing.menu.signIn")}</SignInButton>
+                    <SignInButton mode="modal">
+                      {t("landing.menu.signIn")}
+                    </SignInButton>
                   </li>
                   <li>
-                    <SignUpButton mode="modal">{t("landing.menu.signUp")}</SignUpButton>
+                    <SignUpButton mode="modal">
+                      {t("landing.menu.signUp")}
+                    </SignUpButton>
                   </li>
                 </SignedOut>
                 <SignedIn>
@@ -93,7 +97,9 @@ export default function HomePage() {
               P2P File Transfer
             </div>
             <h1 class="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-              <span class="text-base-content">{t("landing.hero.titleLine1")}</span>
+              <span class="text-base-content">
+                {t("landing.hero.titleLine1")}
+              </span>
               <br />
               <span class="text-primary">{t("landing.hero.titleLine2")}</span>
             </h1>
@@ -123,7 +129,9 @@ export default function HomePage() {
       <section class="bg-base-200 py-24">
         <div class="container mx-auto px-4">
           <div class="text-center mb-16">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">{t("landing.features.title")}</h2>
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">
+              {t("landing.features.title")}
+            </h2>
             <p class="text-base-content/60 max-w-xl mx-auto">
               {t("landing.features.subtitle")}
             </p>
@@ -165,7 +173,9 @@ export default function HomePage() {
       <section class="py-24">
         <div class="container mx-auto px-4">
           <div class="text-center mb-16">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">{t("landing.install.title")}</h2>
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">
+              {t("landing.install.title")}
+            </h2>
             <p class="text-base-content/60 max-w-xl mx-auto">
               {t("landing.install.subtitle")}
             </p>
@@ -195,10 +205,12 @@ export default function HomePage() {
                   <TbOutlineTerminal size={24} class="text-success" />
                 </div>
                 <h3 class="card-title">{t("landing.install.cli")}</h3>
-                <p class="text-base-content/60 text-sm">{t("landing.install.cliDesc")}</p>
+                <p class="text-base-content/60 text-sm">
+                  {t("landing.install.cliDesc")}
+                </p>
                 <button
                   type="button"
-                  class="btn btn-outline btn-sm mt-4 font-mono"
+                  class="btn btn-outline btn-sm mt-4 font-mono h-fit"
                   onClick={() => copyToClipboard("cargo install sendme")}
                 >
                   <span>$ cargo install sendme</span>
@@ -235,7 +247,9 @@ export default function HomePage() {
                   <TbOutlineDeviceMobile size={24} class="text-warning" />
                 </div>
                 <h3 class="card-title">{t("landing.install.mobile")}</h3>
-                <p class="text-base-content/60 text-sm">{t("landing.install.mobileDesc")}</p>
+                <p class="text-base-content/60 text-sm">
+                  {t("landing.install.mobileDesc")}
+                </p>
                 <a
                   href="https://github.com/sternelee/sendme-app/releases"
                   target="_blank"
@@ -254,7 +268,9 @@ export default function HomePage() {
       <section class="bg-base-200 py-24">
         <div class="container mx-auto px-4">
           <div class="text-center mb-16">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">{t("landing.howItWorks.title")}</h2>
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">
+              {t("landing.howItWorks.title")}
+            </h2>
             <p class="text-base-content/60 max-w-xl mx-auto">
               {t("landing.howItWorks.subtitle")}
             </p>
