@@ -39,20 +39,21 @@ import {
   X,
   RefreshCw,
   FileText,
-  FileCode,
   FileImage,
   FileArchive,
+  FileCode,
   ChevronRight,
   Sun,
   Moon,
-  Monitor,
+  History,
+  Settings,
+  Scan,
   Trash2,
   Sparkles,
   Shield,
   Zap,
-  History,
-  Settings,
-  Scan,
+  User,
+  LogOut,
 } from "lucide-solid";
 
 import { Toaster, toast } from "solid-sonner";
@@ -62,12 +63,10 @@ import {
   getDisplayName,
   getFileIcon,
   getTransferStatus,
-  getProgressValue,
 } from "~/lib/utils";
 import { useAuth } from "~/lib/auth";
-import { User, LogOut } from "lucide-solid";
+import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
 
-// Types
 interface Transfer {
   id: string;
   transfer_type: string;
@@ -87,37 +86,24 @@ interface ProgressUpdate {
 }
 
 type Theme = "light" | "dark" | "system";
+type Tab = "send" | "receive" | "history" | "settings";
 
-// Ticket types
 const ticketTypes = [
-  {
-    value: "id",
-    label: "ID Only",
-    description: "Smallest ticket, requires DNS",
-  },
-  { value: "relay", label: "Relay", description: "Uses relay server" },
-  { value: "addresses", label: "Addresses", description: "Direct addresses" },
-  {
-    value: "relay_and_addresses",
-    label: "Relay + Addresses",
-    description: "Both relay and direct addresses",
-  },
+  { value: "id", label: "ID Only" },
+  { value: "relay", label: "Relay" },
+  { value: "addresses", label: "Addresses" },
+  { value: "relay_and_addresses", label: "Relay + Addresses" },
 ];
 
 export default function MainPage() {
-  // Auth
   const auth = useAuth();
 
-  // Platform & UI state
   const [isMobile, setIsMobile] = createSignal(false);
   const [isSmallWindow, setIsSmallWindow] = createSignal(false);
   const [isInitializing, setIsInitializing] = createSignal(true);
   const [theme, setTheme] = createSignal<Theme>("system");
-  const [activeTab, setActiveTab] = createSignal<
-    "send" | "receive" | "history" | "settings"
-  >("send");
+  const [activeTab, setActiveTab] = createSignal<Tab>("send");
 
-  // Send state
   const [sendPath, setSendPath] = createSignal("");
   const [sendTicketType, setSendTicketType] = createSignal(
     "relay_and_addresses",
@@ -125,11 +111,9 @@ export default function MainPage() {
   const [sendTicket, setSendTicket] = createSignal("");
   const [sendTicketQrCode, setSendTicketQrCode] = createSignal("");
   const [isSending, setIsSending] = createSignal(false);
-  const [showTicketTypeMenu, setShowTicketTypeMenu] = createSignal(false);
   const [isTextMode, setIsTextMode] = createSignal(false);
   const [textContent, setTextContent] = createSignal("");
 
-  // Receive state
   const [receiveTicket, setReceiveTicket] = createSignal("");
   const [receiveOutputDir, setReceiveOutputDir] = createSignal("");
   const [isReceiving, setIsReceiving] = createSignal(false);
@@ -137,17 +121,11 @@ export default function MainPage() {
     string | null
   >(null);
 
-  // Data state
   const [transfers, setTransfers] = createSignal<Transfer[]>([]);
   const [progressData, setProgressData] = createSignal<
     Record<string, ProgressData>
   >({});
-  const [metadataCache, setMetadataCache] = createSignal<Record<string, any>>(
-    {},
-  );
-  const [mousePos, setMousePos] = createSignal({ x: 0, y: 0 });
 
-  // Computed
   const receiveProgressPercent = () => {
     if (!currentReceivingId()) return 0;
     const data = progressData()[currentReceivingId()!];
@@ -158,18 +136,17 @@ export default function MainPage() {
     return 0;
   };
 
-  // Theme logic
   function applyTheme(newTheme: Theme) {
     const root = window.document.documentElement;
-    root.classList.remove("light", "dark");
+    root.removeAttribute("data-theme");
     if (newTheme === "system") {
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
         .matches
         ? "dark"
         : "light";
-      root.classList.add(systemTheme);
+      root.setAttribute("data-theme", systemTheme);
     } else {
-      root.classList.add(newTheme);
+      root.setAttribute("data-theme", newTheme);
     }
   }
 
@@ -179,7 +156,6 @@ export default function MainPage() {
     localStorage.setItem("theme", newTheme);
   }
 
-  // Action handlers
   async function loadTransfers() {
     try {
       const loaded = await get_transfers();
@@ -235,7 +211,7 @@ export default function MainPage() {
       setSendTicketQrCode(
         await QRCode.toDataURL(result, {
           errorCorrectionLevel: "H",
-          width: 300,
+          width: 280,
         }),
       );
       await loadTransfers();
@@ -307,13 +283,11 @@ export default function MainPage() {
     } catch (e) {}
   }
 
-  // Lifecycle
   onMount(async () => {
     try {
       const p = platform();
       setIsMobile(p === "android" || p === "ios");
     } catch (e) {}
-    console.log("Platform:", platform());
 
     const mq = window.matchMedia("(max-width: 640px)");
     setIsSmallWindow(mq.matches);
@@ -325,15 +299,7 @@ export default function MainPage() {
     const savedOutputDir = localStorage.getItem("receive-output-dir");
     if (savedOutputDir) setReceiveOutputDir(savedOutputDir);
 
-    console.log("Loading transfers...");
-
     await loadTransfers();
-
-    console.log("Setting up event listeners...");
-
-    window.addEventListener("mousemove", (e) =>
-      setMousePos({ x: e.clientX, y: e.clientY }),
-    );
 
     const unlisten = await listen<ProgressUpdate>("progress", (event) => {
       const { transfer_id, ...data } = event.payload.data;
@@ -351,561 +317,477 @@ export default function MainPage() {
           if (currentReceivingId() === transfer_id) setCurrentReceivingId(null);
         }, 2000);
       }
-      if (data.progress?.type === "metadata")
-        setMetadataCache((prev) => ({ ...prev, [transfer_id]: data.progress }));
     });
 
-    onCleanup(() => {
-      unlisten();
-    });
-
+    onCleanup(() => unlisten());
     setIsInitializing(false);
   });
 
-  // UI Components
   const LoadingUI = () => (
-    <div class="flex min-h-screen flex-col items-center justify-center bg-gray-50 dark:bg-[#0c0a1a]">
-      <Loader2 class="animate-spin text-purple-500" size={32} />
-      <p class="mt-4 text-xs font-bold tracking-widest text-gray-400 uppercase">
-        Sendme
-      </p>
-    </div>
-  );
-
-  const StatusIcon = (props: { status: any }) => (
-    <div class={props.status.pulse ? "animate-pulse" : ""}>
-      <Switch>
-        <Match when={props.status.icon === "Check"}>
-          <FileText size={12} />
-        </Match>
-        <Match when={props.status.icon === "Download"}>
-          <Download size={12} />
-        </Match>
-        <Match when={true}>
-          <RefreshCw size={12} class="animate-spin" />
-        </Match>
-      </Switch>
+    <div class="bg-base-200 flex min-h-screen flex-col items-center justify-center">
+      <span class="loading loading-spinner loading-lg text-primary"></span>
+      <p class="text-base-content/60 mt-4 text-sm">Loading Sendme...</p>
     </div>
   );
 
   return (
     <Show when={!isInitializing()} fallback={<LoadingUI />}>
-      <div class="relative min-h-screen bg-gray-50 text-gray-900 transition-colors duration-300 dark:bg-[#0c0a1a] dark:text-white">
+      <div class="bg-base-100 text-base-content flex min-h-screen flex-col">
         <Toaster position="top-center" />
 
-        {/* Dynamic Background */}
-        {!isSmallWindow() && (
-          <div class="pointer-events-none fixed inset-0 z-0 overflow-hidden opacity-30">
-            <Motion.div
-              animate={{ x: mousePos().x * 0.02, y: mousePos().y * 0.02 }}
-              class="absolute top-[-10%] left-[-10%] h-[50%] w-[50%] rounded-full bg-purple-600/20 blur-[100px]"
-            />
-            <Motion.div
-              animate={{ x: mousePos().x * -0.01, y: mousePos().y * -0.01 }}
-              class="absolute right-[-10%] bottom-[-10%] h-[60%] w-[60%] rounded-full bg-indigo-600/20 blur-[100px]"
-            />
-          </div>
-        )}
-
-        <div class="relative z-10 flex flex-col sm:mx-auto sm:max-w-md sm:pt-4">
-          {/* Header */}
-          <header class="safe-area-top flex items-center justify-between px-4 py-3 sm:px-2">
+        <header class="navbar bg-base-100 px-4 py-2 shadow-sm">
+          <div class="flex-1">
             <div class="flex items-center gap-3">
-              <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-br from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/20">
-                <Sparkles size={18} class="text-white" />
+              <div class="avatar">
+                <div class="bg-primary text-primary-content flex w-10 items-center justify-center rounded-full">
+                  <Sparkles size={20} />
+                </div>
               </div>
-              <h1 class="text-lg font-bold tracking-tight">Sendme</h1>
+              <span class="text-lg font-bold">Sendme</span>
             </div>
-            <button
-              onClick={() =>
-                setThemeValue(theme() === "dark" ? "light" : "dark")
-              }
-              class="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-200/50 dark:bg-white/5"
-            >
-              {theme() === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-          </header>
+          </div>
+          <div class="flex-none">
+            <ThemeSwitcher />
+          </div>
+        </header>
 
-          {/* Content */}
-          <main class="flex-1 p-4 pb-24 sm:p-2 sm:pb-8">
-            <Presence exitBeforeEnter>
-              <Switch>
-                {/* SEND TAB */}
-                <Match when={activeTab() === "send"}>
-                  <Motion.div
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{ duration: 0.15, easing: "ease-out" }}
-                    class="space-y-4"
-                  >
-                    <div class="glass-liquid rounded-3xl border border-gray-200 p-4 dark:border-white/10">
-                      <div class="mb-4 flex items-center justify-between">
-                        <h2 class="text-sm font-bold tracking-wider uppercase opacity-60">
+        <main class="flex-1 overflow-auto p-4 pb-24">
+          <Presence exitBeforeEnter>
+            <Switch>
+              <Match when={activeTab() === "send"}>
+                <Motion.div
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.15 }}
+                  class="space-y-4"
+                >
+                  <div class="card bg-base-200">
+                    <div class="card-body gap-4">
+                      <div class="flex items-center justify-between">
+                        <h2 class="card-title text-base-content/60 text-sm tracking-wider uppercase">
                           Send
                         </h2>
-                        <div class="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-white/5">
+                        <div class="join">
                           <button
+                            class={`join-item btn btn-sm ${!isTextMode() ? "btn-primary" : "btn-ghost"}`}
                             onClick={() => setIsTextMode(false)}
-                            class={`rounded-md px-3 py-1 text-[10px] font-bold ${!isTextMode() ? "bg-white text-purple-600 shadow-sm dark:bg-white/10 dark:text-purple-400" : "opacity-40"}`}
                           >
-                            FILES
+                            Files
                           </button>
                           <button
+                            class={`join-item btn btn-sm ${isTextMode() ? "btn-primary" : "btn-ghost"}`}
                             onClick={() => setIsTextMode(true)}
-                            class={`rounded-md px-3 py-1 text-[10px] font-bold ${isTextMode() ? "bg-white text-purple-600 shadow-sm dark:bg-white/10 dark:text-purple-400" : "opacity-40"}`}
                           >
-                            TEXT
+                            Text
                           </button>
                         </div>
                       </div>
 
-                      <Switch>
-                        <Match when={isTextMode()}>
-                          <textarea
-                            value={textContent()}
-                            onInput={(e) =>
-                              setTextContent(e.currentTarget.value)
-                            }
-                            placeholder="Type message..."
-                            class="h-28 w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm focus:outline-none dark:border-white/5 dark:bg-white/5"
-                          />
-                        </Match>
-                        <Match when={!isTextMode()}>
-                          <div
-                            onClick={selectFile}
-                            class="group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 py-8 transition-all duration-500 group-hover:bg-purple-500/20 group-hover:text-purple-400 dark:border-white/10 dark:bg-white/2"
-                          >
-                            <SendIcon size={32} class="mb-2 opacity-20" />
-                            <span class="px-4 text-center text-xs font-medium opacity-60">
-                              {sendPath()
-                                ? getDisplayName(sendPath())
-                                : "Select file or folder"}
-                            </span>
-                          </div>
-                          <div class="mt-2 grid grid-cols-2 gap-2">
-                            <button
-                              onClick={selectFile}
-                              class="flex h-10 items-center justify-center gap-2 rounded-xl bg-white text-xs font-bold dark:bg-white/5"
-                            >
-                              File
-                            </button>
-                            <button
-                              onClick={selectDirectory}
-                              class="flex h-10 items-center justify-center gap-2 rounded-xl bg-white text-xs font-bold dark:bg-white/5"
-                            >
-                              Folder
-                            </button>
-                          </div>
-                        </Match>
-                      </Switch>
+                      <Show when={isTextMode()}>
+                        <textarea
+                          value={textContent()}
+                          onInput={(e) => setTextContent(e.currentTarget.value)}
+                          placeholder="Type your message..."
+                          class="textarea textarea-bordered w-full"
+                          rows={4}
+                        />
+                      </Show>
 
-                      <div class="mt-4 space-y-3">
-                        <div class="relative">
-                          <button
-                            onClick={() =>
-                              setShowTicketTypeMenu(!showTicketTypeMenu())
-                            }
-                            class="flex h-10 w-full items-center justify-between rounded-xl bg-gray-100 px-4 text-xs font-bold dark:bg-white/5"
-                          >
-                            <span class="opacity-60">
-                              {
-                                ticketTypes.find(
-                                  (t) => t.value === sendTicketType(),
-                                )?.label
-                              }
-                            </span>
-                            <ChevronRight
-                              size={14}
-                              class={`transition-transform ${showTicketTypeMenu() ? "rotate-90" : ""}`}
-                            />
-                          </button>
-                          <Show when={showTicketTypeMenu()}>
-                            <div class="glass absolute top-full left-0 z-50 mt-1 w-full overflow-hidden rounded-xl border border-gray-200 dark:border-white/10">
-                              {ticketTypes.map((t) => (
-                                <button
-                                  onClick={() => {
-                                    setSendTicketType(t.value as any);
-                                    setShowTicketTypeMenu(false);
-                                  }}
-                                  class="w-full p-3 text-left hover:bg-purple-500/10"
-                                >
-                                  <div class="text-[10px] font-bold">
-                                    {t.label}
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </Show>
-                        </div>
-
-                        <button
-                          onClick={handleSend}
-                          disabled={
-                            isSending() || (!isTextMode() && !sendPath())
-                          }
-                          class="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-purple-600 to-indigo-600 font-bold text-white shadow-lg disabled:opacity-30"
+                      <Show when={!isTextMode()}>
+                        <div
+                          onClick={selectFile}
+                          class="border-base-300 bg-base-300/30 hover:border-primary hover:bg-primary/5 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 transition-colors"
                         >
-                          {isSending() ? (
-                            <Loader2 size={18} class="animate-spin" />
-                          ) : (
-                            <>
-                              <Zap size={18} /> Share
-                            </>
-                          )}
-                        </button>
+                          <SendIcon size={32} class="mb-2 opacity-40" />
+                          <span class="text-sm opacity-60">
+                            {sendPath()
+                              ? getDisplayName(sendPath())
+                              : "Select file or folder"}
+                          </span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                          <button onClick={selectFile} class="btn btn-outline">
+                            <FileText size={16} /> File
+                          </button>
+                          <button
+                            onClick={selectDirectory}
+                            class="btn btn-outline"
+                          >
+                            <FolderOpen size={16} /> Folder
+                          </button>
+                        </div>
+                      </Show>
+
+                      <div class="form-control w-full">
+                        <select
+                          class="select select-bordered"
+                          value={sendTicketType()}
+                          onChange={(e) =>
+                            setSendTicketType(e.currentTarget.value)
+                          }
+                        >
+                          <For each={ticketTypes}>
+                            {(t) => <option value={t.value}>{t.label}</option>}
+                          </For>
+                        </select>
                       </div>
+
+                      <button
+                        onClick={handleSend}
+                        disabled={isSending() || (!isTextMode() && !sendPath())}
+                        class={`btn btn-primary ${isSending() ? "loading" : ""}`}
+                      >
+                        <Show when={!isSending()}>
+                          <Zap size={18} /> Share
+                        </Show>
+                      </button>
 
                       <Show when={sendTicket()}>
-                        <div class="mt-4 border-t border-gray-100 pt-4 dark:border-white/5">
-                          <div class="flex items-center gap-4">
-                            <Show when={sendTicketQrCode()}>
-                              <div class="shrink-0 rounded-xl bg-white p-2">
-                                <img
-                                  src={sendTicketQrCode()!}
-                                  alt="QR"
-                                  class="h-20 w-20"
-                                />
-                              </div>
-                            </Show>
-                            <div class="min-w-0 flex-1 space-y-2">
-                              <div class="glass-inset rounded-xl p-2 px-3">
-                                <code class="block truncate font-mono text-[10px] text-purple-500">
-                                  {sendTicket()}
-                                </code>
-                              </div>
-                              <div class="flex gap-2">
+                        <div class="divider"></div>
+                        <div class="flex flex-col items-center gap-4">
+                          <Show when={sendTicketQrCode()}>
+                            <div class="rounded-xl bg-white p-2">
+                              <img
+                                src={sendTicketQrCode()!}
+                                alt="QR"
+                                class="h-32 w-32"
+                              />
+                            </div>
+                          </Show>
+                          <div class="w-full">
+                            <div class="bg-base-300 overflow-hidden rounded-lg p-2">
+                              <code class="text-primary font-mono text-xs break-all">
+                                {sendTicket()}
+                              </code>
+                            </div>
+                            <div class="mt-2 flex gap-2">
+                              <button
+                                onClick={() => copyToClipboard(sendTicket()!)}
+                                class="btn btn-sm btn-outline flex-1"
+                              >
+                                <Copy size={14} /> Copy
+                              </button>
+                              <Show
+                                when={
+                                  typeof navigator !== "undefined" &&
+                                  "share" in navigator
+                                }
+                              >
                                 <button
-                                  onClick={() => copyToClipboard(sendTicket()!)}
-                                  class="flex-1 rounded-lg bg-gray-100 py-1.5 text-[10px] font-bold dark:bg-white/5"
+                                  onClick={() =>
+                                    navigator.share?.({ text: sendTicket()! })
+                                  }
+                                  class="btn btn-sm btn-outline flex-1"
                                 >
-                                  Copy
+                                  <Share2 size={14} /> Share
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    if (navigator.share)
-                                      navigator.share({ text: sendTicket()! });
-                                  }}
-                                  class="flex-1 rounded-lg bg-gray-100 py-1.5 text-[10px] font-bold dark:bg-white/5"
-                                >
-                                  Share
-                                </button>
-                              </div>
+                              </Show>
                             </div>
                           </div>
                         </div>
                       </Show>
                     </div>
-                  </Motion.div>
-                </Match>
+                  </div>
+                </Motion.div>
+              </Match>
 
-                {/* RECEIVE TAB */}
-                <Match when={activeTab() === "receive"}>
-                  <Motion.div
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{ duration: 0.15, easing: "ease-out" }}
-                    class="space-y-4"
-                  >
-                    <div class="glass-liquid rounded-3xl border border-gray-200 p-4 dark:border-white/10">
-                      <h2 class="mb-4 text-sm font-bold tracking-wider uppercase opacity-60">
+              <Match when={activeTab() === "receive"}>
+                <Motion.div
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.15 }}
+                  class="space-y-4"
+                >
+                  <div class="card bg-base-200">
+                    <div class="card-body gap-4">
+                      <h2 class="card-title text-base-content/60 text-sm tracking-wider uppercase">
                         Receive
                       </h2>
-                      <div class="space-y-4">
-                        <div class="relative">
+
+                      <div class="form-control w-full">
+                        <label class="input input-bordered flex items-center gap-2">
+                          <Shield size={18} class="opacity-40" />
                           <input
+                            type="text"
                             value={receiveTicket()}
                             onInput={(e) =>
                               setReceiveTicket(e.currentTarget.value)
                             }
                             placeholder="Paste ticket..."
-                            class="h-12 w-full rounded-2xl border border-gray-200 bg-gray-50 pr-4 pl-10 text-sm focus:outline-none dark:border-white/5 dark:bg-white/5"
-                          />
-                          <Shield
-                            size={18}
-                            class="absolute top-1/2 left-4 -translate-y-1/2 opacity-20"
+                            class="grow"
                           />
                           <Show when={isMobile()}>
                             <button
                               onClick={handleScanBarcode}
-                              class="absolute top-1/2 right-4 -translate-y-1/2 text-purple-500"
+                              class="text-primary"
                             >
                               <Scan size={18} />
                             </button>
                           </Show>
-                        </div>
-
-                        <div class="flex items-center gap-2">
-                          <div class="relative flex-1">
-                            <input
-                              readOnly
-                              value={receiveOutputDir() || "Default Downloads"}
-                              class="h-10 w-full rounded-xl bg-gray-100 pr-4 pl-9 text-[10px] font-bold opacity-60 dark:bg-white/5"
-                            />
-                            <FolderOpen
-                              size={14}
-                              class="absolute top-1/2 left-3 -translate-y-1/2 opacity-20"
-                            />
-                          </div>
-                          <button
-                            onClick={selectOutputDirectory}
-                            class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 dark:bg-white/5"
-                          >
-                            <RefreshCw size={14} class="opacity-40" />
-                          </button>
-                        </div>
-
-                        <button
-                          onClick={handleReceive}
-                          disabled={isReceiving() || !receiveTicket()}
-                          class="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-indigo-600 to-purple-600 font-bold text-white shadow-lg disabled:opacity-30"
-                        >
-                          {isReceiving() ? (
-                            <Loader2 size={18} class="animate-spin" />
-                          ) : (
-                            <>
-                              <Download size={18} /> Receive
-                            </>
-                          )}
-                        </button>
+                        </label>
                       </div>
 
+                      <div class="form-control w-full">
+                        <label class="input input-bordered flex items-center gap-2">
+                          <FolderOpen size={18} class="opacity-40" />
+                          <input
+                            type="text"
+                            readonly
+                            value={receiveOutputDir() || "Default Downloads"}
+                            class="grow text-sm"
+                          />
+                          <button
+                            onClick={selectOutputDirectory}
+                            class="btn btn-ghost btn-sm"
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        </label>
+                      </div>
+
+                      <button
+                        onClick={handleReceive}
+                        disabled={isReceiving() || !receiveTicket()}
+                        class={`btn btn-secondary ${isReceiving() ? "loading" : ""}`}
+                      >
+                        <Show when={!isReceiving()}>
+                          <Download size={18} /> Receive
+                        </Show>
+                      </button>
+
                       <Show when={currentReceivingId()}>
-                        <div class="mt-4 rounded-2xl border border-indigo-500/10 bg-indigo-500/5 p-4">
+                        <div class="bg-secondary/10 border-secondary/20 rounded-lg border p-4">
                           <div class="mb-2 flex items-center justify-between">
-                            <span class="text-[10px] font-bold uppercase opacity-60">
+                            <span class="text-xs font-bold uppercase opacity-60">
                               Receiving
                             </span>
-                            <span class="font-mono text-xs font-bold">
+                            <span class="font-mono text-sm font-bold">
                               {Math.round(receiveProgressPercent())}%
                             </span>
                           </div>
-                          <div class="h-1.5 overflow-hidden rounded-full bg-indigo-500/10">
-                            <div
-                              class="h-full bg-indigo-500 transition-all"
-                              style={{ width: `${receiveProgressPercent()}%` }}
-                            />
-                          </div>
+                          <progress
+                            class="progress progress-secondary w-full"
+                            value={receiveProgressPercent()}
+                            max="100"
+                          ></progress>
                           <button
                             onClick={() => handleCancel(currentReceivingId()!)}
-                            class="mt-3 text-[10px] font-bold text-red-500 opacity-60"
+                            class="btn btn-ghost btn-sm text-error mt-2"
                           >
-                            CANCEL
+                            Cancel
                           </button>
                         </div>
                       </Show>
                     </div>
-                  </Motion.div>
-                </Match>
+                  </div>
+                </Motion.div>
+              </Match>
 
-                {/* HISTORY TAB */}
-                <Match when={activeTab() === "history"}>
-                  <Motion.div
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15, easing: "ease-out" }}
-                    class="space-y-4"
-                  >
-                    <div class="flex items-center justify-between px-1">
-                      <h2 class="text-sm font-bold tracking-wider uppercase opacity-60">
-                        Activity
-                      </h2>
-                      <button
-                        onClick={handleClearTransfers}
-                        class="text-[10px] font-bold text-red-400 opacity-60"
-                      >
-                        CLEAR
-                      </button>
-                    </div>
-
-                    <Show
-                      when={transfers().length > 0}
-                      fallback={
-                        <div class="py-12 text-center opacity-20">
-                          <History size={40} class="mx-auto mb-2" />
-                          <p class="text-xs font-bold">No history</p>
-                        </div>
-                      }
+              <Match when={activeTab() === "history"}>
+                <Motion.div
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  class="space-y-4"
+                >
+                  <div class="flex items-center justify-between">
+                    <h2 class="text-base-content/60 text-sm font-bold tracking-wider uppercase">
+                      Activity
+                    </h2>
+                    <button
+                      onClick={handleClearTransfers}
+                      class="btn btn-ghost btn-sm text-error"
                     >
-                      <div class="grid grid-cols-1 gap-2">
-                        <For each={transfers()}>
-                          {(t) => {
-                            const s = getTransferStatus(t.status);
-                            const Icon = getTransferFileIcon(t);
-                            return (
-                              <div class="flex items-center gap-3 rounded-2xl bg-white p-3 dark:bg-white/5">
+                      Clear
+                    </button>
+                  </div>
+
+                  <Show
+                    when={transfers().length > 0}
+                    fallback={
+                      <div class="flex flex-col items-center justify-center py-12 opacity-40">
+                        <History size={48} class="mb-2" />
+                        <p class="text-sm">No history yet</p>
+                      </div>
+                    }
+                  >
+                    <div class="space-y-2">
+                      <For each={transfers()}>
+                        {(t) => {
+                          const s = getTransferStatus(t.status);
+                          return (
+                            <div class="card bg-base-200 p-3">
+                              <div class="flex items-center gap-3">
                                 <div
-                                  class={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${t.transfer_type === "send" ? "bg-purple-500/10 text-purple-500" : "bg-indigo-500/10 text-indigo-500"}`}
+                                  class={`avatar ${t.transfer_type === "send" ? "placeholder" : "placeholder"}`}
                                 >
-                                  <Icon size={18} />
+                                  <div
+                                    class={`w-10 rounded-full ${t.transfer_type === "send" ? "bg-primary/20 text-primary" : "bg-secondary/20 text-secondary"}`}
+                                  >
+                                    <Show
+                                      when={t.transfer_type === "send"}
+                                      fallback={<Download size={18} />}
+                                    >
+                                      <Send size={18} />
+                                    </Show>
+                                  </div>
                                 </div>
                                 <div class="min-w-0 flex-1">
                                   <h4
                                     onClick={() => handleOpenFile(t)}
-                                    class="truncate text-xs font-bold"
+                                    class="hover:text-primary cursor-pointer truncate text-sm font-bold"
                                   >
-                                    {getTransferDisplayName(t)}
+                                    {getDisplayName(t.path)}
                                   </h4>
-                                  <div class="mt-0.5 flex items-center gap-2">
-                                    <span
-                                      class={`text-[9px] font-bold ${s.color}`}
-                                    >
+                                  <div class="flex items-center gap-2 text-xs opacity-60">
+                                    <span class={`badge badge-sm ${s.color}`}>
                                       {s.label}
                                     </span>
-                                    <span class="text-[9px] opacity-20">•</span>
-                                    <span class="text-[9px] opacity-20">
-                                      {formatDate(t.created_at)}
-                                    </span>
+                                    <span>{formatDate(t.created_at)}</span>
                                   </div>
                                 </div>
                                 <button
                                   onClick={() => handleCancel(t.id)}
-                                  class="text-gray-300 transition-colors hover:text-red-500 dark:text-white/10"
+                                  class="btn btn-ghost btn-sm"
                                 >
                                   <Trash2 size={16} />
                                 </button>
                               </div>
-                            );
-                          }}
-                        </For>
-                      </div>
-                    </Show>
-                  </Motion.div>
-                </Match>
-
-                {/* SETTINGS TAB */}
-                <Match when={activeTab() === "settings"}>
-                  <Motion.div
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15, easing: "ease-out" }}
-                    class="space-y-4"
-                  >
-                    <h2 class="px-1 text-sm font-bold tracking-wider uppercase opacity-60">
-                      Settings
-                    </h2>
-
-                    {/* Account Section */}
-                    <div class="divide-y overflow-hidden rounded-3xl border border-gray-200 bg-white dark:divide-white/5 dark:border-white/10 dark:bg-white/2">
-                      <Show
-                        when={auth.isSignedIn()}
-                        fallback={
-                          <div class="space-y-3 p-4">
-                            <div class="flex items-center gap-3">
-                              <User size={20} class="text-purple-500" />
-                              <span class="text-sm font-bold">Account</span>
                             </div>
-                            <button
-                              onClick={() => auth.signIn()}
-                              class="w-full rounded-lg bg-purple-600 px-4 py-2 text-sm font-bold text-white"
-                            >
-                              Sign In
-                            </button>
-                          </div>
-                        }
-                      >
-                        <div class="space-y-3 p-4">
-                          <div class="flex items-center gap-3">
-                            <Show when={auth.user()?.imageUrl}>
-                              <img
-                                src={auth.user()!.imageUrl}
-                                class="h-10 w-10 rounded-full"
-                                alt="avatar"
-                              />
-                            </Show>
-                            <Show when={!auth.user()?.imageUrl}>
-                              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-purple-500">
-                                <User size={20} class="text-white" />
-                              </div>
-                            </Show>
-                            <div class="min-w-0 flex-1">
-                              <p class="truncate text-sm font-bold">
-                                {auth.user()?.name || "User"}
-                              </p>
-                              <p class="truncate text-xs opacity-60">
-                                {auth.user()?.email}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => auth.signOut()}
-                              class="p-2 opacity-60 hover:opacity-100"
-                            >
-                              <LogOut size={18} />
-                            </button>
-                          </div>
-                        </div>
-                      </Show>
+                          );
+                        }}
+                      </For>
                     </div>
+                  </Show>
+                </Motion.div>
+              </Match>
 
-                    <div class="divide-y overflow-hidden rounded-3xl border border-gray-200 bg-white dark:divide-white/5 dark:border-white/10 dark:bg-white/2">
-                      <div class="flex items-center justify-between p-4">
-                        <span class="text-xs font-bold">Theme</span>
-                        <button
-                          onClick={() =>
-                            setThemeValue(theme() === "dark" ? "light" : "dark")
-                          }
-                          class="text-[10px] font-bold text-purple-500 uppercase"
-                        >
-                          {theme()}
-                        </button>
+              <Match when={activeTab() === "settings"}>
+                <Motion.div
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  class="space-y-4"
+                >
+                  <h2 class="text-base-content/60 text-sm font-bold tracking-wider uppercase">
+                    Settings
+                  </h2>
+
+                  <Show
+                    when={auth.isSignedIn()}
+                    fallback={
+                      <div class="card bg-base-200">
+                        <div class="card-body">
+                          <div class="flex items-center gap-3">
+                            <div class="avatar placeholder">
+                              <div class="bg-primary text-primary-content flex w-10 items-center justify-center rounded-full">
+                                <User size={20} />
+                              </div>
+                            </div>
+                            <div class="flex-1">
+                              <p class="font-bold">Account</p>
+                              <p class="text-xs opacity-60">
+                                Sign in to sync your data
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => auth.signIn()}
+                            class="btn btn-primary mt-2"
+                          >
+                            Sign In
+                          </button>
+                        </div>
                       </div>
-                      <div class="flex items-center justify-between p-4">
-                        <span class="text-xs font-bold">Node Status</span>
-                        <span class="text-[9px] font-bold text-green-500">
-                          ONLINE
+                    }
+                  >
+                    <div class="card bg-base-200">
+                      <div class="card-body">
+                        <div class="flex items-center gap-3">
+                          <Show when={auth.user()?.imageUrl}>
+                            <img
+                              src={auth.user()!.imageUrl}
+                              class="h-10 w-10 rounded-full"
+                              alt="avatar"
+                            />
+                          </Show>
+                          <Show when={!auth.user()?.imageUrl}>
+                            <div class="avatar placeholder">
+                              <div class="bg-primary text-primary-content w-10 rounded-full">
+                                <User size={20} />
+                              </div>
+                            </div>
+                          </Show>
+                          <div class="min-w-0 flex-1">
+                            <p class="truncate font-bold">
+                              {auth.user()?.name || "User"}
+                            </p>
+                            <p class="truncate text-xs opacity-60">
+                              {auth.user()?.email}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => auth.signOut()}
+                            class="btn btn-ghost btn-sm"
+                          >
+                            <LogOut size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </Show>
+
+                  <div class="card bg-base-200">
+                    <div class="card-body">
+                      <div class="flex items-center justify-between">
+                        <span class="font-bold">Status</span>
+                        <span class="badge badge-success gap-1">
+                          <span class="bg-success-content h-2 w-2 animate-pulse rounded-full"></span>
+                          Online
                         </span>
                       </div>
-                      <div class="p-4">
-                        <p class="text-[10px] font-bold opacity-40">
-                          Sendme v0.1.0 • P2P Protocol
-                        </p>
-                      </div>
                     </div>
-                  </Motion.div>
-                </Match>
-              </Switch>
-            </Presence>
-          </main>
+                    <div class="card-body py-2">
+                      <p class="text-xs opacity-40">Sendme v0.31.0</p>
+                    </div>
+                  </div>
+                </Motion.div>
+              </Match>
+            </Switch>
+          </Presence>
+        </main>
 
-          {/* Navigation */}
-          <nav class="safe-area-bottom fixed right-0 bottom-0 left-0 z-50 border-t border-gray-200 bg-white/80 backdrop-blur-xl dark:border-white/5 dark:bg-black/40">
-            <div class="flex h-16 items-center justify-around px-2 sm:mx-auto sm:max-w-md">
-              {[
-                { id: "send", icon: Send, label: "SEND" },
-                { id: "receive", icon: Download, label: "RECEIVE" },
-                { id: "history", icon: History, label: "HISTORY" },
-                { id: "settings", icon: Settings, label: "SETTINGS" },
-              ].map((tab) => (
-                <button
-                  onClick={() => setActiveTab(tab.id as any)}
-                  class={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab() === tab.id ? "text-purple-600 dark:text-purple-400" : "opacity-30"}`}
-                >
-                  <tab.icon size={20} />
-                  <span class="text-[8px] font-bold">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-          </nav>
-        </div>
+        <nav class="dock dock-md bg-base-200/80 border-base-300 border-t backdrop-blur-lg">
+          <button
+            class={`dock-label ${activeTab() === "send" ? "active" : ""}`}
+            onClick={() => setActiveTab("send")}
+          >
+            <Send size={24} />
+            <span>Send</span>
+          </button>
+          <button
+            class={`dock-label ${activeTab() === "receive" ? "active" : ""}`}
+            onClick={() => setActiveTab("receive")}
+          >
+            <Download size={24} />
+            <span>Receive</span>
+          </button>
+          <button
+            class={`dock-label ${activeTab() === "history" ? "active" : ""}`}
+            onClick={() => setActiveTab("history")}
+          >
+            <History size={24} />
+            <span>History</span>
+          </button>
+          <button
+            class={`dock-label ${activeTab() === "settings" ? "active" : ""}`}
+            onClick={() => setActiveTab("settings")}
+          >
+            <Settings size={24} />
+            <span>Settings</span>
+          </button>
+        </nav>
       </div>
     </Show>
   );
-}
-
-// Helpers for the new structure (minimal)
-function getTransferDisplayName(transfer: any): string {
-  return getDisplayName(transfer.path);
-}
-
-function getTransferFileIcon(transfer: any) {
-  const iconName = getFileIcon(transfer.path);
-  switch (iconName) {
-    case "FileImage":
-      return FileImage;
-    case "FileArchive":
-      return FileArchive;
-    case "FileCode":
-      return FileCode;
-    default:
-      return FileText;
-  }
 }

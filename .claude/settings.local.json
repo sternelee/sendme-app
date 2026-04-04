@@ -18,5 +18,9 @@
       "Bash(cargo build:*)",
       "Bash(cargo clean:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "mcp_box"
+  ],
+  "enableAllProjectMcpServers": true
 }
