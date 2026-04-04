@@ -9,6 +9,14 @@
     "notification:allow-is-permission-granted",
     "http:default",
     "http:allow-fetch",
-    "clerk:default"
+    "clerk:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*.clerk.accounts.dev/**" },
+        { "url": "https://*.clerk.com/**" },
+        { "url": "https://clerk-telemetry.com/**" }
+      ]
+    }
   ]
 }

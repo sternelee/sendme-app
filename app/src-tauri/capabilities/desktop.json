@@ -10,6 +10,13 @@
   ],
   "permissions": [
     "core:default",
-    "clerk:default"
+    "clerk:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*.clerk.accounts.dev/**" },
+        { "url": "https://*.clerk.com/**" }
+      ]
+    }
   ]
 }
