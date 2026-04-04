@@ -220,7 +220,7 @@ export default function MainPage() {
       );
       await loadTransfers();
     } catch (e) {
-      toast.error(`Send failed: ${e}`);
+      toast.error(t("send.failed") + `: ${e}`);
     } finally {
       setIsSending(false);
     }
@@ -236,9 +236,9 @@ export default function MainPage() {
       });
       await loadTransfers();
       setReceiveTicket("");
-      toast.success("Connecting...");
+      toast.success(t("receive.connecting"));
     } catch (e) {
-      toast.error(`Error: ${e}`);
+      toast.error(`${t("common.confirm")}: ${e}`);
     } finally {
       setIsReceiving(false);
     }
@@ -255,7 +255,7 @@ export default function MainPage() {
     try {
       await clear_transfers();
       setTransfers([]);
-      toast.success("History cleared");
+      toast.success(t("common.clear") + "!");
     } catch (e) {}
   }
 
@@ -330,7 +330,7 @@ export default function MainPage() {
   const LoadingUI = () => (
     <div class="bg-base-200 flex min-h-screen flex-col items-center justify-center">
       <span class="loading loading-spinner loading-lg text-primary"></span>
-      <p class="text-base-content/60 mt-4 text-sm">Loading Sendme...</p>
+      <p class="text-base-content/60 mt-4 text-sm">{t("common.loading")}</p>
     </div>
   );
 
@@ -347,10 +347,10 @@ export default function MainPage() {
                   <Sparkles size={20} />
                 </div>
               </div>
-              <span class="text-lg font-bold">Sendme</span>
+              <span class="text-lg font-bold">{t("common.appName")}</span>
             </div>
           </div>
-          <div class="flex-none">
+          <div class="flex-none flex items-center gap-1">
             <LanguageSwitcher />
             <ThemeSwitcher />
           </div>
@@ -377,13 +377,13 @@ export default function MainPage() {
                             class={`join-item btn btn-sm ${!isTextMode() ? "btn-primary" : "btn-ghost"}`}
                             onClick={() => setIsTextMode(false)}
                           >
-                            Files
+                            {t("common.files")}
                           </button>
                           <button
                             class={`join-item btn btn-sm ${isTextMode() ? "btn-primary" : "btn-ghost"}`}
                             onClick={() => setIsTextMode(true)}
                           >
-                            Text
+                            {t("common.text")}
                           </button>
                         </div>
                       </div>
@@ -392,7 +392,7 @@ export default function MainPage() {
                         <textarea
                           value={textContent()}
                           onInput={(e) => setTextContent(e.currentTarget.value)}
-                          placeholder="Type your message..."
+                          placeholder={t("text.placeholder")}
                           class="textarea textarea-bordered w-full"
                           rows={4}
                         />
@@ -407,18 +407,18 @@ export default function MainPage() {
                           <span class="text-sm opacity-60">
                             {sendPath()
                               ? getDisplayName(sendPath())
-                              : "Select file or folder"}
+                              : t("common.selectFileOrFolder")}
                           </span>
                         </div>
                         <div class="grid grid-cols-2 gap-2">
                           <button onClick={selectFile} class="btn btn-outline">
-                            <FileText size={16} /> File
+                            <FileText size={16} /> {t("common.files")}
                           </button>
                           <button
                             onClick={selectDirectory}
                             class="btn btn-outline"
                           >
-                            <FolderOpen size={16} /> Folder
+                            <FolderOpen size={16} /> {t("send.chooseFolder")}
                           </button>
                         </div>
                       </Show>
@@ -443,7 +443,7 @@ export default function MainPage() {
                         class={`btn btn-primary ${isSending() ? "loading" : ""}`}
                       >
                         <Show when={!isSending()}>
-                          <Zap size={18} /> Share
+                          <Zap size={18} /> {t("common.share")}
                         </Show>
                       </button>
 
@@ -470,7 +470,7 @@ export default function MainPage() {
                                 onClick={() => copyToClipboard(sendTicket()!)}
                                 class="btn btn-sm btn-outline flex-1"
                               >
-                                <Copy size={14} /> Copy
+                                <Copy size={14} /> {t("common.copy")}
                               </button>
                               <Show
                                 when={
@@ -484,7 +484,7 @@ export default function MainPage() {
                                   }
                                   class="btn btn-sm btn-outline flex-1"
                                 >
-                                  <Share2 size={14} /> Share
+                                  <Share2 size={14} /> {t("common.share")}
                                 </button>
                               </Show>
                             </div>
@@ -518,7 +518,7 @@ export default function MainPage() {
                             onInput={(e) =>
                               setReceiveTicket(e.currentTarget.value)
                             }
-                            placeholder="Paste ticket..."
+                            placeholder={t("common.pasteTicket")}
                             class="grow"
                           />
                           <Show when={isMobile()}>
@@ -538,7 +538,7 @@ export default function MainPage() {
                           <input
                             type="text"
                             readonly
-                            value={receiveOutputDir() || "Default Downloads"}
+                            value={receiveOutputDir() || t("common.defaultDownloads")}
                             class="grow text-sm"
                           />
                           <button
@@ -556,7 +556,7 @@ export default function MainPage() {
                         class={`btn btn-secondary ${isReceiving() ? "loading" : ""}`}
                       >
                         <Show when={!isReceiving()}>
-                          <Download size={18} /> Receive
+                          <Download size={18} /> {t("common.receive")}
                         </Show>
                       </button>
 
@@ -564,7 +564,7 @@ export default function MainPage() {
                         <div class="bg-secondary/10 border-secondary/20 rounded-lg border p-4">
                           <div class="mb-2 flex items-center justify-between">
                             <span class="text-xs font-bold uppercase opacity-60">
-                              Receiving
+                              {t("common.receiving")}
                             </span>
                             <span class="font-mono text-sm font-bold">
                               {Math.round(receiveProgressPercent())}%
@@ -579,7 +579,7 @@ export default function MainPage() {
                             onClick={() => handleCancel(currentReceivingId()!)}
                             class="btn btn-ghost btn-sm text-error mt-2"
                           >
-                            Cancel
+                            {t("common.cancel")}
                           </button>
                         </div>
                       </Show>
@@ -597,13 +597,13 @@ export default function MainPage() {
                 >
                   <div class="flex items-center justify-between">
                     <h2 class="text-base-content/60 text-sm font-bold tracking-wider uppercase">
-                      Activity
+                      {t("common.activity")}
                     </h2>
                     <button
                       onClick={handleClearTransfers}
                       class="btn btn-ghost btn-sm text-error"
                     >
-                      Clear
+                      {t("common.clear")}
                     </button>
                   </div>
 
@@ -612,7 +612,7 @@ export default function MainPage() {
                     fallback={
                       <div class="flex flex-col items-center justify-center py-12 opacity-40">
                         <History size={48} class="mb-2" />
-                        <p class="text-sm">No history yet</p>
+                        <p class="text-sm">{t("common.noHistoryYet")}</p>
                       </div>
                     }
                   >
@@ -690,9 +690,9 @@ export default function MainPage() {
                               </div>
                             </div>
                             <div class="flex-1">
-                              <p class="font-bold">Account</p>
+                              <p class="font-bold">{t("common.account")}</p>
                               <p class="text-xs opacity-60">
-                                Sign in to sync your data
+                                {t("common.signInToSync")}
                               </p>
                             </div>
                           </div>
@@ -700,7 +700,7 @@ export default function MainPage() {
                             onClick={() => auth.signIn()}
                             class="btn btn-primary mt-2"
                           >
-                            Sign In
+                            {t("common.signIn")}
                           </button>
                         </div>
                       </div>
@@ -748,12 +748,12 @@ export default function MainPage() {
                         <span class="font-bold">Status</span>
                         <span class="badge badge-success gap-1">
                           <span class="bg-success-content h-2 w-2 animate-pulse rounded-full"></span>
-                          Online
+                          {t("common.online")}
                         </span>
                       </div>
                     </div>
                     <div class="card-body py-2">
-                      <p class="text-xs opacity-40">Sendme v0.31.0</p>
+                      <p class="text-xs opacity-40">{t("common.appName")} v0.31.0</p>
                     </div>
                   </div>
                 </Motion.div>
@@ -768,28 +768,28 @@ export default function MainPage() {
             onClick={() => setActiveTab("send")}
           >
             <Send size={24} />
-            <span>Send</span>
+            <span>{t("common.send")}</span>
           </button>
           <button
             class={`dock-label ${activeTab() === "receive" ? "active" : ""}`}
             onClick={() => setActiveTab("receive")}
           >
             <Download size={24} />
-            <span>Receive</span>
+            <span>{t("common.receive")}</span>
           </button>
           <button
             class={`dock-label ${activeTab() === "history" ? "active" : ""}`}
             onClick={() => setActiveTab("history")}
           >
             <History size={24} />
-            <span>History</span>
+            <span>{t("common.history")}</span>
           </button>
           <button
             class={`dock-label ${activeTab() === "settings" ? "active" : ""}`}
             onClick={() => setActiveTab("settings")}
           >
             <Settings size={24} />
-            <span>Settings</span>
+            <span>{t("common.settings")}</span>
           </button>
         </nav>
       </div>

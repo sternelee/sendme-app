@@ -16,7 +16,21 @@
       "close": "Close",
       "cancel": "Cancel",
       "confirm": "Confirm",
-      "loading": "Loading..."
+      "loading": "Loading...",
+      "share": "Share",
+      "files": "Files",
+      "copy": "Copy",
+      "online": "Online",
+      "activity": "Activity",
+      "clear": "Clear",
+      "account": "Account",
+      "signIn": "Sign In",
+      "signInToSync": "Sign in to sync your data",
+      "selectFileOrFolder": "Select file or folder",
+      "pasteTicket": "Paste ticket...",
+      "defaultDownloads": "Default Downloads",
+      "receiving": "Receiving",
+      "noHistoryYet": "No history yet"
     },
     "landing": {
       "hero": {
@@ -164,7 +178,21 @@
       "close": "关闭",
       "cancel": "取消",
       "confirm": "确认",
-      "loading": "加载中..."
+      "loading": "加载中...",
+      "share": "分享",
+      "files": "文件",
+      "copy": "复制",
+      "online": "在线",
+      "activity": "活动",
+      "clear": "清除",
+      "account": "账户",
+      "signIn": "登录",
+      "signInToSync": "登录以同步数据",
+      "selectFileOrFolder": "选择文件或文件夹",
+      "pasteTicket": "在此粘贴票据...",
+      "defaultDownloads": "默认下载目录",
+      "receiving": "接收中",
+      "noHistoryYet": "暂无历史记录"
     },
     "landing": {
       "hero": {
