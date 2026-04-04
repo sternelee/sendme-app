@@ -1,111 +1,417 @@
-name: Package and Build PiSend
-on:
-  workflow_dispatch:
+name: Release
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 env:
-  CN_APPLICATION: 'cloudplay/pisend'
+  CARGO_TERM_COLOR: always
 
 jobs:
-  draft:
-    runs-on: ubuntu-22.04
-    environment: production
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: create draft release
-        uses: crabnebula-dev/cloud-release@v0
-        with:
-          command: release draft ${{ env.CN_APPLICATION }} --framework tauri
-          api-key: ${{ secrets.CN_API_KEY }}
-
-  build:
-    needs: draft
-
+  build-cli:
+    name: Build CLI ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-22.04
-          - macos-latest
-          - windows-latest
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: sendme
+            asset_name: sendme_cli-linux-amd64
 
-    runs-on: ${{ matrix.os }}
-    environment: production
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: sendme
+            asset_name: sendme_cli-darwin-amd64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: sendme
+            asset_name: sendme_cli-darwin-arm64
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: sendme.exe
+            asset_name: sendme_cli-windows-amd64
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact_name: sendme.exe
+            asset_name: sendme_cli-windows-arm64
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install stable toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          cache: true
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build CLI release binary
+        run: cargo build -p cli --release --target ${{ matrix.target }}
+
+      - name: Strip binary (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "${{ matrix.artifact_name }}" "${{ matrix.asset_name }}.exe"
+          else
+            cp "${{ matrix.artifact_name }}" "${{ matrix.asset_name }}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.asset_name }}${{ runner.os == 'Windows' && '.exe' || '' }}
+
+  build-tauri:
+    name: Build App ${{ matrix.name }}
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS ARM64
+            platform: macos-latest
+            args: --target aarch64-apple-darwin
+            artifact_id: macos-arm64
+          - name: macOS AMD64
+            platform: macos-15-intel
+            args: --target x86_64-apple-darwin
+            artifact_id: macos-amd64
+          - platform: ubuntu-22.04
+            name: Linux (Ubuntu 22.04)
+            args: ""
+            artifact_id: linux
+          - platform: windows-latest
+            name: Windows
+            args: ""
+            artifact_id: windows
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify pnpm
+        run: pnpm --version
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add macOS Rust targets
+        if: startsWith(matrix.platform, 'macos-')
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y webkit2gtk-4.1
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
-      - name: build Tauri app for Windows, Linux
-        if: matrix.os != 'macos-latest'
-        run: |
-          cd app
-          pnpm install --frozen-lockfile
-          pnpm tauri build
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app with official Tauri action
+        uses: tauri-apps/tauri-action@v0
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      - name: Setup api key file
-        if: matrix.os == 'macos-latest'
-        run: echo "${{ secrets.APPLE_API_KEY }}" > ./AuthKey.p8
-
-      - name: Install x86_64-apple-darwin for mac and build Tauri binaries
-        if: matrix.os == 'macos-latest'
-        run: |
-          rustup target add x86_64-apple-darwin
-          cd app
-          pnpm install --frozen-lockfile
-          export APPLE_API_KEY_PATH=$(realpath AuthKey.p8)
-          pnpm tauri build --target x86_64-apple-darwin
-          pnpm tauri build --target aarch64-apple-darwin
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-
-      - name: upload assets
-        uses: crabnebula-dev/cloud-release@v0
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          command: release upload ${{ env.CN_APPLICATION }} --framework tauri
-          api-key: ${{ secrets.CN_API_KEY }}
-          path: ./app/src-tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: Sendme ${{ github.ref_name }}
+          releaseBody: See CLI archives and app installers in this release.
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          projectPath: app
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
 
-  publish:
-    needs: build
+      - name: Upload desktop app artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sendme_app_${{ matrix.artifact_id }}
+          if-no-files-found: warn
+          path: |
+            target/release/bundle/**
+            target/*/release/bundle/**
 
-    runs-on: ubuntu-22.04
-    environment: production
+  build-android:
+    name: Build App Android
+    runs-on: ubuntu-latest
+    outputs:
+      has_android_secrets: ${{ steps.check-secrets.outputs.has_android_secrets }}
+    env:
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check Android signing secrets
+        id: check-secrets
+        shell: bash
+        run: |
+          if [[ -n "$ANDROID_KEY_ALIAS" && -n "$ANDROID_KEY_PASSWORD" && -n "$ANDROID_KEY_BASE64" ]]; then
+            echo "has_android_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_android_secrets=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: publish release
-        uses: crabnebula-dev/cloud-release@v0
+      - name: Skip Android build (missing signing secrets)
+        if: steps.check-secrets.outputs.has_android_secrets != 'true'
+        run: echo "Skipping Android build because signing secrets are not configured."
+
+      - name: Checkout code
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: pnpm/action-setup@v4
         with:
-          command: release publish ${{ env.CN_APPLICATION }} --framework tauri
-          api-key: ${{ secrets.CN_API_KEY }}
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust toolchain (Android targets)
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android
+
+      - name: Setup Java
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - name: Setup Android SDK
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        shell: bash
+        run: |
+          sdkmanager --install "ndk;27.0.12077973"
+          NDK_DIR="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
+          echo "NDK_HOME=$NDK_DIR" >> "$GITHUB_OUTPUT"
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+
+      - name: Verify Android toolchain
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        shell: bash
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "NDK_HOME=$NDK_HOME"
+          test -d "$ANDROID_SDK_ROOT"
+          test -d "$NDK_HOME"
+
+      - name: Install frontend dependencies
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up Android signing
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        shell: bash
+        run: |
+          cd app/gen/android
+          {
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'password=%s\n' "$ANDROID_KEY_PASSWORD"
+            printf 'storeFile=%s\n' "$RUNNER_TEMP/upload-keystore.jks"
+          } > keystore.properties
+          printf '%s' "$ANDROID_KEY_BASE64" | tr -d '\r\n' | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
+
+      - name: Build Android app (APK + AAB)
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        run: pnpm tauri android build --config app/tauri.conf.json --target aarch64 armv7 i686 --apk --aab --split-per-abi
+
+      - name: Prepare Android ABI artifacts
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/android/aarch64 dist/android/armv7 dist/android/i686 dist/android/aab
+
+          while IFS= read -r -d '' apk; do
+            name="$(basename "$apk")"
+            lower_name="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$lower_name" == *"arm64"* || "$lower_name" == *"aarch64"* ]]; then
+              cp "$apk" "dist/android/aarch64/sendme_android-aarch64.apk"
+            elif [[ "$lower_name" == *"armeabi-v7a"* || "$lower_name" == *"armv7"* || "$lower_name" == *"-arm-"* ]]; then
+              cp "$apk" "dist/android/armv7/sendme_android-armv7.apk"
+            elif [[ "$lower_name" == *"x86_64"* ]]; then
+              continue
+            elif [[ "$lower_name" == *"x86"* || "$lower_name" == *"i686"* ]]; then
+              cp "$apk" "dist/android/i686/sendme_android-i686.apk"
+            fi
+          done < <(find app/gen/android/app/build/outputs/apk -type f -name "*.apk" -print0)
+
+          find app/gen/android/app/build/outputs/bundle -type f -name "*.aab" -exec cp {} dist/android/aab/ \;
+
+          ls -lahR dist/android
+
+          test -f dist/android/aarch64/sendme_android-aarch64.apk
+          test -f dist/android/armv7/sendme_android-armv7.apk
+          test -f dist/android/i686/sendme_android-i686.apk
+
+      - name: Upload Android aarch64 APK
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sendme_android_aarch64
+          if-no-files-found: error
+          path: dist/android/aarch64/*.apk
+
+      - name: Upload Android armv7 APK
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sendme_android_armv7
+          if-no-files-found: error
+          path: dist/android/armv7/*.apk
+
+      - name: Upload Android i686 APK
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sendme_android_i686
+          if-no-files-found: error
+          path: dist/android/i686/*.apk
+
+      - name: Upload Android AAB
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sendme_android_aab
+          if-no-files-found: warn
+          path: dist/android/aab/*.aab
+
+  release:
+    name: Publish Release Assets
+    if: ${{ always() && needs.build-cli.result != 'cancelled' && needs.build-tauri.result != 'cancelled' && needs.build-android.result != 'cancelled' }}
+    needs:
+      - build-cli
+      - build-tauri
+      - build-android
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download CLI artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: sendme_cli-*
+          merge-multiple: true
+          path: dist/cli
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: sendme_android_*
+          merge-multiple: false
+          path: dist/android
+
+      - name: Download Tauri app artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: sendme_app_*
+          merge-multiple: false
+          path: dist/app
+
+      - name: Show downloaded files
+        run: ls -lahR dist
+
+      - name: Create archives for CLI artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob globstar
+
+          files=( dist/cli/**/sendme_cli-* )
+          for file in "${files[@]}"; do
+            if [[ -f "$file" && "$file" != *.tar.gz && "$file" != *.zip ]]; then
+              base="$(basename "$file")"
+              if [[ "$file" == *.exe ]]; then
+                zip -j "dist/${base}.zip" "$file"
+              else
+                tar -czf "dist/${base}.tar.gz" -C "$(dirname "$file")" "$base"
+              fi
+            fi
+          done
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=( dist/*.tar.gz dist/*.zip )
+          if [ ${#files[@]} -gt 0 ]; then
+            sha256sum "${files[@]}" > dist/checksums.txt
+          else
+            rm -f dist/checksums.txt
+          fi
+
+      - name: Upload CLI archives to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+            dist/android/**/*.apk
+            dist/android/**/*.aab
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          append_body: true
+          body: |
+            ## CLI Downloads
+
+            - Linux AMD64: `sendme_cli-linux-amd64.tar.gz`
+            - macOS AMD64: `sendme_cli-darwin-amd64.tar.gz`
+            - macOS ARM64: `sendme_cli-darwin-arm64.tar.gz`
+            - Windows AMD64: `sendme_cli-windows-amd64.zip`
+            - Windows ARM64: `sendme_cli-windows-arm64.zip`
+
+            ## Mobile Apps
+
+            Android APKs and AAB files are available below.
