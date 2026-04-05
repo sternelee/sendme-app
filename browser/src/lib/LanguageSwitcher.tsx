@@ -1,5 +1,4 @@
 import { createSignal, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
 import { i18n } from "./i18n";
 import { TbOutlineGlobe, TbOutlineCheck } from "solid-icons/tb";
 
@@ -25,7 +24,9 @@ export function LanguageSwitcher(props: LanguageSwitcherProps) {
         class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-base-content/10"
       >
         <TbOutlineGlobe size={18} />
-        <span class="text-sm font-medium hidden sm:inline">{currentLocaleName()}</span>
+        <span class="text-sm font-medium hidden sm:inline">
+          {currentLocaleName()}
+        </span>
       </button>
 
       <Show when={isOpen()}>

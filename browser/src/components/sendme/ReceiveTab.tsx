@@ -115,9 +115,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
       {/* Header */}
       <div class="text-center">
         <h2 class="text-2xl font-bold">{t("receive.title")}</h2>
-        <p class="text-base-content/60 text-sm mt-1">
-          {t("receive.subtitle")}
-        </p>
+        <p class="text-base-content/60 text-sm mt-1">{t("receive.subtitle")}</p>
       </div>
 
       {/* Incoming Tickets */}
@@ -126,7 +124,8 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
           <TbOutlineSparkles size={18} />
           <div class="flex-1">
             <span class="font-semibold">
-              {tickets().length} {t("receive.incomingTickets") || "Incoming Ticket"}
+              {tickets().length}{" "}
+              {t("receive.incomingTickets") || "Incoming Ticket"}
               {tickets().length > 1 ? "s" : ""}
             </span>
           </div>
@@ -148,7 +147,9 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
                 </div>
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium truncate">
-                    {incomingTicket.filename || t("receive.unnamedFile") || "Unnamed file"}
+                    {incomingTicket.filename ||
+                      t("receive.unnamedFile") ||
+                      "Unnamed file"}
                   </p>
                   <p class="text-xs text-base-content/50">
                     {incomingTicket.fileSize
@@ -215,7 +216,8 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
             <p class="font-bold">{t("receive.downloadComplete")}</p>
             <p class="text-sm font-mono truncate">{receivedFile()!.filename}</p>
             <p class="text-xs opacity-60">
-              {formatFileSize(receivedFile()!.data)} • {t("receive.readyToDownload") || "Ready to download"}
+              {formatFileSize(receivedFile()!.data)} •{" "}
+              {t("receive.readyToDownload") || "Ready to download"}
             </p>
           </div>
         </div>

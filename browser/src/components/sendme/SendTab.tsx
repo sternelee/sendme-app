@@ -185,9 +185,7 @@ export default function SendTab() {
       {/* Header */}
       <div class="text-center">
         <h2 class="text-2xl font-bold">{t("send.title")}</h2>
-        <p class="text-base-content/60 text-sm mt-1">
-          {t("send.subtitle")}
-        </p>
+        <p class="text-base-content/60 text-sm mt-1">{t("send.subtitle")}</p>
       </div>
 
       {/* Drop Zone / Preview */}
@@ -242,9 +240,7 @@ export default function SendTab() {
                   {t("send.chooseFolder")}
                 </button>
               </div>
-              <p class="text-base-content/40 text-sm">
-                {t("send.dragDrop")}
-              </p>
+              <p class="text-base-content/40 text-sm">{t("send.dragDrop")}</p>
             </div>
           </div>
         }
@@ -264,7 +260,7 @@ export default function SendTab() {
                 </Show>
                 <Show when={!isPreviewable(file()!)}>
                   <div class="w-32 h-32 rounded-2xl bg-success/20 text-success flex items-center justify-center mb-4">
-                    <TbFile size={48} />
+                    <TbOutlineFile size={48} />
                   </div>
                 </Show>
                 <button
@@ -274,7 +270,7 @@ export default function SendTab() {
                   }}
                   class="btn btn-circle btn-sm btn-outline absolute -top-2 -right-2"
                 >
-                  <TbX size={14} />
+                  <TbOutlineX size={14} />
                 </button>
               </div>
               <p class="font-semibold truncate max-w-xs">{file()!.name}</p>
@@ -289,17 +285,22 @@ export default function SendTab() {
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-xl bg-success/20 text-success flex items-center justify-center">
-                    <TbFolder size={20} />
+                    <TbOutlineFolder size={20} />
                   </div>
                   <div>
-                    <p class="font-semibold">{files().length} {t("send.filesSelected")}</p>
+                    <p class="font-semibold">
+                      {files().length} {t("send.filesSelected")}
+                    </p>
                     <p class="text-xs text-base-content/50">
-                      {formatFileSize(files().reduce((acc, f) => acc + f.size, 0))} {t("send.totalSize")}
+                      {formatFileSize(
+                        files().reduce((acc, f) => acc + f.size, 0),
+                      )}{" "}
+                      {t("send.totalSize")}
                     </p>
                   </div>
                 </div>
                 <button onClick={resetFile} class="btn btn-ghost btn-sm">
-                  <TbX size={18} />
+                  <TbOutlineX size={18} />
                 </button>
               </div>
               <div class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
@@ -317,7 +318,7 @@ export default function SendTab() {
                       </Show>
                       <Show when={!isPreviewable(f)}>
                         <div class="w-10 h-10 rounded-lg bg-base-300 flex items-center justify-center text-base-content/40">
-                          <TbFile size={18} />
+                          <TbOutlineFile size={18} />
                         </div>
                       </Show>
                       <div class="min-w-0 flex-1">
@@ -359,7 +360,9 @@ export default function SendTab() {
           <TbOutlineCheck size={18} />
           <div class="flex-1">
             <p class="font-bold">{t("send.targetLocked")}</p>
-            <p class="text-xs opacity-60 break-all font-mono mt-1">{ticket()}</p>
+            <p class="text-xs opacity-60 break-all font-mono mt-1">
+              {ticket()}
+            </p>
           </div>
         </div>
         <div class="flex gap-2">

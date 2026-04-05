@@ -1,5 +1,4 @@
 import { createSignal, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
 import { i18n } from "./i18n";
 import { TbOutlineGlobe, TbOutlineCheck } from "solid-icons/tb";
 
@@ -22,16 +21,18 @@ export function LanguageSwitcher(props: LanguageSwitcherProps) {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen())}
-        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-base-content/10"
+        class="hover:bg-base-content/10 flex items-center gap-2 rounded-lg px-3 py-2 transition-colors"
       >
         <TbOutlineGlobe size={18} />
-        <span class="text-sm font-medium hidden sm:inline">{currentLocaleName()}</span>
+        <span class="hidden text-sm font-medium sm:inline">
+          {currentLocaleName()}
+        </span>
       </button>
 
       <Show when={isOpen()}>
-        <div class="absolute right-0 mt-2 w-40 bg-base-100 rounded-xl border border-base-200 shadow-xl overflow-hidden z-50">
+        <div class="bg-base-100 border-base-200 absolute right-0 z-50 mt-2 w-40 overflow-hidden rounded-xl border shadow-xl">
           <div class="p-2">
-            <div class="text-xs font-semibold text-base-content/60 px-3 py-2 uppercase tracking-wide">
+            <div class="text-base-content/60 px-3 py-2 text-xs font-semibold tracking-wide uppercase">
               Language
             </div>
             <div class="space-y-1">
@@ -39,7 +40,7 @@ export function LanguageSwitcher(props: LanguageSwitcherProps) {
                 <button
                   type="button"
                   onClick={() => handleLocaleChange(locale)}
-                  class={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
+                  class={`flex w-full items-center justify-between rounded-lg px-3 py-2 transition-colors ${
                     i18n.locale() === locale
                       ? "bg-primary text-primary-content"
                       : "hover:bg-base-200"

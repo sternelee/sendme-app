@@ -91,7 +91,9 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
         class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-base-content/10"
       >
         <Dynamic component={CurrentIcon()} size={18} />
-        <span class="text-sm font-medium hidden sm:inline">{currentThemeInfo().name}</span>
+        <span class="text-sm font-medium hidden sm:inline">
+          {currentThemeInfo().name}
+        </span>
       </button>
 
       <Show when={isOpen()}>
