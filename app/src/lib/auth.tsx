@@ -3,7 +3,7 @@
  * Uses tauri-plugin-clerk for native Tauri authentication
  */
 
-import { Clerk, ClerkOptions } from "@clerk/clerk-js";
+import { Clerk } from "@clerk/clerk-js";
 import { initClerk } from "tauri-plugin-clerk";
 import {
   createContext,

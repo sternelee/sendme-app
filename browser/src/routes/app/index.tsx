@@ -36,10 +36,26 @@ export default function AppPage() {
 
   const tabs = [
     { id: "send" as ActiveTab, icon: TbOutlineUpload, label: t("common.send") },
-    { id: "receive" as ActiveTab, icon: TbOutlineDownload, label: t("common.receive") },
-    { id: "text" as ActiveTab, icon: TbOutlineMessage, label: t("common.text") },
-    { id: "history" as ActiveTab, icon: TbOutlineHistory, label: t("common.history") },
-    { id: "settings" as ActiveTab, icon: TbOutlineSettings, label: t("common.settings") },
+    {
+      id: "receive" as ActiveTab,
+      icon: TbOutlineDownload,
+      label: t("common.receive"),
+    },
+    {
+      id: "text" as ActiveTab,
+      icon: TbOutlineMessage,
+      label: t("common.text"),
+    },
+    {
+      id: "history" as ActiveTab,
+      icon: TbOutlineHistory,
+      label: t("common.history"),
+    },
+    {
+      id: "settings" as ActiveTab,
+      icon: TbOutlineSettings,
+      label: t("common.settings"),
+    },
   ];
 
   return (
@@ -69,16 +85,18 @@ export default function AppPage() {
               <div class="card bg-base-200">
                 <div class="card-body items-center text-center py-16">
                   <span class="loading loading-spinner loading-lg text-primary"></span>
-                  <p class="text-base-content/60 mt-4">{t("common.initializing")}</p>
+                  <p class="text-base-content/60 mt-4">
+                    {t("common.initializing")}
+                  </p>
                 </div>
               </div>
             }
           >
             {/* Tab Navigation */}
-            <div class="tabs tabs-boxed bg-base-200">
+            <div class="tabs tabs-boxed bg-base-200 flex">
               {tabs.map((tab) => (
                 <button
-                  class={`tab gap-2 ${activeTab() === tab.id ? "tab-active" : ""}`}
+                  class={`tab gap-2 flex-1 ${activeTab() === tab.id ? "tab-active" : ""}`}
                   onClick={() => setActiveTab(tab.id)}
                 >
                   <tab.icon size={16} />
@@ -102,7 +120,10 @@ export default function AppPage() {
                   </Show>
                   <Show when={activeTab() === "history"}>
                     <div class="text-center py-12">
-                      <TbOutlineHistory size={48} class="mx-auto mb-4 opacity-40" />
+                      <TbOutlineHistory
+                        size={48}
+                        class="mx-auto mb-4 opacity-40"
+                      />
                       <p class="text-base-content/60">{t("history.empty")}</p>
                       <p class="text-sm text-base-content/40 mt-1">
                         {t("history.emptyDesc")}
