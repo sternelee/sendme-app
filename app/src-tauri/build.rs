@@ -28,14 +28,14 @@ fn main() {
         println!("cargo:warning=android_gen_base: {:?}", android_gen_base);
 
         // Check if the source directory exists
-        let source_dir = std::path::PathBuf::from("android-includes/pisend/leechat/app");
+        let source_dir = std::path::PathBuf::from("android-includes/sendme/leechat/app");
         println!("cargo:warning=Source dir exists: {:?}", source_dir.exists());
 
         // Copy Kotlin source files
-        // Note: the directory is 'pisend' not 'sendme' in android-includes
+        // Note: the directory is 'sendme' not 'sendme' in android-includes
         let kotlin_dest_dir = android_gen_base.join("app/src/main/java/sendme/leechat/app");
         println!("cargo:warning=kotlin_dest_dir: {:?}", kotlin_dest_dir);
-        let source_dir = std::path::PathBuf::from("android-includes/pisend/leechat/app");
+        let source_dir = std::path::PathBuf::from("android-includes/sendme/leechat/app");
 
         if let Ok(entries) = std::fs::read_dir(&source_dir) {
             for entry in entries.flatten() {
