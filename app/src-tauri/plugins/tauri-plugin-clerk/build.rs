@@ -1,3 +1,5 @@
+use std::path::Path;
+
 const COMMANDS: &[&str] = &[
     "initialize",
     "set_client_authorization_header",
@@ -5,8 +7,11 @@ const COMMANDS: &[&str] = &[
 ];
 
 fn main() {
-    tauri_plugin::Builder::new(COMMANDS)
-        .android_path("android")
-        .ios_path("ios")
-        .build();
+    let builder = tauri_plugin::Builder::new(COMMANDS).android_path("android");
+
+    if Path::new("ios/Package.swift").exists() {
+        builder.ios_path("ios").build();
+    } else {
+        builder.build();
+    }
 }

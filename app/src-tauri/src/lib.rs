@@ -32,6 +32,23 @@ pub struct PickerDirectoryInfo {
     pub name: String,
 }
 
+#[cfg(target_os = "ios")]
+fn ios_documents_dir(app: &AppHandle) -> Result<String, String> {
+    use tauri_plugin_fs_ios::{models::FSRequest, FsIosExt};
+
+    let response = app
+        .fs_ios()
+        .current_dir(FSRequest {
+            path: None,
+            contents: None,
+        })
+        .map_err(|e| format!("Failed to get Documents directory: {}", e))?;
+
+    response
+        .value
+        .ok_or_else(|| "Documents directory response was empty".to_string())
+}
+
 // Android-specific module
 #[cfg(target_os = "android")]
 mod android;
@@ -803,15 +820,12 @@ async fn receive_file(
     // On iOS, always use the Documents directory when no output_dir is provided
     #[cfg(target_os = "ios")]
     let (export_dir, _content_uri_output): (Option<std::path::PathBuf>, Option<String>) = {
-        use tauri_plugin_fs_ios::FsIosExt;
-
         if let Some(ref output_dir) = request.output_dir {
             log_info!("Using user-provided output_dir: {:?}", output_dir);
             (Some(std::path::PathBuf::from(output_dir)), None)
         } else {
             log_info!("ℹ️  iOS: No output_dir provided, using Documents directory...");
-            let fs_ios = app.fs_ios();
-            match fs_ios.current_dir() {
+            match ios_documents_dir(&app) {
                 Ok(dir) => {
                     log_info!("✅ iOS Documents directory: {}", dir);
                     (Some(std::path::PathBuf::from(dir)), None)
@@ -1494,15 +1508,10 @@ fn get_default_download_folder(app: AppHandle) -> Result<String, String> {
     log_info!("📁 GET_DEFAULT_DOWNLOAD_FOLDER (iOS)");
     log_info!("═══════════════════════════════════════════════════");
 
-    // On iOS, use tauri-plugin-fs-ios to get the Documents directory
-    use tauri_plugin_fs_ios::FsIosExt;
-
     log_info!("📋 Getting Documents directory via fs-ios...");
-    let fs_ios = app.fs_ios();
-    let docs_path = fs_ios.current_dir().map_err(|e| {
-        let err_msg = format!("Failed to get Documents directory: {}", e);
-        log_error!("❌ {}", err_msg);
-        err_msg
+    let docs_path = ios_documents_dir(&app).map_err(|e| {
+        log_error!("❌ {}", e);
+        e
     })?;
 
     log_info!("✅ Documents directory: {}", docs_path);
@@ -1593,20 +1602,15 @@ async fn open_received_file(
             .map_err(|e| format!("Failed to open file: {:?}", e))?;
 
         log_info!("✅ File opened successfully");
-        Ok(())
+        return Ok(());
     }
 
     // On iOS, use opener plugin with Documents directory
     #[cfg(target_os = "ios")]
     {
-        use tauri_plugin_fs_ios::FsIosExt;
-
         log_info!("🍎 iOS platform detected, using Documents directory");
 
-        let fs_ios = app.fs_ios();
-        let docs_dir = fs_ios
-            .current_dir()
-            .map_err(|e| format!("Failed to get Documents directory: {}", e))?;
+        let docs_dir = ios_documents_dir(&app)?;
 
         log_info!("Documents directory: {:?}", docs_dir);
 
@@ -1644,11 +1648,11 @@ async fn open_received_file(
             .map_err(|e| format!("Failed to open file: {}", e))?;
 
         log_info!("✅ File opened successfully");
-        Ok(())
+        return Ok(());
     }
 
     // On desktop, use opener plugin
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         log_info!("🖥️  Desktop platform detected, using opener plugin");
 
@@ -1694,8 +1698,11 @@ async fn open_received_file(
             .map_err(|e| format!("Failed to open file: {}", e))?;
 
         log_info!("✅ File opened successfully");
-        Ok(())
+        return Ok(());
     }
+
+    #[allow(unreachable_code)]
+    Err("Unsupported platform".to_string())
 }
 
 /// List received files in the cache directory
@@ -1718,12 +1725,7 @@ async fn list_received_files(app: AppHandle) -> Result<Vec<String>, String> {
     #[cfg(target_os = "ios")]
     {
         // Use Documents directory on iOS
-        use tauri_plugin_fs_ios::FsIosExt;
-
-        let fs_ios = app.fs_ios();
-        let docs_dir = fs_ios
-            .current_dir()
-            .map_err(|e| format!("Failed to get Documents directory: {}", e))?;
+        let docs_dir = ios_documents_dir(&app)?;
 
         log_info!("Documents directory: {:?}", docs_dir);
 
@@ -1948,18 +1950,15 @@ async fn pick_directory(
 #[cfg(target_os = "ios")]
 async fn pick_file(
     app: AppHandle,
-    allowed_types: Option<Vec<String>>,
+    _allowed_types: Option<Vec<String>>,
     _allow_multiple: Option<bool>,
 ) -> Result<Vec<PickerFileInfo>, String> {
-    use tauri_plugin_fs_ios::FsIosExt;
-
     log_info!("📁 iOS file picker - files will be saved to Documents directory");
 
     // On iOS, we can't pick files from outside the app's sandbox
     // Instead, we return information about the Documents directory
     // where received files are automatically saved
-    let fs_ios = app.fs_ios();
-    let docs_path = fs_ios.current_dir().map_err(|e| e.to_string())?;
+    let docs_path = ios_documents_dir(&app)?;
 
     log_info!("📂 Documents directory: {}", docs_path);
 
