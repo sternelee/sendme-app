@@ -19,7 +19,7 @@ clerk-fapi-rs = { path = "../clerk-fapi-rs" }
 tokio = { version = "1", features = ["sync"] }
 tracing = "0.1.41"
 parking_lot = "0.12"
-tauri-plugin-http = { version = "2.4", features = ['unsafe-headers'] }
+tauri-plugin-http = { version = "=2.4.3", features = ['unsafe-headers'] }
 serde_json = "1.0.140"
 log = "0.4"
 tauri-plugin-store = "2"

@@ -64,8 +64,7 @@ jobs:
           cd target/${{ matrix.target }}/release
           # Create properly named archive for install.sh
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "${{ matrix.artifact_name }}" "sendme.exe"
-            7z a -tzip "../../../dist/sendme-cli-${{ github.ref_name }}-${{ matrix.target }}.zip" "sendme.exe" 2>/dev/null || zip -j "../../../dist/sendme-cli-${{ github.ref_name }}-${{ matrix.target }}.zip" "sendme.exe"
+            7z a -tzip "../../../dist/sendme-cli-${{ github.ref_name }}-${{ matrix.target }}.zip" "${{ matrix.artifact_name }}" 2>/dev/null || zip -j "../../../dist/sendme-cli-${{ github.ref_name }}-${{ matrix.target }}.zip" "${{ matrix.artifact_name }}"
           else
             7z a -tgzip "../../../dist/sendme-cli-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" "${{ matrix.artifact_name }}" 2>/dev/null || tar -czf "../../../dist/sendme-cli-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" "${{ matrix.artifact_name }}"
           fi
