@@ -377,7 +377,9 @@ export default function MainPage() {
                         <div class="join">
                           <button
                             class={`join-item btn btn-sm ${!isTextMode() ? "btn-primary" : "btn-ghost"}`}
-                            onClick={() => globalStore.send.setIsTextMode(false)}
+                            onClick={() =>
+                              globalStore.send.setIsTextMode(false)
+                            }
                           >
                             {t("common.files")}
                           </button>
@@ -393,7 +395,11 @@ export default function MainPage() {
                       <Show when={isTextMode()}>
                         <textarea
                           value={textContent()}
-                          onInput={(e) => globalStore.send.setTextContent(e.currentTarget.value)}
+                          onInput={(e) =>
+                            globalStore.send.setTextContent(
+                              e.currentTarget.value,
+                            )
+                          }
                           placeholder={t("text.placeholder")}
                           class="textarea textarea-bordered w-full"
                           rows={4}
@@ -430,7 +436,9 @@ export default function MainPage() {
                           class="select select-bordered"
                           value={sendTicketType()}
                           onChange={(e) =>
-                            globalStore.send.setTicketType(e.currentTarget.value)
+                            globalStore.send.setTicketType(
+                              e.currentTarget.value,
+                            )
                           }
                         >
                           <For each={ticketTypes}>
@@ -457,14 +465,14 @@ export default function MainPage() {
                               <img
                                 src={sendTicketQrCode()!}
                                 alt="QR"
-                                class="h-32 w-32"
+                                class="h-60 w-60"
                               />
                             </div>
                           </Show>
                           <div class="w-full">
                             <div class="bg-base-300 overflow-hidden rounded-lg p-2">
                               <code class="text-primary font-mono text-xs break-all">
-                                {sendTicket()}
+                                g{sendTicket()}
                               </code>
                             </div>
                             <div class="mt-2 flex gap-2">
@@ -518,7 +526,9 @@ export default function MainPage() {
                             type="text"
                             value={receiveTicket()}
                             onInput={(e) =>
-                              globalStore.receive.setTicket(e.currentTarget.value)
+                              globalStore.receive.setTicket(
+                                e.currentTarget.value,
+                              )
                             }
                             placeholder={t("common.pasteTicket")}
                             class="grow"

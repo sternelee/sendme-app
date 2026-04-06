@@ -29,3 +29,7 @@ codegen-units = 1
 lto = true
 debug = "none"
 strip = true
+
+# Patch n0-snafu to fix color-backtrace incompatibility
+[patch.crates-io]
+n0-snafu = { path = "patches/n0-snafu" }
