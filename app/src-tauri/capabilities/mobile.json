@@ -1,21 +1,6 @@
 {
   "identifier": "mobile-capability",
-  "platforms": [
-    "android",
-    "iOS"
-  ],
-  "windows": [
-    "main"
-  ],
-  "permissions": [
-    "core:default",
-    "clerk:default",
-    {
-      "identifier": "http:default",
-      "allow": [
-        { "url": "https://*.clerk.accounts.dev/**" },
-        { "url": "https://*.clerk.com/**" }
-      ]
-    }
-  ]
+  "platforms": ["android", "iOS"],
+  "windows": ["main"],
+  "permissions": ["core:default"]
 }
