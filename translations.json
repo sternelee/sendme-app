@@ -30,7 +30,8 @@
       "pasteTicket": "Paste ticket...",
       "defaultDownloads": "Default Downloads",
       "receiving": "Receiving",
-      "noHistoryYet": "No history yet"
+      "noHistoryYet": "No history yet",
+      "ticketNotFound": "Ticket not found"
     },
     "landing": {
       "hero": {
@@ -192,7 +193,8 @@
       "pasteTicket": "在此粘贴票据...",
       "defaultDownloads": "默认下载目录",
       "receiving": "接收中",
-      "noHistoryYet": "暂无历史记录"
+      "noHistoryYet": "暂无历史记录",
+      "ticketNotFound": "未找到票据"
     },
     "landing": {
       "hero": {

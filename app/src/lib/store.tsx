@@ -15,6 +15,7 @@ export interface SendState {
   isSending: boolean;
   isTextMode: boolean;
   textContent: string;
+  showReshareModal: boolean;
 }
 
 export interface ReceiveState {
@@ -38,6 +39,8 @@ interface GlobalStore {
     setIsSending: (isSending: boolean) => void;
     setIsTextMode: (isTextMode: boolean) => void;
     setTextContent: (textContent: string) => void;
+    setShowReshareModal: (show: boolean) => void;
+    prepareReshare: (path: string) => void;
     reset: () => void;
   };
   receive: {
@@ -56,6 +59,7 @@ const defaultSendState: SendState = {
   isSending: false,
   isTextMode: false,
   textContent: "",
+  showReshareModal: false,
 };
 
 const defaultReceiveState: ReceiveState = {
@@ -84,6 +88,14 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
       setIsSending: (isSending) => setSendState("isSending", isSending),
       setIsTextMode: (isTextMode) => setSendState("isTextMode", isTextMode),
       setTextContent: (textContent) => setSendState("textContent", textContent),
+      setShowReshareModal: (show) => setSendState("showReshareModal", show),
+      prepareReshare: (path: string) => {
+        setSendState("path", path);
+        setSendState("ticket", "");
+        setSendState("ticketQrCode", "");
+        setSendState("isTextMode", false);
+        setSendState("textContent", "");
+      },
       reset: () => setSendState(defaultSendState),
     },
     receive: {

@@ -13,6 +13,7 @@ import {
   receive_file,
   send_text,
   cancel_transfer,
+  delete_transfer,
   get_transfers,
   clear_transfers,
   open_received_file,
@@ -79,6 +80,7 @@ interface Transfer {
   path: string;
   status: string;
   created_at: number;
+  ticket?: string;
 }
 
 interface ProgressData {
@@ -246,11 +248,23 @@ export default function MainPage() {
     }
   }
 
-  async function handleCancel(id: string) {
+  async function handleCancel(transfer: Transfer) {
+    console.log("Cancelling transfer", transfer);
     try {
-      await cancel_transfer(id);
+      if (transfer.status === "cancelled") {
+        await delete_transfer(transfer.id);
+      } else {
+        await cancel_transfer(transfer.id);
+      }
       await loadTransfers();
     } catch (e) {}
+  }
+
+  async function handleCancelById(id: string) {
+    const transfer = transfers().find((t) => t.id === id);
+    if (transfer) {
+      await handleCancel(transfer);
+    }
   }
 
   async function handleClearTransfers() {
@@ -270,6 +284,24 @@ export default function MainPage() {
         await open_received_file(transfer.id);
       } catch (e) {}
     }
+  }
+
+  async function handleReshare(transfer: Transfer) {
+    if (transfer.transfer_type !== "send") return;
+    const ticket = transfer.ticket;
+    if (!ticket) {
+      toast.error(t("common.ticketNotFound"));
+      return;
+    }
+    globalStore.send.setPath(transfer.path);
+    globalStore.send.setTicket(ticket);
+    globalStore.send.setTicketQrCode(
+      await QRCode.toDataURL(ticket, {
+        errorCorrectionLevel: "H",
+        width: 280,
+      }),
+    );
+    globalStore.send.setShowReshareModal(true);
   }
 
   async function copyToClipboard(text: string) {
@@ -590,7 +622,9 @@ export default function MainPage() {
                             max="100"
                           ></progress>
                           <button
-                            onClick={() => handleCancel(currentReceivingId()!)}
+                            onClick={() =>
+                              handleCancelById(currentReceivingId()!)
+                            }
                             class="btn btn-ghost btn-sm text-error mt-2"
                           >
                             {t("common.cancel")}
@@ -632,19 +666,19 @@ export default function MainPage() {
                   >
                     <div class="space-y-2">
                       <For each={transfers()}>
-                        {(t) => {
-                          const s = getTransferStatus(t.status);
+                        {(transfer) => {
+                          const s = getTransferStatus(transfer.status);
                           return (
                             <div class="card bg-base-200 p-3">
                               <div class="flex items-center gap-3">
                                 <div
-                                  class={`avatar ${t.transfer_type === "send" ? "placeholder" : "placeholder"}`}
+                                  class={`avatar ${transfer.transfer_type === "send" ? "placeholder" : "placeholder"}`}
                                 >
                                   <div
-                                    class={`flex w-10 items-center justify-center rounded-full ${t.transfer_type === "send" ? "bg-primary/20 text-primary" : "bg-secondary/20 text-secondary"}`}
+                                    class={`flex w-10 items-center justify-center rounded-full ${transfer.transfer_type === "send" ? "bg-primary/20 text-primary" : "bg-secondary/20 text-secondary"}`}
                                   >
                                     <Show
-                                      when={t.transfer_type === "send"}
+                                      when={transfer.transfer_type === "send"}
                                       fallback={<Download size={18} />}
                                     >
                                       <Send size={18} />
@@ -653,20 +687,31 @@ export default function MainPage() {
                                 </div>
                                 <div class="min-w-0 flex-1">
                                   <h4
-                                    onClick={() => handleOpenFile(t)}
+                                    onClick={() => handleOpenFile(transfer)}
                                     class="hover:text-primary cursor-pointer truncate text-sm font-bold"
                                   >
-                                    {getDisplayName(t.path)}
+                                    {getDisplayName(transfer.path)}
                                   </h4>
                                   <div class="flex items-center gap-2 text-xs opacity-60">
                                     <span class={`badge badge-sm ${s.color}`}>
                                       {s.label}
                                     </span>
-                                    <span>{formatDate(t.created_at)}</span>
+                                    <span>
+                                      {formatDate(transfer.created_at)}
+                                    </span>
                                   </div>
                                 </div>
+                                <Show when={transfer.transfer_type === "send"}>
+                                  <button
+                                    onClick={() => handleReshare(transfer)}
+                                    class="btn btn-ghost btn-sm text-primary"
+                                    title={t("common.share")}
+                                  >
+                                    <SendIcon size={16} />
+                                  </button>
+                                </Show>
                                 <button
-                                  onClick={() => handleCancel(t.id)}
+                                  onClick={() => handleCancel(transfer)}
                                   class="btn btn-ghost btn-sm"
                                 >
                                   <Trash2 size={16} />
@@ -777,6 +822,66 @@ export default function MainPage() {
             </Switch>
           </Presence>
         </main>
+
+        <Show when={globalStore.send.state().showReshareModal}>
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div class="card bg-base-200 w-full max-w-sm">
+              <div class="card-body gap-4">
+                <div class="flex items-center justify-between">
+                  <h3 class="card-title text-base">{t("common.share")}</h3>
+                  <button
+                    onClick={() => globalStore.send.setShowReshareModal(false)}
+                    class="btn btn-ghost btn-sm btn-circle"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <Show when={globalStore.send.state().ticketQrCode}>
+                  <div class="flex justify-center">
+                    <div class="rounded-xl bg-white p-2">
+                      <img
+                        src={globalStore.send.state().ticketQrCode}
+                        alt="QR"
+                        class="h-48 w-48"
+                      />
+                    </div>
+                  </div>
+                </Show>
+                <div class="bg-base-300 overflow-hidden rounded-lg p-2">
+                  <code class="text-primary font-mono text-xs break-all">
+                    {globalStore.send.state().ticket}
+                  </code>
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    onClick={() =>
+                      copyToClipboard(globalStore.send.state().ticket)
+                    }
+                    class="btn btn-outline flex-1"
+                  >
+                    <Copy size={14} /> {t("common.copy")}
+                  </button>
+                  <Show
+                    when={
+                      typeof navigator !== "undefined" && "share" in navigator
+                    }
+                  >
+                    <button
+                      onClick={() =>
+                        navigator.share?.({
+                          text: globalStore.send.state().ticket,
+                        })
+                      }
+                      class="btn btn-outline flex-1"
+                    >
+                      <Share2 size={14} /> {t("common.share")}
+                    </button>
+                  </Show>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Show>
 
         <nav class="dock dock-md bg-base-200/80 border-base-300 border-t backdrop-blur-lg">
           <button
