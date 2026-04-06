@@ -6,6 +6,7 @@ import {
   Show,
   Switch,
   Match,
+  createEffect,
 } from "solid-js";
 import {
   send_file,
@@ -68,6 +69,7 @@ import { useAuth } from "~/lib/auth";
 import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
 import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
 import { i18n } from "~/lib/i18n";
+import { useGlobalStore } from "~/lib/store";
 
 const t = i18n.t;
 
@@ -101,6 +103,7 @@ const ticketTypes = [
 
 export default function MainPage() {
   const auth = useAuth();
+  const globalStore = useGlobalStore();
 
   const [isMobile, setIsMobile] = createSignal(false);
   const [isSmallWindow, setIsSmallWindow] = createSignal(false);
@@ -108,19 +111,18 @@ export default function MainPage() {
   const [theme, setTheme] = createSignal<Theme>("system");
   const [activeTab, setActiveTab] = createSignal<Tab>("send");
 
-  const [sendPath, setSendPath] = createSignal("");
-  const [sendTicketType, setSendTicketType] = createSignal(
-    "relay_and_addresses",
-  );
-  const [sendTicket, setSendTicket] = createSignal("");
-  const [sendTicketQrCode, setSendTicketQrCode] = createSignal("");
-  const [isSending, setIsSending] = createSignal(false);
-  const [isTextMode, setIsTextMode] = createSignal(false);
-  const [textContent, setTextContent] = createSignal("");
+  const sendPath = () => globalStore.send.state().path;
+  const sendTicketType = () => globalStore.send.state().ticketType;
+  const sendTicket = () => globalStore.send.state().ticket;
+  const sendTicketQrCode = () => globalStore.send.state().ticketQrCode;
+  const isSending = () => globalStore.send.state().isSending;
+  const isTextMode = () => globalStore.send.state().isTextMode;
+  const textContent = () => globalStore.send.state().textContent;
 
-  const [receiveTicket, setReceiveTicket] = createSignal("");
-  const [receiveOutputDir, setReceiveOutputDir] = createSignal("");
-  const [isReceiving, setIsReceiving] = createSignal(false);
+  const receiveTicket = () => globalStore.receive.state().ticket;
+  const receiveOutputDir = () => globalStore.receive.state().outputDir;
+  const isReceiving = () => globalStore.receive.state().isReceiving;
+
   const [currentReceivingId, setCurrentReceivingId] = createSignal<
     string | null
   >(null);
@@ -171,9 +173,9 @@ export default function MainPage() {
     try {
       const selected = await open({ multiple: false, directory: false });
       if (selected && typeof selected === "string") {
-        setSendPath(selected);
-        setSendTicket("");
-        setIsTextMode(false);
+        globalStore.send.setPath(selected);
+        globalStore.send.setTicket("");
+        globalStore.send.setIsTextMode(false);
       }
     } catch (e) {}
   }
@@ -182,9 +184,9 @@ export default function MainPage() {
     try {
       const selected = await open({ multiple: false, directory: true });
       if (selected && typeof selected === "string") {
-        setSendPath(selected);
-        setSendTicket("");
-        setIsTextMode(false);
+        globalStore.send.setPath(selected);
+        globalStore.send.setTicket("");
+        globalStore.send.setIsTextMode(false);
       }
     } catch (e) {}
   }
@@ -193,17 +195,17 @@ export default function MainPage() {
     try {
       if (isMobile()) {
         const result = await pick_directory();
-        setReceiveOutputDir(result.uri);
+        globalStore.receive.setOutputDir(result.uri);
       } else {
         const selected = await open({ multiple: false, directory: true });
         if (selected && typeof selected === "string")
-          setReceiveOutputDir(selected);
+          globalStore.receive.setOutputDir(selected);
       }
     } catch (e) {}
   }
 
   async function handleSend() {
-    setIsSending(true);
+    globalStore.send.setIsSending(true);
     try {
       const result = isTextMode()
         ? await send_text({
@@ -211,8 +213,8 @@ export default function MainPage() {
             ticket_type: sendTicketType(),
           })
         : await send_file({ path: sendPath(), ticket_type: sendTicketType() });
-      setSendTicket(result);
-      setSendTicketQrCode(
+      globalStore.send.setTicket(result);
+      globalStore.send.setTicketQrCode(
         await QRCode.toDataURL(result, {
           errorCorrectionLevel: "H",
           width: 280,
@@ -222,25 +224,25 @@ export default function MainPage() {
     } catch (e) {
       toast.error(t("send.failed") + `: ${e}`);
     } finally {
-      setIsSending(false);
+      globalStore.send.setIsSending(false);
     }
   }
 
   async function handleReceive() {
     if (!receiveTicket()) return;
-    setIsReceiving(true);
+    globalStore.receive.setIsReceiving(true);
     try {
       await receive_file({
         ticket: receiveTicket(),
         output_dir: receiveOutputDir() || undefined,
       });
       await loadTransfers();
-      setReceiveTicket("");
+      globalStore.receive.setTicket("");
       toast.success(t("receive.connecting"));
     } catch (e) {
       toast.error(`${t("common.confirm")}: ${e}`);
     } finally {
-      setIsReceiving(false);
+      globalStore.receive.setIsReceiving(false);
     }
   }
 
@@ -282,7 +284,7 @@ export default function MainPage() {
         permissionStatus = await requestPermissions();
       if (permissionStatus === "granted") {
         const result = await scan({ formats: [Format.QRCode] });
-        if (result?.content) setReceiveTicket(result.content);
+        if (result?.content) globalStore.receive.setTicket(result.content);
       }
     } catch (e) {}
   }
@@ -301,7 +303,7 @@ export default function MainPage() {
     setThemeValue(savedTheme || "system");
 
     const savedOutputDir = localStorage.getItem("receive-output-dir");
-    if (savedOutputDir) setReceiveOutputDir(savedOutputDir);
+    if (savedOutputDir) globalStore.receive.setOutputDir(savedOutputDir);
 
     await loadTransfers();
 
@@ -350,7 +352,7 @@ export default function MainPage() {
               <span class="text-lg font-bold">{t("common.appName")}</span>
             </div>
           </div>
-          <div class="flex-none flex items-center gap-1">
+          <div class="flex flex-none items-center gap-1">
             <LanguageSwitcher />
             <ThemeSwitcher />
           </div>
@@ -375,13 +377,13 @@ export default function MainPage() {
                         <div class="join">
                           <button
                             class={`join-item btn btn-sm ${!isTextMode() ? "btn-primary" : "btn-ghost"}`}
-                            onClick={() => setIsTextMode(false)}
+                            onClick={() => globalStore.send.setIsTextMode(false)}
                           >
                             {t("common.files")}
                           </button>
                           <button
                             class={`join-item btn btn-sm ${isTextMode() ? "btn-primary" : "btn-ghost"}`}
-                            onClick={() => setIsTextMode(true)}
+                            onClick={() => globalStore.send.setIsTextMode(true)}
                           >
                             {t("common.text")}
                           </button>
@@ -391,7 +393,7 @@ export default function MainPage() {
                       <Show when={isTextMode()}>
                         <textarea
                           value={textContent()}
-                          onInput={(e) => setTextContent(e.currentTarget.value)}
+                          onInput={(e) => globalStore.send.setTextContent(e.currentTarget.value)}
                           placeholder={t("text.placeholder")}
                           class="textarea textarea-bordered w-full"
                           rows={4}
@@ -428,7 +430,7 @@ export default function MainPage() {
                           class="select select-bordered"
                           value={sendTicketType()}
                           onChange={(e) =>
-                            setSendTicketType(e.currentTarget.value)
+                            globalStore.send.setTicketType(e.currentTarget.value)
                           }
                         >
                           <For each={ticketTypes}>
@@ -516,7 +518,7 @@ export default function MainPage() {
                             type="text"
                             value={receiveTicket()}
                             onInput={(e) =>
-                              setReceiveTicket(e.currentTarget.value)
+                              globalStore.receive.setTicket(e.currentTarget.value)
                             }
                             placeholder={t("common.pasteTicket")}
                             class="grow"
@@ -538,7 +540,9 @@ export default function MainPage() {
                           <input
                             type="text"
                             readonly
-                            value={receiveOutputDir() || t("common.defaultDownloads")}
+                            value={
+                              receiveOutputDir() || t("common.defaultDownloads")
+                            }
                             class="grow text-sm"
                           />
                           <button
@@ -627,7 +631,7 @@ export default function MainPage() {
                                   class={`avatar ${t.transfer_type === "send" ? "placeholder" : "placeholder"}`}
                                 >
                                   <div
-                                    class={`w-10 rounded-full ${t.transfer_type === "send" ? "bg-primary/20 text-primary" : "bg-secondary/20 text-secondary"}`}
+                                    class={`flex w-10 items-center justify-center rounded-full ${t.transfer_type === "send" ? "bg-primary/20 text-primary" : "bg-secondary/20 text-secondary"}`}
                                   >
                                     <Show
                                       when={t.transfer_type === "send"}
@@ -753,7 +757,9 @@ export default function MainPage() {
                       </div>
                     </div>
                     <div class="card-body py-2">
-                      <p class="text-xs opacity-40">{t("common.appName")} v0.31.0</p>
+                      <p class="text-xs opacity-40">
+                        {t("common.appName")} v0.31.0
+                      </p>
                     </div>
                   </div>
                 </Motion.div>

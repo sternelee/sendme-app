@@ -1,7 +1,8 @@
-import { createSignal, Show, For } from "solid-js";
+import { Show, For } from "solid-js";
 import toast from "solid-toast";
 import { receiveFile, downloadFile } from "../../lib/commands";
 import { i18n } from "../../lib/i18n";
+import { useGlobalStore } from "../../lib/store";
 import {
   TbOutlineDownload,
   TbOutlineCheck,
@@ -46,13 +47,12 @@ function createPreviewUrl(data: Uint8Array, filename: string): string {
 }
 
 export default function ReceiveTab(props: { isActive?: boolean }) {
-  const [ticket, setTicket] = createSignal<string>("");
-  const [isReceiving, setIsReceiving] = createSignal(false);
-  const [receivedFile, setReceivedFile] = createSignal<{
-    filename: string;
-    data: Uint8Array;
-  } | null>(null);
-  const [error, setError] = createSignal<string>("");
+  const globalStore = useGlobalStore();
+
+  const ticket = () => globalStore.receive.state().ticket;
+  const isReceiving = () => globalStore.receive.state().isReceiving;
+  const receivedFile = () => globalStore.receive.state().receivedFile;
+  const error = () => globalStore.receive.state().error;
 
   const { tickets } = useTicketPolling(() => props.isActive || false);
 
@@ -63,20 +63,20 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
       return;
     }
 
-    setIsReceiving(true);
-    setError("");
-    setReceivedFile(null);
+    globalStore.receive.setIsReceiving(true);
+    globalStore.receive.setError("");
+    globalStore.receive.setReceivedFile(null);
 
     try {
       const result = await receiveFile(ticketValue);
-      setReceivedFile(result);
+      globalStore.receive.setReceivedFile(result);
       toast.success(t("receive.downloadComplete"));
     } catch (err) {
       const errorMsg = (err as Error).message || t("receive.invalidTicket");
-      setError(errorMsg);
+      globalStore.receive.setError(errorMsg);
       toast.error(errorMsg);
     } finally {
-      setIsReceiving(false);
+      globalStore.receive.setIsReceiving(false);
     }
   }
 
@@ -90,7 +90,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
   async function pasteTicket() {
     try {
       const text = await navigator.clipboard.readText();
-      setTicket(text);
+      globalStore.receive.setTicket(text);
       toast.success(t("receive.pasteTicket") + "!");
     } catch (err) {
       toast.error(t("receive.clipboardError") || "Failed to read clipboard.");
@@ -98,7 +98,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
   }
 
   function useIncomingTicket(ticketStr: string, filename?: string | null) {
-    setTicket(ticketStr);
+    globalStore.receive.setTicket(ticketStr);
     toast.success(`Ticket from ${filename || "another device"} loaded!`);
   }
 
@@ -174,7 +174,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
           <input
             type="text"
             value={ticket()}
-            onInput={(e) => setTicket(e.currentTarget.value)}
+            onInput={(e) => globalStore.receive.setTicket(e.currentTarget.value)}
             placeholder={t("receive.pasteTicket")}
             class="grow font-mono text-sm"
             disabled={isReceiving()}
