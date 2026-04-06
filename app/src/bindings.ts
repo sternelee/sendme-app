@@ -20,6 +20,7 @@ export interface TransferInfo {
   path: string;
   status: string;
   created_at: number;
+  ticket?: string;
 }
 
 export interface ProgressUpdate {
@@ -48,6 +49,13 @@ export async function receive_file(
  */
 export async function cancel_transfer(id: string): Promise<boolean> {
   return await invoke("cancel_transfer", { id });
+}
+
+/**
+ * Delete a transfer record
+ */
+export async function delete_transfer(id: string): Promise<boolean> {
+  return await invoke("delete_transfer", { id });
 }
 
 /**

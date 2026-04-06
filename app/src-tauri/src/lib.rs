@@ -369,6 +369,7 @@ pub struct TransferInfo {
     pub path: String,
     pub status: String,
     pub created_at: i64,
+    pub ticket: Option<String>,
 }
 
 // Global state for tracking active transfers
@@ -467,6 +468,7 @@ pub fn run() {
             send_text,
             receive_text,
             cancel_transfer,
+            delete_transfer,
             get_transfers,
             get_transfer_status,
             clear_transfers,
@@ -576,6 +578,7 @@ async fn send_file(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64,
+        ticket: None,
     };
     log_info!(
         "✅ Transfer info created: {} - {}",
@@ -708,8 +711,10 @@ async fn send_file(
             log_info!("═══════════════════════════════════════════════════");
             log_info!("🎫 Ticket: {}", result.ticket.to_string());
             log_info!("📊 Transfer ID: {}", transfer_id);
+            let ticket_str = result.ticket.to_string();
             update_transfer_status(transfers.inner(), &transfer_id, "serving").await;
-            Ok(result.ticket.to_string())
+            update_transfer_ticket(transfers.inner(), &transfer_id, &ticket_str).await;
+            Ok(ticket_str)
         }
         Err(e) => {
             log_error!("═══════════════════════════════════════════════════");
@@ -854,6 +859,7 @@ async fn receive_file(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64,
+        ticket: Some(request.ticket.clone()),
     };
     log_info!("✅ Transfer info created");
 
@@ -1045,6 +1051,23 @@ async fn cancel_transfer(
 }
 
 #[tauri::command]
+async fn delete_transfer(
+    transfers: tauri::State<'_, Transfers>,
+    id: String,
+) -> Result<bool, String> {
+    let mut transfers_guard = transfers.write().await;
+    if let Some(mut state) = transfers_guard.remove(&id) {
+        // Send abort signal if still active
+        if let Some(abort_tx) = state.abort_tx.take() {
+            let _ = abort_tx.send(());
+        }
+        Ok(true)
+    } else {
+        Err("Transfer not found".to_string())
+    }
+}
+
+#[tauri::command]
 async fn get_transfers(
     transfers: tauri::State<'_, Transfers>,
 ) -> Result<Vec<TransferInfo>, String> {
@@ -1073,6 +1096,13 @@ async fn update_transfer_status(transfers: &Transfers, id: &str, status: &str) {
     let mut transfers_guard = transfers.write().await;
     if let Some(state) = transfers_guard.get_mut(id) {
         state.info.status = status.to_string();
+    }
+}
+
+async fn update_transfer_ticket(transfers: &Transfers, id: &str, ticket: &str) {
+    let mut transfers_guard = transfers.write().await;
+    if let Some(state) = transfers_guard.get_mut(id) {
+        state.info.ticket = Some(ticket.to_string());
     }
 }
 
