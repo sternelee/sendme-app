@@ -1,6 +1,7 @@
-import { createSignal, Show } from "solid-js";
+import { Show } from "solid-js";
 import toast from "solid-toast";
 import { i18n } from "../../lib/i18n";
+import { useGlobalStore } from "../../lib/store";
 import {
   TbOutlineMessage,
   TbOutlineCheck,
@@ -26,47 +27,47 @@ async function mockReceiveText(_ticket: string): Promise<{ text: string; filenam
 }
 
 export default function TextTab() {
-  const [sendTextContent, setSendTextContent] = createSignal("");
-  const [textSendTicket, setTextSendTicket] = createSignal("");
-  const [isSendingText, setIsSendingText] = createSignal(false);
+  const globalStore = useGlobalStore();
 
-  const [receiveTextTicket, setReceiveTextTicket] = createSignal("");
-  const [receivedText, setReceivedText] = createSignal("");
-  const [receivedTextFilename, setReceivedTextFilename] = createSignal("");
-  const [isReceivingText, setIsReceivingText] = createSignal(false);
-
-  const [activeTextTab, setActiveTextTab] = createSignal<"send" | "receive">("send");
+  const sendTextContent = () => globalStore.text.state().sendTextContent;
+  const textSendTicket = () => globalStore.text.state().textSendTicket;
+  const isSendingText = () => globalStore.text.state().isSendingText;
+  const receiveTextTicket = () => globalStore.text.state().receiveTextTicket;
+  const receivedText = () => globalStore.text.state().receivedText;
+  const receivedTextFilename = () => globalStore.text.state().receivedTextFilename;
+  const isReceivingText = () => globalStore.text.state().isReceivingText;
+  const activeTextTab = () => globalStore.text.state().activeTextTab;
 
   async function handleSendText() {
     if (!sendTextContent()) return;
 
-    setIsSendingText(true);
+    globalStore.text.setIsSendingText(true);
     try {
       const result = await mockSendText(sendTextContent());
-      setTextSendTicket(result);
+      globalStore.text.setTextSendTicket(result);
       toast.success(t("text.textShared"));
     } catch (error) {
       console.error("Send text failed:", error);
       toast.error(t("text.sendFailed") + ": " + (error as Error).message);
     } finally {
-      setIsSendingText(false);
+      globalStore.text.setIsSendingText(false);
     }
   }
 
   async function handleReceiveText() {
     if (!receiveTextTicket()) return;
 
-    setIsReceivingText(true);
+    globalStore.text.setIsReceivingText(true);
     try {
       const result = await mockReceiveText(receiveTextTicket());
-      setReceivedText(result.text);
-      setReceivedTextFilename(result.filename);
+      globalStore.text.setReceivedText(result.text);
+      globalStore.text.setReceivedTextFilename(result.filename);
       toast.success(t("text.receiveSuccess") || "Text received!");
     } catch (error) {
       console.error("Receive text failed:", error);
       toast.error(t("text.receiveFailed") + ": " + (error as Error).message);
     } finally {
-      setIsReceivingText(false);
+      globalStore.text.setIsReceivingText(false);
     }
   }
 
@@ -94,13 +95,13 @@ export default function TextTab() {
       <div class="tabs tabs-boxed bg-base-300">
         <button
           class={`tab gap-2 ${activeTextTab() === "send" ? "tab-active" : ""}`}
-          onClick={() => setActiveTextTab("send")}
+          onClick={() => globalStore.text.setActiveTextTab("send")}
         >
           <TbOutlineSparkles size={16} /> {t("text.shareText")}
         </button>
         <button
           class={`tab gap-2 ${activeTextTab() === "receive" ? "tab-active" : ""}`}
-          onClick={() => setActiveTextTab("receive")}
+          onClick={() => globalStore.text.setActiveTextTab("receive")}
         >
           <TbOutlineDownload size={16} /> {t("text.receiveText")}
         </button>
@@ -111,7 +112,7 @@ export default function TextTab() {
         <div class="space-y-4">
           <textarea
             value={sendTextContent()}
-            onInput={(e) => setSendTextContent(e.currentTarget.value)}
+            onInput={(e) => globalStore.text.setSendTextContent(e.currentTarget.value)}
             placeholder={t("text.placeholder")}
             class="textarea textarea-bordered w-full h-32 font-mono text-sm"
           />
@@ -150,7 +151,7 @@ export default function TextTab() {
               <input
                 type="text"
                 value={receiveTextTicket()}
-                onInput={(e) => setReceiveTextTicket(e.currentTarget.value)}
+                onInput={(e) => globalStore.text.setReceiveTextTicket(e.currentTarget.value)}
                 placeholder={t("text.pasteText")}
                 class="grow font-mono text-sm"
                 disabled={isReceivingText()}

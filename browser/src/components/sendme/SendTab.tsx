@@ -1,8 +1,9 @@
-import { createSignal, Show, For, onCleanup } from "solid-js";
+import { Show, For, onCleanup } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
 import { useAuth } from "../../lib/contexts/user-clerk";
 import { i18n } from "../../lib/i18n";
+import { useGlobalStore } from "../../lib/store";
 import {
   TbOutlineUpload,
   TbOutlineCheck,
@@ -16,7 +17,7 @@ import {
   TbOutlineVideo,
 } from "solid-icons/tb";
 import DeviceListModal from "../devices/DeviceListModal";
-import type { Device } from "../../lib/composables/useWebSocket";
+import type { Device } from "../../lib/composables/useWebSession";
 
 const t = i18n.t;
 
@@ -39,13 +40,16 @@ function isPreviewable(file: File): boolean {
 
 export default function SendTab() {
   const auth = useAuth();
-  const [file, setFile] = createSignal<File | null>(null);
-  const [files, setFiles] = createSignal<File[]>([]);
-  const [isFolder, setIsFolder] = createSignal(false);
-  const [ticket, setTicket] = createSignal<string>("");
-  const [isSending, setIsSending] = createSignal(false);
-  const [isDragging, setIsDragging] = createSignal(false);
-  const [isDeviceModalOpen, setIsDeviceModalOpen] = createSignal(false);
+  const globalStore = useGlobalStore();
+
+  const file = () => globalStore.send.state().file;
+  const files = () => globalStore.send.state().files;
+  const isFolder = () => globalStore.send.state().isFolder;
+  const ticket = () => globalStore.send.state().ticket;
+  const isSending = () => globalStore.send.state().isSending;
+  const isDragging = () => globalStore.send.state().isDragging;
+  const isDeviceModalOpen = () => globalStore.send.state().isDeviceModalOpen;
+
   let fileInputRef: HTMLInputElement | undefined;
   let folderInputRef: HTMLInputElement | undefined;
 
@@ -62,7 +66,7 @@ export default function SendTab() {
 
     if (!currentFile && currentFiles.length === 0) return;
 
-    setIsSending(true);
+    globalStore.send.setIsSending(true);
     try {
       let result: string;
       if (isFolder() && currentFiles.length > 0) {
@@ -72,23 +76,23 @@ export default function SendTab() {
       } else {
         throw new Error("No file or folder selected");
       }
-      setTicket(result);
+      globalStore.send.setTicket(result);
       toast.success(t("send.targetLocked"));
     } catch (error) {
       console.error("Send failed:", error);
       toast.error(t("send.failed") + ": " + (error as Error).message);
     } finally {
-      setIsSending(false);
+      globalStore.send.setIsSending(false);
     }
   }
 
   function handleFileSelect(event: Event) {
     const target = event.target as HTMLInputElement;
     if (target.files && target.files[0]) {
-      setFile(target.files[0]);
-      setIsFolder(false);
-      setFiles([]);
-      setTicket("");
+      globalStore.send.setFile(target.files[0]);
+      globalStore.send.setIsFolder(false);
+      globalStore.send.setFiles([]);
+      globalStore.send.setTicket("");
     }
   }
 
@@ -96,38 +100,38 @@ export default function SendTab() {
     const target = event.target as HTMLInputElement;
     if (target.files && target.files.length > 0) {
       const fileList = Array.from(target.files);
-      setFiles(fileList);
-      setIsFolder(true);
-      setFile(null);
-      setTicket("");
+      globalStore.send.setFiles(fileList);
+      globalStore.send.setIsFolder(true);
+      globalStore.send.setFile(null);
+      globalStore.send.setTicket("");
     }
   }
 
   function handleDrop(event: DragEvent) {
     event.preventDefault();
-    setIsDragging(false);
+    globalStore.send.setIsDragging(false);
     if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
       const droppedFiles = Array.from(event.dataTransfer.files);
       if (droppedFiles.length === 1 && !droppedFiles[0].webkitRelativePath) {
-        setFile(droppedFiles[0]);
-        setIsFolder(false);
-        setFiles([]);
+        globalStore.send.setFile(droppedFiles[0]);
+        globalStore.send.setIsFolder(false);
+        globalStore.send.setFiles([]);
       } else {
-        setFiles(droppedFiles);
-        setIsFolder(true);
-        setFile(null);
+        globalStore.send.setFiles(droppedFiles);
+        globalStore.send.setIsFolder(true);
+        globalStore.send.setFile(null);
       }
-      setTicket("");
+      globalStore.send.setTicket("");
     }
   }
 
   function handleDragOver(event: DragEvent) {
     event.preventDefault();
-    setIsDragging(true);
+    globalStore.send.setIsDragging(true);
   }
 
   function handleDragLeave() {
-    setIsDragging(false);
+    globalStore.send.setIsDragging(false);
   }
 
   function copyTicket() {
@@ -140,10 +144,10 @@ export default function SendTab() {
   }
 
   function resetFile() {
-    setFile(null);
-    setFiles([]);
-    setIsFolder(false);
-    setTicket("");
+    globalStore.send.setFile(null);
+    globalStore.send.setFiles([]);
+    globalStore.send.setIsFolder(false);
+    globalStore.send.setTicket("");
   }
 
   function formatFileSize(bytes: number): string {
@@ -173,7 +177,7 @@ export default function SendTab() {
 
       if (!response.ok) throw new Error("Failed to send ticket");
       toast.success(`Ticket sent to ${device.name}!`);
-      setIsDeviceModalOpen(false);
+      globalStore.send.setIsDeviceModalOpen(false);
     } catch (error) {
       console.error("Failed to send ticket:", error);
       toast.error(t("send.sendToDevice") + ": " + (error as Error).message);
@@ -371,7 +375,7 @@ export default function SendTab() {
           </button>
           <Show when={auth.isSignedIn()}>
             <button
-              onClick={() => setIsDeviceModalOpen(true)}
+              onClick={() => globalStore.send.setIsDeviceModalOpen(true)}
               class="btn btn-outline flex-1"
             >
               <TbOutlineDevices size={16} /> {t("send.sendToDevice")}
@@ -382,7 +386,7 @@ export default function SendTab() {
 
       <DeviceListModal
         isOpen={isDeviceModalOpen()}
-        onClose={() => setIsDeviceModalOpen(false)}
+        onClose={() => globalStore.send.setIsDeviceModalOpen(false)}
         ticket={ticket()}
         showSendButton={true}
         onSendToDevice={handleSendToDevice}
