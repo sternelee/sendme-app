@@ -418,8 +418,10 @@ pub fn run() {
 
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
 
-    let clerk_publishable_key = std::env::var("CLERK_PUBLISHABLE_KEY")
-        .unwrap_or_else(|_| "pk_test_placeholder".to_string());
+    // Use compile-time environment variable for Clerk key
+    // This is necessary for Android/iOS where runtime env vars are not available
+    let clerk_publishable_key = option_env!("CLERK_PUBLISHABLE_KEY")
+        .unwrap_or("pk_test_placeholder");
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()

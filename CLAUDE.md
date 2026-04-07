@@ -463,10 +463,34 @@ The Tauri app supports mobile platforms (iOS/Android) with special consideration
 
 ### Building for Mobile
 
+**IMPORTANT**: The app uses Clerk authentication, which requires a publishable key to be embedded at compile time. Android/iOS apps cannot access runtime environment variables, so the key must be provided during the build process.
+
+#### Android Build
+
 ```bash
 cd app
-pnpm run tauri android build  # Build Android APK
-pnpm run tauri ios build      # Build iOS app
+
+# Build with Clerk publishable key (required for authentication)
+CLERK_PUBLISHABLE_KEY='pk_test_YOUR_KEY_HERE' pnpm run tauri android build --target aarch64
+
+# The key is embedded at compile time using option_env!() in src-tauri/src/lib.rs
+```
+
+**Environment Variables:**
+- `CLERK_PUBLISHABLE_KEY`: Clerk publishable key (test or production)
+  - Test key (`pk_test_...`) for development
+  - Production key (`pk_live_...`) for release builds
+  - Get your keys from [Clerk Dashboard](https://dashboard.clerk.com/)
+
+**Build Output:**
+- APK: `app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`
+- AAB: `app/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab`
+
+#### iOS Build
+
+```bash
+cd app
+CLERK_PUBLISHABLE_KEY='pk_test_YOUR_KEY_HERE' pnpm run tauri ios build
 ```
 
 ### Android Build Customization
@@ -551,6 +575,11 @@ Standard file/folder dialogs via `tauri_plugin_dialog`.
 
 - **`RUSTFLAGS`**: Compiler flags; CI uses `-Dwarnings` to treat warnings as errors
 - **`CC`**: For WASM builds on macOS, set to `/opt/homebrew/opt/llvm/bin/clang` (llvm.org Clang, NOT Apple Clang)
+- **`CLERK_PUBLISHABLE_KEY`**: Clerk publishable key for authentication (required for mobile builds)
+  - Embedded at compile time using `option_env!()` macro
+  - Must be provided during build: `CLERK_PUBLISHABLE_KEY='pk_test_...' pnpm tauri android build`
+  - Cannot be read at runtime on Android/iOS (apps run in isolated processes)
+  - Test keys (`pk_test_...`) work for development; production keys (`pk_live_...`) for releases
 
 ## Additional Documentation
 
