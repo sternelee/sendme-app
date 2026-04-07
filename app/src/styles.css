@@ -49,3 +49,21 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(70% 0.1 260 / 0.5);
 }
+
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  header.navbar {
+    padding-top: calc(0.5rem + env(safe-area-inset-top));
+  }
+
+  nav.dock {
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+  }
+}

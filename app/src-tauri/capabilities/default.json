@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "notification:default",
+    "clipboard-manager:default",
     "notification:allow-is-permission-granted",
     "http:default",
     "http:allow-fetch",

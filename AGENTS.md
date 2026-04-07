@@ -49,11 +49,9 @@ cargo clippy --locked --workspace --all-targets --all-features
 # All workspace tests
 cargo test --locked --workspace --all-features
 
-# Run specific test by name
+# Run specific test by exact name pattern
 cargo test send_recv_file
-
-# Test specific package
-cargo test -p sendme-lib
+cargo test transfer_file
 
 # Run integration tests only
 cargo test --test cli
@@ -84,8 +82,7 @@ pnpm run tauri ios build
 
 ```bash
 cd browser-lib
-# macOS: Use LLVM Clang (NOT Apple Clang)
-export CC=/opt/homebrew/opt/llvm/bin/clang
+export CC=/opt/homebrew/opt/llvm/bin/clang   # macOS: Use LLVM Clang
 cargo build --target=wasm32-unknown-unknown --release
 ```
 
@@ -114,6 +111,25 @@ use crate::{progress::*, types::*};
 - Functions/Methods: `snake_case` (`send_with_progress`, `get_or_create_secret`)
 - Constants: `SCREAMING_SNAKE_CASE` (`MSRV`, `ALPN`, `TICK_RATE_MS`)
 - Modules: `snake_case` (`send`, `receive`, `progress`)
+- Enums variants: `PascalCase` (`AddrInfoOptions::RelayAndAddresses`)
+
+### Rust Derive Macros
+
+Common derives used across the codebase:
+
+```rust
+// Debug for all types intended for debugging
+#[derive(Debug)]
+// Clone for types that need to be copied
+#[derive(Clone)]
+// Serialize/Deserialize for types crossing FFI or serialization boundaries
+#[derive(Serialize, Deserialize)]
+// #[serde(rename_all = "camelCase")] for JS/TS compatibility
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+// derive_more for Display, FromStr, etc.
+#[derive_more::Display, derive_more::FromStr]
+```
 
 ### Rust Error Handling
 
@@ -122,6 +138,12 @@ use crate::{progress::*, types::*};
 anyhow::bail!("custom error message");
 anyhow::ensure!(condition, "error message");
 .context("additional context")?
+
+// Pattern matching on anyhow errors
+match e.downcast_ref::<std::io::Error>() {
+    Some(_) => handle_io_error(e),
+    None => Err(e),
+}
 
 // For Tauri commands: convert to String for frontend
 .map_err(|e| format!("Failed to send: {}", e))?
@@ -141,6 +163,12 @@ tokio::sync::RwLock<HashMap<String, State>>
 
 // CRITICAL: Keep routers alive in async contexts
 std::future::pending::<()>().await
+
+// Select with cancellation
+tokio::select! {
+    _ = cancel_rx.recv() => return,
+    result = async_operation() => result?,
+}
 ```
 
 ### TypeScript/SolidJS Style
@@ -155,6 +183,11 @@ import { send_file, type SendFileRequest } from "~/lib/commands";
 const [devices, setDevices] = createSignal<NearbyDevice[]>([]);
 
 // Import paths use ~/* alias for src/ (configured in tsconfig.json)
+
+// Event handling with explicit types
+const handleProgress = (event: ProgressEvent) => {
+  setTransfers((prev) => [...prev, event]);
+};
 ```
 
 ## Important Details
@@ -163,7 +196,7 @@ const [devices, setDevices] = createSignal<NearbyDevice[]>([]);
 - **CI Environment**: `RUSTFLAGS: -Dwarnings` (all warnings are errors)
 - **CI Environment**: `IROH_FORCE_STAGING_RELAYS: 1` (use staging relays in tests)
 - **TypeScript**: Strict mode enabled (noUnusedLocals, noUnusedParameters)
-- **Frontend Framework**: SolidJS (not Vue/React) with Vinxi bundler and Tailwind CSS v4
+- **Frontend Framework**: SolidJS with Vinxi bundler and Tailwind CSS v4
 - **Path Handling**: All temp directories use `.sendme-*` prefix
 - **Nearby Discovery**: Uses mDNS, requires same WiFi network
 - **Release Profile**: Optimized for size (`opt-level = "s"`, LTO, strip debug)
@@ -178,19 +211,19 @@ const [devices, setDevices] = createSignal<NearbyDevice[]>([]);
 6. **Tokio RwLock**: Use `tokio::sync::RwLock` for shared async state, not `std::sync::RwLock`
 7. **Android temp directories**: Use `args.common.temp_dir` instead of `std::env::current_dir()`
 8. **Recursion limit**: If compilation fails, add `#![recursion_limit = "256"]` to `app/src-tauri/src/lib.rs`
-9. **Android JNI**: Always use `push_local_frame()`/`pop_local_frame()` in loops to prevent local reference overflow
+9. **Android JNI**: Always use `push_local_frame()`/`pop_local_frame()` in loops
 
 ## Architecture Overview
 
 ### Core Library (`lib/`)
 
-- **`lib.rs`**: Public API exports, `get_or_create_secret()`
+- **`lib.rs`**: Public API exports, `get_or_create_secret()`, `canonicalized_path_to_string()`
 - **`send.rs`**: Send/host - creates endpoint, imports files, serves data, spawns keep-alive task
 - **`receive.rs`**: Receive/download - connects, downloads via `execute_get()`, exports to filesystem
 - **`import.rs`**: File/directory import into blob store (parallelized with `num_cpus`)
 - **`export.rs`**: Export from blob store to filesystem
 - **`progress.rs`**: Progress event types/channels
-- **`types.rs`**: Common types (`AddrInfoOptions`, `CommonConfig`, `Format`)
+- **`types.rs`**: Common types (`AddrInfoOptions`, `CommonConfig`, `Format`, `RelayModeOption`)
 
 ### Tauri App (`app/`)
 

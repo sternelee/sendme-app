@@ -310,15 +310,30 @@ export default function MainPage() {
   }
 
   async function handleScanBarcode() {
+    console.log("[DEBUG] handleScanBarcode called");
     try {
+      console.log("[DEBUG] Checking permissions...");
       let permissionStatus = await checkPermissions();
-      if (permissionStatus !== "granted")
+      console.log("[DEBUG] checkPermissions result:", permissionStatus);
+      if (permissionStatus !== "granted") {
+        console.log("[DEBUG] Requesting permissions...");
         permissionStatus = await requestPermissions();
-      if (permissionStatus === "granted") {
-        const result = await scan({ formats: [Format.QRCode] });
-        if (result?.content) globalStore.receive.setTicket(result.content);
+        console.log("[DEBUG] requestPermissions result:", permissionStatus);
       }
-    } catch (e) {}
+      if (permissionStatus === "granted") {
+        console.log("[DEBUG] Permissions granted, starting scan...");
+        const result = await scan({ formats: [Format.QRCode] });
+        console.log("[DEBUG] scan result:", result);
+        if (result?.content) {
+          console.log("[DEBUG] Setting ticket:", result.content);
+          globalStore.receive.setTicket(result.content);
+        }
+      } else {
+        console.log("[DEBUG] Permissions not granted");
+      }
+    } catch (e) {
+      console.error("[DEBUG] handleScanBarcode error:", e);
+    }
   }
 
   onMount(async () => {
@@ -567,7 +582,10 @@ export default function MainPage() {
                           />
                           <Show when={isMobile()}>
                             <button
-                              onClick={handleScanBarcode}
+                              onClick={() => {
+                                console.log("[DEBUG] Scan button clicked");
+                                handleScanBarcode();
+                              }}
                               class="text-primary"
                             >
                               <Scan size={18} />
