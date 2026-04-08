@@ -40,6 +40,18 @@ impl From<&str> for DeviceType {
     }
 }
 
+impl DeviceType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DeviceType::Phone => "phone",
+            DeviceType::Tablet => "tablet",
+            DeviceType::Laptop => "laptop",
+            DeviceType::Desktop => "desktop",
+            DeviceType::Unknown => "unknown",
+        }
+    }
+}
+
 pub const SERVICE_TYPE: &str = "_iroh._tcp";
 
 struct ServiceEntry {
@@ -63,9 +75,28 @@ impl NearbyDiscovery {
         })
     }
 
-    pub fn browse(&self) -> Result<()> {
+    pub fn start(&mut self, name: &str, device_type: DeviceType, port: u16) -> Result<()> {
         let daemon = ServiceDaemon::new()?;
         let service_type = format!("{}.local.", SERVICE_TYPE);
+        
+        let instance_name = name.replace(" ", "-");
+        
+        let properties = [
+            ("type", device_type.as_str()),
+        ];
+
+        let service_info = ServiceInfo::new(
+            &service_type,
+            &instance_name,
+            "",
+            "",
+            port,
+            &properties[..],
+        )?.enable_addr_auto();
+
+        daemon.register(service_info)?;
+        tracing::info!("Advertised mDNS service: {} on port {}", instance_name, port);
+
         let receiver = daemon.browse(&service_type)?;
 
         let services = self.services.clone();

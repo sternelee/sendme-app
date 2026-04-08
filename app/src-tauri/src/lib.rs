@@ -410,9 +410,13 @@ async fn start_nearby_discovery(
     if guard.is_some() {
         return Ok(()); // Already running
     }
-    let new_discovery = sendme_lib::NearbyDiscovery::new()
+    let mut new_discovery = sendme_lib::NearbyDiscovery::new()
         .map_err(|e| e.to_string())?;
-    new_discovery.browse().map_err(|e| e.to_string())?;
+    
+    let device_name = get_hostname().unwrap_or_else(|_| "Sendme".to_string());
+    let device_type = sendme_lib::DeviceType::Unknown;
+    
+    new_discovery.start(&device_name, device_type, 0).map_err(|e| e.to_string())?;
     *guard = Some(new_discovery);
     Ok(())
 }
