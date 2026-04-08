@@ -7,11 +7,13 @@ use anyhow::Context;
 
 pub mod export;
 pub mod import;
+pub mod nearby;
 pub mod progress;
 pub mod receive;
 pub mod send;
 pub mod types;
 
+pub use nearby::{DeviceType, NearbyDevice, NearbyDiscovery, SERVICE_TYPE};
 pub use progress::*;
 pub use types::*;
 
