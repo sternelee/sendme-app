@@ -1,0 +1,64 @@
+import { Component, Show, For, createSignal } from "solid-js";
+import { Upload, X } from "lucide-solid";
+import { formatFileSize } from "~/lib/utils";
+
+interface DropZoneProps {
+  files: Array<{ name: string; size: number; path?: string }>;
+  onFilesSelected: (files: File[]) => void;
+  onRemoveFile?: (index: number) => void;
+}
+
+export const DropZone: Component<DropZoneProps> = (props) => {
+  const [isDragover, setIsDragover] = createSignal(false);
+
+  const handleDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDragover(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length > 0) {
+      props.onFilesSelected(files);
+    }
+  };
+
+  return (
+    <div
+      class={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+        isDragover()
+          ? "border-primary bg-primary/5"
+          : "border-base-300 bg-base-300/30 hover:border-primary/50"
+      }`}
+      onDragOver={(e) => { e.preventDefault(); setIsDragover(true); }}
+      onDragLeave={() => setIsDragover(false)}
+      onDrop={handleDrop}
+    >
+      <Show
+        when={props.files.length === 0}
+        fallback={
+          <div class="space-y-2">
+            <For each={props.files}>
+              {(file, index) => (
+                <div class="flex items-center justify-between bg-base-200 rounded-lg px-3 py-2">
+                  <span class="text-sm truncate">{file.name}</span>
+                  <span class="text-xs opacity-60">{formatFileSize(file.size)}</span>
+                  <Show when={props.onRemoveFile}>
+                    <button
+                      onClick={() => props.onRemoveFile?.(index())}
+                      class="btn btn-ghost btn-xs"
+                    >
+                      <X size={14} />
+                    </button>
+                  </Show>
+                </div>
+              )}
+            </For>
+          </div>
+        }
+      >
+        <Upload size={32} class="mx-auto mb-2 opacity-40" />
+        <p class="text-sm opacity-60">
+          {isDragover() ? "Drop files here" : "Drop files or tap to select"}
+        </p>
+      </Show>
+    </div>
+  );
+};
