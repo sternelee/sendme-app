@@ -4,6 +4,8 @@
 
 pub mod protocol;
 pub mod core;
+pub mod sender;
 
 pub use core::{DeviceType, NearbyDevice, NearbyDiscovery, SERVICE_TYPE};
 pub use protocol::{ALPN, Message, FileInfo, TransferManifest};
+pub use sender::{NearbySender, SenderEvent};
