@@ -56,6 +56,7 @@ import {
   Zap,
   User,
   LogOut,
+  Radio,
 } from "lucide-solid";
 
 import { Toaster, toast } from "solid-sonner";
@@ -71,6 +72,7 @@ import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
 import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
 import { i18n } from "~/lib/i18n";
 import { useGlobalStore } from "~/lib/store";
+import NearbyPage from "~/routes/nearby";
 
 const t = i18n.t;
 
@@ -94,7 +96,7 @@ interface ProgressUpdate {
 }
 
 type Theme = "light" | "dark" | "system";
-type Tab = "send" | "receive" | "history" | "settings";
+type Tab = "send" | "receive" | "nearby" | "history" | "settings";
 
 const ticketTypes = [
   { value: "id", label: "ID Only" },
@@ -654,6 +656,10 @@ export default function MainPage() {
                 </Motion.div>
               </Match>
 
+              <Match when={activeTab() === "nearby"}>
+                <NearbyPage />
+              </Match>
+
               <Match when={activeTab() === "history"}>
                 <Motion.div
                   animate={{ opacity: 1 }}
@@ -915,6 +921,13 @@ export default function MainPage() {
           >
             <Download size={24} />
             <span>{t("common.receive")}</span>
+          </button>
+          <button
+            class={`dock-label ${activeTab() === "nearby" ? "active" : ""}`}
+            onClick={() => setActiveTab("nearby")}
+          >
+            <Radio size={24} />
+            <span>Nearby</span>
           </button>
           <button
             class={`dock-label ${activeTab() === "history" ? "active" : ""}`}
