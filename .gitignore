@@ -10,6 +10,7 @@ node_modules
 dist
 .output
 .vinxi
+.worktrees
 
 # Browser WASM build artifacts
 browser/target
