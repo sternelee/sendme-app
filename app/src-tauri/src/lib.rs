@@ -448,21 +448,24 @@ async fn send_to_device(
     file_paths: Vec<String>,
     device_id: String,
 ) -> Result<String, String> {
-    Err("send_to_device not yet implemented".to_string())
+    tracing::info!("send_to_device called with {} files to device {}", file_paths.len(), device_id);
+    Err("send_to_device not yet fully implemented - control channel only".to_string())
 }
 
 #[tauri::command]
 async fn accept_incoming(
     request_id: String,
 ) -> Result<(), String> {
-    Err("accept_incoming not yet implemented".to_string())
+    tracing::info!("accept_incoming called for request {}", request_id);
+    Err("accept_incoming not yet fully implemented".to_string())
 }
 
 #[tauri::command]
 async fn decline_incoming(
     request_id: String,
 ) -> Result<(), String> {
-    Err("decline_incoming not yet implemented".to_string())
+    tracing::info!("decline_incoming called for request {}", request_id);
+    Err("decline_incoming not yet fully implemented".to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
