@@ -43,10 +43,12 @@ Send | Receive | History | Nearby | Settings
 [Idle] → [Review] → [Receiving] → [Done/Error]
 ```
 
+**Trigger:** Tauri event `incoming_nearby_request` emitted when sender initiates transfer
+
 | State | UI |
 |-------|-----|
 | Idle | Normal Receive tab (ticket entry) |
-| Review | Manifest card with Accept/Decline |
+| Review | IncomingRequestCard with Accept/Decline |
 | Receiving | Progress bar, speed, ETA |
 | Done/Error | Result card |
 
@@ -133,6 +135,7 @@ Incoming transfer request card shown on receiver's device.
 - Pending: Shows Accept/Decline
 - Accepting: Loading spinner, buttons disabled
 - Declining: Loading spinner, buttons disabled
+- TimedOut: Request expired, auto-dismiss after 60s
 
 ```typescript
 interface IncomingRequestCardProps {
@@ -143,7 +146,7 @@ interface IncomingRequestCardProps {
 }
 ```
 
-### 5. TransferProgress
+### 6. TransferProgress
 
 Progress dashboard during transfer.
 
@@ -210,6 +213,11 @@ Extend `app/src-tauri/src/lib.rs` with new commands:
 
 ### Progress Events (already exist)
 - `progress` event emitted during transfer
+
+### New Tauri Events
+- `incoming_nearby_request` - Emitted when a nearby device sends a transfer request. Payload: `IncomingRequest`
+- `nearby_request_cancelled` - Emitted when the sender cancels before response. Payload: `{ requestId: string }`
+- `nearby_request_declined` - Emitted when receiver declines. Payload: `{ requestId: string }`
 
 ---
 
