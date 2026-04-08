@@ -140,7 +140,7 @@ fn create_service_entry(info: &ServiceInfo) -> Option<ServiceEntry> {
 
     let device_type = info
         .get_property_val_str("type")
-        .map(|t| DeviceType::from(t))
+        .map(DeviceType::from)
         .unwrap_or(DeviceType::Unknown);
 
     Some(ServiceEntry {
