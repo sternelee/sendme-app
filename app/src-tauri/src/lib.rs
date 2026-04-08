@@ -2,7 +2,7 @@ use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 use tokio::sync::RwLock;
@@ -392,10 +392,73 @@ pub struct TransferInfo {
 // Global state for tracking active transfers
 type Transfers = Arc<RwLock<HashMap<String, TransferState>>>;
 
+// Nearby discovery state
+type NearbyDiscoveryState = Arc<Mutex<Option<sendme_lib::NearbyDiscovery>>>;
+
 #[derive(Debug)]
 struct TransferState {
     info: TransferInfo,
     abort_tx: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
+#[tauri::command]
+async fn start_nearby_discovery(
+    app: AppHandle,
+    discovery: tauri::State<'_, NearbyDiscoveryState>,
+) -> Result<(), String> {
+    let mut guard = discovery.lock().map_err(|e| e.to_string())?;
+    if guard.is_some() {
+        return Ok(()); // Already running
+    }
+    let new_discovery = sendme_lib::NearbyDiscovery::new()
+        .map_err(|e| e.to_string())?;
+    new_discovery.browse().map_err(|e| e.to_string())?;
+    *guard = Some(new_discovery);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_nearby_devices(
+    discovery: tauri::State<'_, NearbyDiscoveryState>,
+) -> Result<Vec<sendme_lib::NearbyDevice>, String> {
+    let guard = discovery.lock().map_err(|e| e.to_string())?;
+    match guard.as_ref() {
+        Some(d) => Ok(d.get_devices()),
+        None => Ok(vec![]),
+    }
+}
+
+#[tauri::command]
+async fn stop_nearby_discovery(
+    discovery: tauri::State<'_, NearbyDiscoveryState>,
+) -> Result<(), String> {
+    let mut guard = discovery.lock().map_err(|e| e.to_string())?;
+    *guard = None;
+    Ok(())
+}
+
+#[tauri::command]
+async fn send_to_device(
+    app: AppHandle,
+    transfers: tauri::State<'_, Transfers>,
+    file_paths: Vec<String>,
+    device_id: String,
+) -> Result<String, String> {
+    Err("send_to_device not yet implemented".to_string())
+}
+
+#[tauri::command]
+async fn accept_incoming(
+    request_id: String,
+) -> Result<(), String> {
+    Err("accept_incoming not yet implemented".to_string())
+}
+
+#[tauri::command]
+async fn decline_incoming(
+    request_id: String,
+) -> Result<(), String> {
+    Err("decline_incoming not yet implemented".to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -417,6 +480,7 @@ pub fn run() {
     }
 
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
+    let discovery: NearbyDiscoveryState = Arc::new(Mutex::new(None));
 
     // Use compile-time environment variable for Clerk key
     // This is necessary for Android/iOS where runtime env vars are not available
@@ -470,6 +534,8 @@ pub fn run() {
         .setup(move |app| {
             // Store transfers in app state
             app.manage(transfers.clone());
+            // Store nearby discovery in app state
+            app.manage(discovery.clone());
 
             // Create system tray icon on macOS
             #[cfg(target_os = "macos")]
@@ -498,6 +564,13 @@ pub fn run() {
             list_received_files,
             pick_file,
             pick_directory,
+            // Nearby discovery commands
+            start_nearby_discovery,
+            get_nearby_devices,
+            stop_nearby_discovery,
+            send_to_device,
+            accept_incoming,
+            decline_incoming,
             // Menubar commands
             #[cfg(target_os = "macos")]
             menubar_cmd::init_menubar,
