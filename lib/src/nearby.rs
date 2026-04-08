@@ -63,6 +63,7 @@ struct ServiceEntry {
 pub struct NearbyDiscovery {
     services: Arc<Mutex<HashMap<String, ServiceEntry>>>,
     stop_tx: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+    our_instance_name: Option<String>,
 }
 
 impl NearbyDiscovery {
@@ -72,6 +73,7 @@ impl NearbyDiscovery {
         Ok(Self {
             services,
             stop_tx,
+            our_instance_name: None,
         })
     }
 
@@ -98,7 +100,11 @@ impl NearbyDiscovery {
         daemon.register(service_info)?;
         tracing::info!("Advertised mDNS service: {} on port {}", instance_name, port);
 
+        // Store our instance name so we can filter ourselves out
+        self.our_instance_name = Some(instance_name.clone());
+
         let receiver = daemon.browse(&service_type)?;
+        let our_name = instance_name.clone();
 
         let services = self.services.clone();
 
@@ -117,8 +123,16 @@ impl NearbyDiscovery {
                             tracing::debug!("mDNS ServiceFound: {}", fullname);
                         }
                         ServiceEvent::ServiceResolved(info) => {
+                            // Skip if this is our own service
                             if let Some(entry) = create_service_entry(&info) {
                                 let id = info.get_fullname().to_string();
+                                // Check if this is our own instance
+                                if let Some(our_name) = our_name.split('.').next() {
+                                    if entry.name == our_name {
+                                        tracing::debug!("Skipping our own service: {}", id);
+                                        continue;
+                                    }
+                                }
                                 if let Ok(mut services) = services.lock() {
                                     services.insert(id, entry);
                                 }
