@@ -104,11 +104,42 @@ List of files with names and sizes.
 
 **Location:** `app/src/lib/components/FileManifest.tsx`
 
+**Used by:** Sender (to review before sending), Receiver (incoming request review)
+
 ```typescript
 interface FileManifestProps {
   files: Array<{ name: string; size: number; path?: string }>;
   totalSize: number;
   maxHeight?: string;
+}
+```
+
+### 5. IncomingRequestCard
+
+Incoming transfer request card shown on receiver's device.
+
+**Location:** `app/src/lib/components/IncomingRequestCard.tsx`
+
+**Used by:** Receive tab (shown when incoming nearby request arrives)
+
+**Elements:**
+- Sender device name and icon
+- File manifest (via FileManifest component)
+- Total size
+- Accept button (primary)
+- Decline button (outline)
+
+**States:**
+- Pending: Shows Accept/Decline
+- Accepting: Loading spinner, buttons disabled
+- Declining: Loading spinner, buttons disabled
+
+```typescript
+interface IncomingRequestCardProps {
+  request: IncomingRequest;
+  onAccept: () => void;
+  onDecline: () => void;
+  disabled?: boolean;
 }
 ```
 
@@ -174,11 +205,53 @@ Extend `app/src-tauri/src/lib.rs` with new commands:
 - `send_to_device(files: Vec<String>, device: NearbyDevice)` - Initiate transfer
 
 ### Receive Commands
-- `accept_incoming()` - Accept pending transfer
-- `decline_incoming()` - Decline pending transfer
+- `accept_incoming(request_id: String)` - Accept pending transfer
+- `decline_incoming(request_id: String)` - Decline pending transfer
 
 ### Progress Events (already exist)
 - `progress` event emitted during transfer
+
+---
+
+## Transfer Protocol
+
+### Discovery
+- Uses mDNS with service type `_iroh._tcp` (follows iroh convention)
+- Devices broadcast their presence on local network
+- Each device has a stable `id` used for connection routing
+
+### Connection & Transfer Flow
+
+```
+Sender                          Receiver
+  |                                |
+  |-- [TCP/QUIC direct connect] -->|
+  |   or via iroh relay            |
+  |                                |
+  |-- Manifest Request ----------->|
+  |<-- Manifest Response -----------|
+  |                                |
+  |    [Waiting for user action]   |
+  |                                |
+  |<---- Accept/Decline -----------|
+  |                                |
+  |-- [If Accept] File Data ------>|
+  |                                |
+  |<--- Progress Updates ----------|
+  |                                |
+  |-- [Complete] ----------------->|
+```
+
+### Request Routing
+- `deviceId` is a stable identifier routed through iroh's relay system
+- System attempts direct connection first (same network)
+- Falls back to relay connection if NAT traversal fails
+- Receiver can handle one transfer at a time
+
+### Request Timeout
+- If receiver doesn't respond within **60 seconds**, sender gets timeout error
+- Error message: "No response from [device]. They may have left or be busy."
+- Receiver sees: request auto-dismisses after 60 seconds if not acted upon
 
 ---
 
@@ -226,11 +299,12 @@ app/src/
 │   └── nearby.tsx          # New Nearby tab route
 ├── lib/
 │   ├── components/
-│   │   ├── DropZone.tsx
-│   │   ├── NearbyDeviceList.tsx
-│   │   ├── FileManifest.tsx
-│   │   ├── TransferProgress.tsx
-│   │   └── ConnectionWaiting.tsx
+│   │   ├── DropZone.tsx           # Used by Nearby tab (sender)
+│   │   ├── NearbyDeviceList.tsx    # Used by Nearby tab (sender)
+│   │   ├── FileManifest.tsx       # Used by Nearby tab (sender) & Receive tab (receiver)
+│   │   ├── IncomingRequestCard.tsx # Used by Receive tab (receiver)
+│   │   ├── TransferProgress.tsx    # Used by both sender & receiver
+│   │   └── ConnectionWaiting.tsx  # Used by Nearby tab (sender only)
 │   ├── store.tsx           # Extended with nearby state
 │   └── bindings.ts        # Extended with nearby bindings
 ```
@@ -255,6 +329,18 @@ All dependencies already available:
 | Device disconnected | "Device disconnected. Please try again." |
 | Transfer failed | "Transfer failed: [reason]. Tap to retry." |
 | Receiver declined | "[Device] declined the transfer." |
+| Request timeout | "No response from [device]. They may have left or be busy." |
+| Receiver busy | "[device] is currently receiving another transfer. Try again when they're free." |
+| App backgrounded | Transfer continues in background. If terminated, transfer fails. |
+
+### Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| Multiple senders | Receiver sees multiple IncomingRequestCards. Can Accept one, must Decline others. |
+| Sender app backgrounded during Wait | Transfer continues if connection established. If lost, shows error. |
+| Receiver in another transfer | Sender sees "Device busy" when attempting to send. |
+| Network change | If devices change networks during discovery, rescan required. |
 
 ---
 
@@ -283,3 +369,6 @@ Both sender and receiver can cancel:
 - [ ] Works with 1 file, multiple files, folders
 - [ ] Works on dark theme
 - [ ] Works on mobile viewport
+- [ ] Receiver busy with another transfer → appropriate message shown
+- [ ] Request timeout after 60 seconds
+- [ ] Multiple senders → can accept one, decline others
