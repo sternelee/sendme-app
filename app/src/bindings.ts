@@ -223,3 +223,52 @@ export async function receive_text(
 ): Promise<TextResult> {
   return await invoke("receive_text", { request });
 }
+
+// Nearby discovery types
+export interface NearbyDevice {
+  id: string;
+  name: string;
+  deviceType: "phone" | "tablet" | "laptop" | "desktop" | "unknown";
+  addresses: string[];
+}
+
+export interface IncomingRequest {
+  id: string;
+  senderName: string;
+  files: Array<{ name: string; size: number }>;
+  totalSize: number;
+}
+
+export interface TransferProgress {
+  transferred: number;
+  total: number;
+  speed: number;
+  eta: number;
+}
+
+export async function start_nearby_discovery(): Promise<void> {
+  return await invoke("start_nearby_discovery");
+}
+
+export async function get_nearby_devices(): Promise<NearbyDevice[]> {
+  return await invoke("get_nearby_devices");
+}
+
+export async function stop_nearby_discovery(): Promise<void> {
+  return await invoke("stop_nearby_discovery");
+}
+
+export async function send_to_device(
+  filePaths: string[],
+  deviceId: string,
+): Promise<string> {
+  return await invoke("send_to_device", { filePaths, deviceId });
+}
+
+export async function accept_incoming(requestId: string): Promise<void> {
+  return await invoke("accept_incoming", { requestId });
+}
+
+export async function decline_incoming(requestId: string): Promise<void> {
+  return await invoke("decline_incoming", { requestId });
+}
