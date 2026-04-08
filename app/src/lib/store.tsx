@@ -6,6 +6,11 @@ import {
   type Accessor,
 } from "solid-js";
 import { createStore } from "solid-js/store";
+import type {
+  NearbyDevice,
+  IncomingRequest,
+  TransferProgress,
+} from "~/bindings";
 
 export interface SendState {
   path: string;
@@ -24,9 +29,34 @@ export interface ReceiveState {
   isReceiving: boolean;
 }
 
+export interface SelectedFile {
+  path: string;
+  name: string;
+  size: number;
+}
+
+export interface NearbySendState {
+  files: SelectedFile[];
+  nearbyDevices: NearbyDevice[];
+  discoveryState: "idle" | "scanning" | "error";
+  selectedDevice: NearbyDevice | null;
+  transferState: "idle" | "selected" | "picked" | "waiting" | "transferring" | "done" | "error";
+  transferProgress: TransferProgress | null;
+  error: string | null;
+}
+
+export interface NearbyReceiveState {
+  incomingRequest: IncomingRequest | null;
+  transferState: "idle" | "review" | "receiving" | "done" | "error";
+  transferProgress: TransferProgress | null;
+  error: string | null;
+}
+
 interface GlobalStoreValue {
   send: SendState;
   receive: ReceiveState;
+  nearbySend: NearbySendState;
+  nearbyReceive: NearbyReceiveState;
 }
 
 interface GlobalStore {
@@ -49,6 +79,24 @@ interface GlobalStore {
     setOutputDir: (outputDir: string) => void;
     setIsReceiving: (isReceiving: boolean) => void;
   };
+  nearbySend: {
+    state: Accessor<NearbySendState>;
+    setFiles: (files: SelectedFile[]) => void;
+    setNearbyDevices: (devices: NearbyDevice[]) => void;
+    setDiscoveryState: (state: "idle" | "scanning" | "error") => void;
+    setSelectedDevice: (device: NearbyDevice | null) => void;
+    setTransferState: (state: NearbySendState["transferState"]) => void;
+    setTransferProgress: (progress: TransferProgress | null) => void;
+    setError: (error: string | null) => void;
+    reset: () => void;
+  };
+  nearbyReceive: {
+    state: Accessor<NearbyReceiveState>;
+    setIncomingRequest: (request: IncomingRequest | null) => void;
+    setTransferState: (state: NearbyReceiveState["transferState"]) => void;
+    setTransferProgress: (progress: TransferProgress | null) => void;
+    setError: (error: string | null) => void;
+  };
 }
 
 const defaultSendState: SendState = {
@@ -68,6 +116,23 @@ const defaultReceiveState: ReceiveState = {
   isReceiving: false,
 };
 
+const defaultNearbySendState: NearbySendState = {
+  files: [],
+  nearbyDevices: [],
+  discoveryState: "idle",
+  selectedDevice: null,
+  transferState: "idle",
+  transferProgress: null,
+  error: null,
+};
+
+const defaultNearbyReceiveState: NearbyReceiveState = {
+  incomingRequest: null,
+  transferState: "idle",
+  transferProgress: null,
+  error: null,
+};
+
 const GlobalStoreContext = createContext<GlobalStore>();
 
 export const GlobalStoreProvider: ParentComponent = (props) => {
@@ -76,6 +141,12 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
   });
   const [receiveState, setReceiveState] = createStore<ReceiveState>({
     ...defaultReceiveState,
+  });
+  const [nearbySendState, setNearbySendState] = createStore<NearbySendState>({
+    ...defaultNearbySendState,
+  });
+  const [nearbyReceiveState, setNearbyReceiveState] = createStore<NearbyReceiveState>({
+    ...defaultNearbyReceiveState,
   });
 
   const store: GlobalStore = {
@@ -104,6 +175,24 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
       setOutputDir: (outputDir) => setReceiveState("outputDir", outputDir),
       setIsReceiving: (isReceiving) =>
         setReceiveState("isReceiving", isReceiving),
+    },
+    nearbySend: {
+      state: () => nearbySendState,
+      setFiles: (files) => setNearbySendState("files", files),
+      setNearbyDevices: (devices) => setNearbySendState("nearbyDevices", devices),
+      setDiscoveryState: (discoveryState) => setNearbySendState("discoveryState", discoveryState),
+      setSelectedDevice: (device) => setNearbySendState("selectedDevice", device),
+      setTransferState: (transferState) => setNearbySendState("transferState", transferState),
+      setTransferProgress: (progress) => setNearbySendState("transferProgress", progress),
+      setError: (error) => setNearbySendState("error", error),
+      reset: () => setNearbySendState(defaultNearbySendState),
+    },
+    nearbyReceive: {
+      state: () => nearbyReceiveState,
+      setIncomingRequest: (request) => setNearbyReceiveState("incomingRequest", request),
+      setTransferState: (transferState) => setNearbyReceiveState("transferState", transferState),
+      setTransferProgress: (progress) => setNearbyReceiveState("transferProgress", progress),
+      setError: (error) => setNearbyReceiveState("error", error),
     },
   };
 
