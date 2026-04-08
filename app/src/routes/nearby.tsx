@@ -68,13 +68,8 @@ export default function NearbyPage() {
     } catch (e) {}
   });
 
-  const handleFilesSelected = (files: File[]) => {
-    const fileInfos: SelectedFile[] = files.map((f) => ({
-      name: f.name,
-      size: f.size,
-      path: (f as unknown as { path?: string }).path || f.name,
-    }));
-    setSelectedFiles(fileInfos);
+  const handleFilesSelected = (files: Array<{ name: string; size: number; path: string }>) => {
+    setSelectedFiles(files as SelectedFile[]);
   };
 
   const handleRemoveFile = (index: number) => {

@@ -1,10 +1,11 @@
 import { Component, Show, For, createSignal } from "solid-js";
 import { Upload, X } from "lucide-solid";
 import { formatFileSize } from "~/lib/utils";
+import { open } from "@tauri-apps/plugin-dialog";
 
 interface DropZoneProps {
   files: Array<{ name: string; size: number; path?: string }>;
-  onFilesSelected: (files: File[]) => void;
+  onFilesSelected: (files: Array<{ name: string; size: number; path: string }>) => void;
   onRemoveFile?: (index: number) => void;
 }
 
@@ -16,18 +17,44 @@ export const DropZone: Component<DropZoneProps> = (props) => {
     setIsDragover(false);
     const files = Array.from(e.dataTransfer?.files || []);
     if (files.length > 0) {
-      props.onFilesSelected(files);
+      const fileInfos = files.map((f) => ({
+        name: f.name,
+        size: f.size,
+        path: (f as unknown as { path?: string }).path || f.name,
+      }));
+      props.onFilesSelected(fileInfos);
+    }
+  };
+
+  const handleClick = async () => {
+    try {
+      const selected = await open({ multiple: true, directory: false });
+      if (selected) {
+        const paths = Array.isArray(selected) ? selected : [selected];
+        const fileInfos = paths.map((p) => ({
+          name: typeof p === "string" ? p.split(/[\\/]/).pop() || p : p.name,
+          size: 0,
+          path: typeof p === "string" ? p : p.path,
+        }));
+        props.onFilesSelected(fileInfos);
+      }
+    } catch (e) {
+      console.error("Failed to open file picker:", e);
     }
   };
 
   return (
     <div
-      class={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+      class={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
         isDragover()
           ? "border-primary bg-primary/5"
           : "border-base-300 bg-base-300/30 hover:border-primary/50"
       }`}
-      onDragOver={(e) => { e.preventDefault(); setIsDragover(true); }}
+      onClick={handleClick}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragover(true);
+      }}
       onDragLeave={() => setIsDragover(false)}
       onDrop={handleDrop}
     >
@@ -37,9 +64,11 @@ export const DropZone: Component<DropZoneProps> = (props) => {
           <div class="space-y-2">
             <For each={props.files}>
               {(file, index) => (
-                <div class="flex items-center justify-between bg-base-200 rounded-lg px-3 py-2">
-                  <span class="text-sm truncate">{file.name}</span>
-                  <span class="text-xs opacity-60">{formatFileSize(file.size)}</span>
+                <div class="bg-base-200 flex items-center justify-between rounded-lg px-3 py-2">
+                  <span class="truncate text-sm">{file.name}</span>
+                  <span class="text-xs opacity-60">
+                    {formatFileSize(file.size)}
+                  </span>
                   <Show when={props.onRemoveFile}>
                     <button
                       onClick={() => props.onRemoveFile?.(index())}
@@ -62,3 +91,4 @@ export const DropZone: Component<DropZoneProps> = (props) => {
     </div>
   );
 };
+
