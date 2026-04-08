@@ -159,7 +159,7 @@ Progress dashboard during transfer.
 - ETA (e.g., "~2 min remaining")
 - Cancel button
 
-### 6. ConnectionWaiting
+### 7. ConnectionWaiting
 
 Animated waiting state while receiver reviews.
 
