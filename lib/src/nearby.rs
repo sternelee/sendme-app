@@ -80,6 +80,7 @@ impl NearbyDiscovery {
         let service_type = format!("{}.local.", SERVICE_TYPE);
         
         let instance_name = name.replace(" ", "-");
+        let hostname = format!("{}.local.", instance_name);
         
         let properties = [
             ("type", device_type.as_str()),
@@ -88,7 +89,7 @@ impl NearbyDiscovery {
         let service_info = ServiceInfo::new(
             &service_type,
             &instance_name,
-            "",
+            &hostname,
             "",
             port,
             &properties[..],
