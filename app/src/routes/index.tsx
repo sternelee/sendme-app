@@ -18,6 +18,9 @@ import {
   clear_transfers,
   open_received_file,
   pick_directory,
+  accept_incoming,
+  decline_incoming,
+  type IncomingRequest,
 } from "~/bindings";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -72,6 +75,8 @@ import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
 import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
 import { i18n } from "~/lib/i18n";
 import { useGlobalStore } from "~/lib/store";
+import { IncomingRequestCard } from "~/lib/components/IncomingRequestCard";
+import { TransferProgress } from "~/lib/components/TransferProgress";
 import NearbyPage from "~/routes/nearby";
 
 const t = i18n.t;
@@ -374,7 +379,33 @@ export default function MainPage() {
       }
     });
 
-    onCleanup(() => unlisten());
+    const unlistenNearby = await listen<IncomingRequest>("incoming_nearby_request", (event) => {
+      globalStore.nearbyReceive.setIncomingRequest(event.payload);
+      globalStore.nearbyReceive.setTransferState("review");
+    });
+
+    const unlistenNearbyCancel = await listen<{ requestId: string }>("nearby_request_cancelled", (event) => {
+      if (globalStore.nearbyReceive.state().incomingRequest?.id === event.payload.requestId) {
+        globalStore.nearbyReceive.setIncomingRequest(null);
+        globalStore.nearbyReceive.setTransferState("idle");
+        toast.info("Sender cancelled the request");
+      }
+    });
+
+    const unlistenNearbyDecline = await listen<{ requestId: string }>("nearby_request_declined", (event) => {
+      if (globalStore.nearbyReceive.state().incomingRequest?.id === event.payload.requestId) {
+        globalStore.nearbyReceive.setIncomingRequest(null);
+        globalStore.nearbyReceive.setTransferState("idle");
+        toast.info("Request declined");
+      }
+    });
+
+    onCleanup(() => {
+      unlisten();
+      unlistenNearby();
+      unlistenNearbyCancel();
+      unlistenNearbyDecline();
+    });
     setIsInitializing(false);
   });
 
@@ -650,6 +681,45 @@ export default function MainPage() {
                             {t("common.cancel")}
                           </button>
                         </div>
+                      </Show>
+
+                      <Show when={globalStore.nearbyReceive.state().incomingRequest}>
+                        <IncomingRequestCard
+                          request={globalStore.nearbyReceive.state().incomingRequest!}
+                          onAccept={async () => {
+                            try {
+                              await accept_incoming(globalStore.nearbyReceive.state().incomingRequest!.id);
+                              globalStore.nearbyReceive.setTransferState("receiving");
+                            } catch (e) {
+                              toast.error(`Failed to accept: ${e}`);
+                            }
+                          }}
+                          onDecline={async () => {
+                            try {
+                              await decline_incoming(globalStore.nearbyReceive.state().incomingRequest!.id);
+                              globalStore.nearbyReceive.setIncomingRequest(null);
+                              globalStore.nearbyReceive.setTransferState("idle");
+                            } catch (e) {
+                              toast.error(`Failed to decline: ${e}`);
+                            }
+                          }}
+                          disabled={globalStore.nearbyReceive.state().transferState !== "review"}
+                          state={globalStore.nearbyReceive.state().transferState === "receiving" ? "accepting" : "pending"}
+                        />
+                      </Show>
+
+                      <Show when={globalStore.nearbyReceive.state().transferState === "receiving" && globalStore.nearbyReceive.state().transferProgress}>
+                        <TransferProgress
+                          transferred={globalStore.nearbyReceive.state().transferProgress!.transferred}
+                          total={globalStore.nearbyReceive.state().transferProgress!.total}
+                          speed={globalStore.nearbyReceive.state().transferProgress!.speed}
+                          eta={globalStore.nearbyReceive.state().transferProgress!.eta}
+                          isReceiving={true}
+                          onCancel={async () => {
+                            globalStore.nearbyReceive.setIncomingRequest(null);
+                            globalStore.nearbyReceive.setTransferState("idle");
+                          }}
+                        />
                       </Show>
                     </div>
                   </div>
