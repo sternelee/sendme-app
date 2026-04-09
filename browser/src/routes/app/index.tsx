@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, onMount, Show, For } from "solid-js";
 import { initWasm } from "../../lib/commands";
 import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
@@ -8,6 +8,7 @@ import { ThemeSwitcher } from "../../lib/ThemeSwitcher";
 import { LanguageSwitcher } from "../../lib/LanguageSwitcher";
 import { i18n } from "../../lib/i18n";
 import { Presence } from "solid-motionone";
+import { useAuth } from "../../lib/contexts/user-clerk";
 import {
   TbOutlineSparkles,
   TbOutlineUpload,
@@ -25,6 +26,7 @@ type ActiveTab = "send" | "receive" | "text" | "friends" | "history" | "settings
 export default function AppPage() {
   const [activeTab, setActiveTab] = createSignal<ActiveTab>("send");
   const [isInitializing, setIsInitializing] = createSignal(true);
+  const { isSignedIn } = useAuth();
 
   onMount(async () => {
     try {
@@ -36,34 +38,19 @@ export default function AppPage() {
     }
   });
 
-  const tabs = [
-    { id: "send" as ActiveTab, icon: TbOutlineUpload, label: t("common.send") },
-    {
-      id: "receive" as ActiveTab,
-      icon: TbOutlineDownload,
-      label: t("common.receive"),
-    },
-    {
-      id: "friends" as ActiveTab,
-      icon: TbOutlineUsers,
-      label: t("friends.title"),
-    },
-    {
-      id: "text" as ActiveTab,
-      icon: TbOutlineMessage,
-      label: t("common.text"),
-    },
-    {
-      id: "history" as ActiveTab,
-      icon: TbOutlineHistory,
-      label: t("common.history"),
-    },
-    {
-      id: "settings" as ActiveTab,
-      icon: TbOutlineSettings,
-      label: t("common.settings"),
-    },
-  ];
+  const tabs = () => {
+    const baseTabs = [
+      { id: "send" as ActiveTab, icon: TbOutlineUpload, label: t("common.send") },
+      { id: "receive" as ActiveTab, icon: TbOutlineDownload, label: t("common.receive") },
+      { id: "text" as ActiveTab, icon: TbOutlineMessage, label: t("common.text") },
+      { id: "history" as ActiveTab, icon: TbOutlineHistory, label: t("common.history") },
+      { id: "settings" as ActiveTab, icon: TbOutlineSettings, label: t("common.settings") },
+    ];
+    if (isSignedIn()) {
+      baseTabs.splice(2, 0, { id: "friends" as ActiveTab, icon: TbOutlineUsers, label: t("friends.title") });
+    }
+    return baseTabs;
+  };
 
   return (
     <div class="min-h-screen bg-base-100 text-base-content">
@@ -101,7 +88,7 @@ export default function AppPage() {
           >
             {/* Tab Navigation */}
             <div class="tabs tabs-boxed bg-base-200 flex">
-              {tabs.map((tab) => (
+              {tabs().map((tab) => (
                 <button
                   class={`tab gap-2 flex-1 ${activeTab() === tab.id ? "tab-active" : ""}`}
                   onClick={() => setActiveTab(tab.id)}
