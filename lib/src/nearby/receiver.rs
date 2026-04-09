@@ -1,8 +1,7 @@
 //! Receiver implementation for nearby transfer
 
 use anyhow::{Context, Result};
-use iroh::endpoint::Incoming;
-use iroh::{Endpoint, RelayMode};
+use iroh::{endpoint::{Incoming, presets::N0}, Endpoint};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -69,9 +68,9 @@ impl NearbyReceiver {
 
     /// Initialize the iroh endpoint
     pub async fn initialize(&mut self) -> Result<()> {
-        let endpoint = Endpoint::builder()
+        let endpoint = Endpoint::builder(N0)
             .secret_key(self.secret_key.clone())
-            .relay_mode(RelayMode::Disabled)
+            .relay_mode(iroh::RelayMode::Disabled)
             .alpns(vec![ALPN.to_vec()])
             .bind()
             .await

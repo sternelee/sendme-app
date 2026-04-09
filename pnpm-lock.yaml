@@ -4578,7 +4578,6 @@ packages:
   glob@11.1.0:
     resolution: {integrity: sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==}
     engines: {node: 20 || >=22}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@13.0.0:
@@ -4587,7 +4586,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+    deprecated: Glob versions prior to v9 are no longer supported
 
   globalthis@1.0.4:
     resolution: {integrity: sha512-DpLKbNU4WylpxJykQujfCcwYWiV/Jhm50Goo0wrVILAv5jOr9d+H+UR3PhSCD2rCCEIg0uc+G+muBTwD54JhDQ==}
@@ -9094,7 +9093,7 @@ snapshots:
       debug: 4.4.3
       invariant: 2.2.4
       metro: 0.83.5(bufferutil@4.1.0)
-      metro-config: 0.83.5(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      metro-config: 0.83.5(bufferutil@4.1.0)
       metro-core: 0.83.5
       semver: 7.7.4
     transitivePeerDependencies:
@@ -12548,6 +12547,21 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  metro-config@0.83.5(bufferutil@4.1.0):
+    dependencies:
+      connect: 3.7.0
+      flow-enums-runtime: 0.0.6
+      jest-validate: 29.7.0
+      metro: 0.83.5(bufferutil@4.1.0)
+      metro-cache: 0.83.5
+      metro-core: 0.83.5
+      metro-runtime: 0.83.5
+      yaml: 2.8.3
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
   metro-config@0.83.5(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     dependencies:
       connect: 3.7.0
@@ -12699,7 +12713,7 @@ snapshots:
       metro-babel-transformer: 0.83.5
       metro-cache: 0.83.5
       metro-cache-key: 0.83.5
-      metro-config: 0.83.5(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      metro-config: 0.83.5(bufferutil@4.1.0)
       metro-core: 0.83.5
       metro-file-map: 0.83.5
       metro-resolver: 0.83.5

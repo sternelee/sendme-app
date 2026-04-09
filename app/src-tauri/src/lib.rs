@@ -861,7 +861,7 @@ async fn ensure_nearby_runtime(app: &AppHandle, nearby: NearbyState) -> Result<(
     if guard.endpoint.is_none() {
         let secret_key = sendme_lib::get_or_create_secret(false)
             .map_err(|e| format!("Failed to create nearby secret: {e}"))?;
-        let endpoint = Endpoint::builder()
+        let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
             .secret_key(secret_key)
             .relay_mode(RelayMode::Disabled)
             .alpns(vec![sendme_lib::nearby::ALPN.to_vec()])

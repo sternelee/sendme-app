@@ -6,12 +6,8 @@ use std::{
     time::Instant,
 };
 
-use iroh::{discovery::pkarr::PkarrPublisher, Endpoint, RelayMode};
-use iroh_blobs::{
-    provider::events::{ConnectMode, EventMask, EventSender, ProviderMessage, RequestMode},
-    store::fs::FsStore,
-    BlobFormat, BlobsProtocol,
-};
+use iroh::{endpoint::presets::N0, Endpoint};
+use iroh_blobs::{protocol::ALPN, provider::events::{ConnectMode, EventMask, EventSender, ProviderMessage, RequestMode}, store::fs::FsStore, BlobFormat, BlobsProtocol};
 
 use n0_future::StreamExt;
 use tokio::select;
@@ -44,22 +40,18 @@ async fn send_internal(
     progress_tx: Option<ProgressSenderTx>,
 ) -> anyhow::Result<SendResult> {
     let secret_key = get_or_create_secret(args.common.show_secret)?;
-    let relay_mode: RelayMode = args.common.relay.into();
+    let relay_mode: iroh::RelayMode = args.common.relay.into();
 
-    let mut builder = Endpoint::builder()
-        .alpns(vec![iroh_blobs::protocol::ALPN.to_vec()])
+    let mut builder = Endpoint::builder(N0)
+        .alpns(vec![ALPN.to_vec()])
         .secret_key(secret_key)
         .relay_mode(relay_mode.clone());
 
-    if args.ticket_type == AddrInfoOptions::Id {
-        builder = builder.discovery(PkarrPublisher::n0_dns());
-    }
-
     if let Some(addr) = args.common.magic_ipv4_addr {
-        builder = builder.bind_addr_v4(addr);
+        builder = builder.bind_addr(addr)?;
     }
     if let Some(addr) = args.common.magic_ipv6_addr {
-        builder = builder.bind_addr_v6(addr);
+        builder = builder.bind_addr(addr)?;
     }
 
     // Create temporary directory for blob storage

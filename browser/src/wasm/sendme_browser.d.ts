@@ -43,6 +43,10 @@ export class SendmeNodeWasm {
   free(): void;
   [Symbol.dispose](): void;
   /**
+   * Create a new sendme node
+   */
+  static spawn(): Promise<SendmeNodeWasm>;
+  /**
    * Get the current relay URLs as a JS array
    */
   relay_urls(): Array<any>;
@@ -96,10 +100,6 @@ export class SendmeNodeWasm {
    */
   get(ticket: string): Promise<any>;
   /**
-   * Create a new sendme node
-   */
-  static spawn(): Promise<SendmeNodeWasm>;
-  /**
    * Check if a blob exists and is complete locally
    */
   has_blob(hash: string): Promise<any>;
@@ -121,33 +121,33 @@ export interface InitOutput {
   readonly sendmenodewasm_spawn: () => any;
   readonly sendmenodewasm_wait_for_ready: (a: number, b: number) => [number, number, number];
   readonly start: () => void;
+  readonly __wbg_intounderlyingsource_free: (a: number, b: number) => void;
+  readonly intounderlyingsource_cancel: (a: number) => void;
+  readonly intounderlyingsource_pull: (a: number, b: any) => any;
   readonly __wbg_intounderlyingsink_free: (a: number, b: number) => void;
   readonly intounderlyingsink_abort: (a: number, b: any) => any;
   readonly intounderlyingsink_close: (a: number) => any;
   readonly intounderlyingsink_write: (a: number, b: any) => any;
   readonly __wbg_intounderlyingbytesource_free: (a: number, b: number) => void;
-  readonly __wbg_intounderlyingsource_free: (a: number, b: number) => void;
   readonly intounderlyingbytesource_autoAllocateChunkSize: (a: number) => number;
   readonly intounderlyingbytesource_cancel: (a: number) => void;
   readonly intounderlyingbytesource_pull: (a: number, b: any) => any;
   readonly intounderlyingbytesource_start: (a: number, b: any) => void;
   readonly intounderlyingbytesource_type: (a: number) => number;
-  readonly intounderlyingsource_cancel: (a: number) => void;
-  readonly intounderlyingsource_pull: (a: number, b: any) => any;
   readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__h9411e5ba580a123e: (a: number, b: number) => void;
-  readonly wasm_bindgen__closure__destroy__hbeadccfe5059a0d0: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__h27f0ff5fc111899e: (a: number, b: number) => void;
-  readonly wasm_bindgen__closure__destroy__h15938cb60f66e89c: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__h487670b02c35e0d6: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen__closure__destroy__h4eec8ae8923c35b0: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__hc1e4661a74fedf28: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen__closure__destroy__haa6719961df58a36: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__hc308c6417f199c81: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen__closure__destroy__ha571a5fd5bc742f5: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__hc4e1880324a551e8: (a: number, b: number) => void;
-  readonly wasm_bindgen__closure__destroy__h6bbf86f155e9d8fe: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__habddf6f2a8863c83: (a: number, b: number, c: any, d: any) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke___web_sys_151e8c21c3b28caf___features__gen_CloseEvent__CloseEvent_____: (a: number, b: number, c: any) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__FnMut__web_sys_151e8c21c3b28caf___features__gen_CloseEvent__CloseEvent____Output_______: (a: number, b: number) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke______: (a: number, b: number) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__FnMut_____Output_______: (a: number, b: number) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke___web_sys_151e8c21c3b28caf___features__gen_MessageEvent__MessageEvent_____: (a: number, b: number, c: any) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__FnMut__web_sys_151e8c21c3b28caf___features__gen_MessageEvent__MessageEvent____Output_______: (a: number, b: number) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke______: (a: number, b: number) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__FnMut_____Output_______: (a: number, b: number) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke___wasm_bindgen_4dcbc014fc32cd2c___JsValue_____: (a: number, b: number, c: any) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__FnMut__wasm_bindgen_4dcbc014fc32cd2c___JsValue____Output_______: (a: number, b: number) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke______: (a: number, b: number) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__Fn_____Output_______: (a: number, b: number) => void;
+  readonly wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke___wasm_bindgen_4dcbc014fc32cd2c___JsValue__wasm_bindgen_4dcbc014fc32cd2c___JsValue_____: (a: number, b: number, c: any, d: any) => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_exn_store: (a: number) => void;

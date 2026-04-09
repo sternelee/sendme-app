@@ -1,6 +1,6 @@
 //! Receive functionality - downloading files.
 
-use iroh::{discovery::dns::DnsDiscovery, Endpoint};
+use iroh::{endpoint::presets::N0, Endpoint};
 use iroh_blobs::{
     format::collection::Collection,
     get::{request::get_hash_seq_and_sizes, GetError, Stats},
@@ -39,20 +39,19 @@ async fn receive_internal(
     let ticket = args.ticket;
     let addr = ticket.addr().clone();
     let secret_key = get_or_create_secret(args.common.show_secret)?;
-    let mut builder = Endpoint::builder()
+    let mut builder = Endpoint::builder(N0)
         .alpns(vec![])
         .secret_key(secret_key)
         .relay_mode(args.common.relay.into());
 
-    if ticket.addr().relay_urls().next().is_none() && ticket.addr().ip_addrs().next().is_none() {
-        builder = builder.discovery(DnsDiscovery::n0_dns());
-    }
+    // N0 preset already includes address_lookup (PkarrPublisher + DnsAddressLookup)
+    // No need for additional discovery
 
     if let Some(addr) = args.common.magic_ipv4_addr {
-        builder = builder.bind_addr_v4(addr);
+        builder = builder.bind_addr(addr)?;
     }
     if let Some(addr) = args.common.magic_ipv6_addr {
-        builder = builder.bind_addr_v6(addr);
+        builder = builder.bind_addr(addr)?;
     }
 
     let endpoint = builder.bind().await?;
