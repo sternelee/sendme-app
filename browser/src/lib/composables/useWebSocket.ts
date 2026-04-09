@@ -9,19 +9,50 @@
 
 import { createSignal, createEffect, onCleanup, batch } from "solid-js";
 import { useAuth } from "clerk-solidjs";
-import type { Device, Ticket } from "~/lib/db/schema";
+import type { Device, Ticket, Friend } from "~/lib/db/schema";
 
-export type { Device, Ticket };
+export type { Device, Ticket, Friend };
+
+/**
+ * Enriched friend type with user info and devices
+ */
+export interface EnrichedFriend {
+  id: string;
+  userId: string;
+  friendUserId: string;
+  status: "pending" | "accepted";
+  createdAt: Date;
+  updatedAt: Date;
+  acceptedAt: Date | null;
+  friend: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  };
+  friendDevices: Array<{
+    id: string;
+    name: string;
+    platform: string;
+    online: boolean;
+    lastSeenAt: Date;
+  }>;
+}
 
 // Inbound message types from the server
 type ServerMessageDevices = { type: "devices"; data: Device[] };
 type ServerMessageTickets = { type: "tickets"; data: Ticket[] };
-type ServerMessageDeviceUpdate = { type: "device_update"; data: Partial<Device> & { id: string } };
+type ServerMessageFriends = { type: "friends"; data: EnrichedFriend[] };
+type ServerMessageDeviceUpdate = {
+  type: "device_update";
+  data: Partial<Device> & { id: string };
+};
 type ServerMessagePong = { type: "pong" };
 type ServerMessageError = { type: "error"; data: string };
 type ServerMessage =
   | ServerMessageDevices
   | ServerMessageTickets
+  | ServerMessageFriends
   | ServerMessageDeviceUpdate
   | ServerMessagePong
   | ServerMessageError;
@@ -50,6 +81,7 @@ let sharedInstance: ReturnType<typeof createWebSocketStore> | null = null;
 function createWebSocketStore() {
   const [devices, setDevices] = createSignal<Device[]>([]);
   const [tickets, setTickets] = createSignal<Ticket[]>([]);
+  const [friends, setFriends] = createSignal<EnrichedFriend[]>([]);
   const [isConnected, setIsConnected] = createSignal(false);
 
   let ws: WebSocket | null = null;
@@ -117,6 +149,9 @@ function createWebSocketStore() {
         break;
       case "tickets":
         setTickets(msg.data);
+        break;
+      case "friends":
+        setFriends(msg.data);
         break;
       case "device_update":
         setDevices((prev) =>
@@ -193,7 +228,15 @@ function createWebSocketStore() {
     }
   };
 
-  return { devices, tickets, isConnected, connect, destroy, markTicketReceived };
+  return {
+    devices,
+    tickets,
+    friends,
+    isConnected,
+    connect,
+    destroy,
+    markTicketReceived,
+  };
 }
 
 /**
@@ -220,6 +263,7 @@ export function useWebSocket() {
   return {
     devices: instance.devices,
     tickets: instance.tickets,
+    friends: instance.friends,
     isConnected: instance.isConnected,
     markTicketReceived: instance.markTicketReceived,
   };

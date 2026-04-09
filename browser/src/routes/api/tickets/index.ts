@@ -5,8 +5,8 @@
 
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
-import { devices, tickets } from "~/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { devices, tickets, friends } from "~/lib/db/schema";
+import { eq, and, or, desc } from "drizzle-orm";
 import { authenticateRequest, type Env } from "~/lib/auth";
 
 /**
@@ -30,10 +30,12 @@ interface RequestEvent {
  * Request body for POST /api/tickets
  */
 interface PostTicketBody {
-  deviceId: string;
-  ticket: string;
-  filename?: string;
-  fileSize?: number;
+  deviceId?: string;       // Target device ID (for own device transfers)
+  friendUserId?: string;   // Target friend's user ID (for friend transfers)
+  fromDeviceId?: string;   // Source device ID (the device sending this ticket)
+  ticket: string;          // The ticket string
+  filename?: string;       // Optional filename
+  fileSize?: number;       // Optional file size in bytes
 }
 
 /**
@@ -62,43 +64,97 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
 
     const body = await requestEvent.request.json() as PostTicketBody;
 
-    if (!body.deviceId || !body.ticket) {
+    if (!body.ticket) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: deviceId, ticket" }),
+        JSON.stringify({ error: "Missing required field: ticket" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!body.deviceId && !body.friendUserId) {
+      return new Response(
+        JSON.stringify({ error: "Missing deviceId or friendUserId" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
     const db = drizzle(env.DB!, { schema });
 
-    // Verify the target device belongs to the user
-    const targetDevice = await db.query.devices.findFirst({
-      where: (devices, { eq, and }) =>
-        and(eq(devices.id, body.deviceId), eq(devices.userId, userId)),
-    });
+    let targetUserId: string;
+    let targetDeviceId: string | null = null;
 
-    if (!targetDevice) {
-      return new Response(
-        JSON.stringify({ error: "Device not found" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
-    }
+    // Case 1: Sending to own device
+    if (body.deviceId) {
+      const targetDevice = await db.query.devices.findFirst({
+        where: and(eq(devices.id, body.deviceId), eq(devices.userId, userId)),
+      });
 
-    if (!targetDevice.online) {
+      if (!targetDevice) {
+        return new Response(
+          JSON.stringify({ error: "Device not found" }),
+          { status: 404, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!targetDevice.online) {
+        return new Response(
+          JSON.stringify({ error: "Target device is offline" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      targetUserId = userId;
+      targetDeviceId = body.deviceId;
+    } 
+    // Case 2: Sending to a friend
+    else if (body.friendUserId) {
+      // Verify friendship exists and is accepted
+      const friendship = await db.query.friends.findFirst({
+        where: or(
+          and(
+            eq(friends.userId, userId),
+            eq(friends.friendUserId, body.friendUserId),
+            eq(friends.status, "accepted"),
+          ),
+          and(
+            eq(friends.userId, body.friendUserId),
+            eq(friends.friendUserId, userId),
+            eq(friends.status, "accepted"),
+          ),
+        ),
+      });
+
+      if (!friendship) {
+        return new Response(
+          JSON.stringify({ error: "Not friends with this user or friendship not accepted" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      targetUserId = body.friendUserId;
+      // Target device will be NULL for friend transfers - ticket goes to all friend's devices
+    } else {
       return new Response(
-        JSON.stringify({ error: "Target device is offline" }),
+        JSON.stringify({ error: "Invalid target" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
     // Create ticket record (expires in 24 hours)
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const fromDeviceId = body.fromDeviceId || body.deviceId || "";
+    // For friend transfers, fromUserId is the current user (sender)
+    // For own device transfers, fromUserId is NULL (same user)
+    const fromUserId = body.friendUserId ? userId : null;
     const newTicket = await db
       .insert(schema.tickets)
       .values({
         id: crypto.randomUUID(),
-        userId: userId,
-        fromDeviceId: body.deviceId,
+        userId: targetUserId,
+        fromUserId,
+        fromDeviceId,
+        toUserId: targetDeviceId ? null : targetUserId,
+        toDeviceId: targetDeviceId,
         ticket: body.ticket,
         filename: body.filename || null,
         fileSize: body.fileSize || null,
@@ -110,15 +166,15 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       .returning()
       .get();
 
-    // Broadcast new ticket to all this user's WS sessions via DO
+    // Broadcast new ticket to target user's WS sessions via DO
     try {
-      const doId = env.USER_DO.idFromName(userId);
+      const doId = env.USER_DO.idFromName(targetUserId);
       const stub = env.USER_DO.get(doId);
       await stub.fetch(
         new Request("https://do/broadcast/tickets", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId }),
+          body: JSON.stringify({ userId: targetUserId }),
         }),
       );
     } catch (broadcastErr) {
@@ -147,7 +203,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
  * Query params:
  * - deviceId: string - Current device ID
  *
- * Returns tickets sent to this device that haven't been received yet
+ * Returns tickets sent to this device or from friends that haven't been received yet
  */
 export async function GET(requestEvent: RequestEvent): Promise<Response> {
   try {
@@ -174,16 +230,20 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
 
     const db = drizzle(env.DB!, { schema });
 
-    // Get pending tickets for this device
-    const pendingTickets = await db.query.tickets.findMany({
-      where: (tickets, { eq, and }) =>
-        and(
-          eq(tickets.fromDeviceId, deviceId),
-          eq(tickets.status, "pending"),
-          eq(tickets.userId, userId),
-        ),
+    // Get pending tickets for this device (own device transfers)
+    // OR tickets from friends (friend-to-friend transfers)
+    const allPendingTickets = await db.query.tickets.findMany({
+      where: and(
+        eq(tickets.userId, userId),
+        eq(tickets.status, "pending"),
+      ),
       orderBy: [desc(schema.tickets.createdAt)],
     });
+
+    // Filter to tickets for this specific device OR friend tickets (toDeviceId is NULL)
+    const pendingTickets = allPendingTickets.filter((t) => 
+      t.toDeviceId === deviceId || (t.toDeviceId === null && t.toUserId !== null)
+    );
 
     return new Response(JSON.stringify(pendingTickets), {
       status: 200,

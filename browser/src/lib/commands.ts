@@ -119,7 +119,7 @@ export async function getEndpointId(): Promise<string> {
  * Download data as a file
  */
 export function downloadFile(data: Uint8Array, filename: string): void {
-  const blob = new Blob([data]);
+  const blob = new Blob([data as BlobPart]);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

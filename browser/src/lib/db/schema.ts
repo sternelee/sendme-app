@@ -218,8 +218,8 @@ export const devices = sqliteTable(
 );
 
 /**
- * Tickets table - stores tickets sent between user's devices
- * Used for device-to-device file transfer synchronization
+ * Tickets table - stores tickets sent between user's devices and friends
+ * Used for device-to-device and friend-to-friend file transfer synchronization
  */
 export const tickets = sqliteTable(
   "tickets",
@@ -228,10 +228,16 @@ export const tickets = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // Target device ID (the device that should receive this ticket)
+    // Source user ID (the user who sent this ticket, NULL for own device transfers)
+    fromUserId: text("from_user_id"),
+    // Source device ID (the device that sent this ticket)
     fromDeviceId: text("from_device_id")
       .notNull()
       .references(() => devices.id, { onDelete: "cascade" }),
+    // Target user ID (for friend-to-friend transfers, NULL for own device transfers)
+    toUserId: text("to_user_id"),
+    // Target device ID (for own device transfers, NULL for friend transfers)
+    toDeviceId: text("to_device_id"),
     // The actual ticket string
     ticket: text("ticket").notNull(),
     // Optional file metadata
@@ -251,9 +257,47 @@ export const tickets = sqliteTable(
   },
   (table) => ({
     userIdIdx: index("tickets_user_id_idx").on(table.userId),
+    fromUserIdIdx: index("tickets_from_user_id_idx").on(table.fromUserId),
     fromDeviceIdx: index("tickets_from_device_idx").on(table.fromDeviceId),
+    toUserIdIdx: index("tickets_to_user_id_idx").on(table.toUserId),
+    toDeviceIdx: index("tickets_to_device_idx").on(table.toDeviceId),
     statusIdx: index("tickets_status_idx").on(table.status),
     expiresAtIdx: index("tickets_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
+/**
+ * Friends table - tracks friend relationships between users
+ * Bidirectional friendship (both users must accept)
+ */
+export const friends = sqliteTable(
+  "friends",
+  {
+    id: text("id").primaryKey(),
+    // The user who initiated the friend request
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // The user who received the friend request
+    friendUserId: text("friend_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Friendship status: pending (awaiting acceptance), accepted
+    status: text("status").notNull(), // 'pending', 'accepted'
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    acceptedAt: integer("accepted_at", { mode: "timestamp" }),
+  },
+  (table) => ({
+    userIdIdx: index("friends_user_id_idx").on(table.userId),
+    friendUserIdIdx: index("friends_friend_user_id_idx").on(table.friendUserId),
+    statusIdx: index("friends_status_idx").on(table.status),
+    // Ensure no duplicate friend requests between same pair
+    uniqueFriendIdx: index("friends_unique_idx").on(table.userId, table.friendUserId),
   }),
 );
 
@@ -272,6 +316,8 @@ export type Device = typeof devices.$inferSelect;
 export type NewDevice = typeof devices.$inferInsert;
 export type Ticket = typeof tickets.$inferSelect;
 export type NewTicket = typeof tickets.$inferInsert;
+export type Friend = typeof friends.$inferSelect;
+export type NewFriend = typeof friends.$inferInsert;
 
 // Re-export tables with singular names for better-auth compatibility
 export const user = users;

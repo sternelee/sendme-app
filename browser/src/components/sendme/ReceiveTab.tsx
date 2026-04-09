@@ -1,8 +1,9 @@
-import { Show, For } from "solid-js";
+import { Show, For, createMemo } from "solid-js";
 import toast from "solid-toast";
 import { receiveFile, downloadFile } from "../../lib/commands";
 import { i18n } from "../../lib/i18n";
 import { useGlobalStore } from "../../lib/store";
+import { useWebSocket } from "../../lib/composables/useWebSocket";
 import {
   TbOutlineDownload,
   TbOutlineCheck,
@@ -14,8 +15,10 @@ import {
   TbOutlineFile,
   TbOutlinePhoto,
   TbOutlineVideo,
+  TbOutlineUsers,
 } from "solid-icons/tb";
 import { useTicketPolling } from "~/lib/composables/useTicketPolling";
+import type { Ticket, EnrichedFriend } from "~/lib/composables/useWebSocket";
 
 const t = i18n.t;
 
@@ -42,12 +45,13 @@ function isPreviewable(filename: string): boolean {
 
 function createPreviewUrl(data: Uint8Array, filename: string): string {
   const mime = getMimeType(filename);
-  const blob = new Blob([data], { type: mime });
+  const blob = new Blob([data as BlobPart], { type: mime });
   return URL.createObjectURL(blob);
 }
 
 export default function ReceiveTab(props: { isActive?: boolean }) {
   const globalStore = useGlobalStore();
+  const { friends } = useWebSocket();
 
   const ticket = () => globalStore.receive.state().ticket;
   const isReceiving = () => globalStore.receive.state().isReceiving;
@@ -55,6 +59,30 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
   const error = () => globalStore.receive.state().error;
 
   const { tickets } = useTicketPolling(() => props.isActive || false);
+
+  // Create a map of user ID to friend info for lookup
+  const friendByUserId = createMemo(() => {
+    const map = new Map<string, EnrichedFriend>();
+    for (const f of friends()) {
+      if (f.status === "accepted") {
+        map.set(f.friendUserId, f);
+      }
+    }
+    return map;
+  });
+
+  /**
+   * Get sender info for a ticket (for friend-to-friend transfers)
+   */
+  function getSenderName(ticketItem: any) {
+    if (ticketItem.fromUserId) {
+      const friend = friendByUserId().get(ticketItem.fromUserId);
+      if (friend) {
+        return friend.friend.name;
+      }
+    }
+    return null; // Own device transfer
+  }
 
   async function handleReceive() {
     const ticketValue = ticket().trim();
@@ -132,37 +160,43 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
         </div>
         <div class="space-y-2 max-h-40 overflow-y-auto">
           <For each={tickets()}>
-            {(incomingTicket) => (
-              <div
-                class="flex items-center gap-3 p-3 rounded-xl bg-base-300/50 hover:bg-base-300 cursor-pointer transition-colors"
-                onClick={() =>
-                  useIncomingTicket(
-                    incomingTicket.ticket,
-                    incomingTicket.filename,
-                  )
-                }
-              >
-                <div class="w-8 h-8 rounded-lg bg-primary/20 text-primary flex items-center justify-center">
-                  <TbOutlineDeviceMobile size={16} />
+            {(incomingTicket) => {
+              const senderName = getSenderName(incomingTicket);
+              const isFromFriend = !!senderName;
+
+              return (
+                <div
+                  class="flex items-center gap-3 p-3 rounded-xl bg-base-300/50 hover:bg-base-300 cursor-pointer transition-colors"
+                  onClick={() =>
+                    useIncomingTicket(
+                      incomingTicket.ticket,
+                      incomingTicket.filename,
+                    )
+                  }
+                >
+                  <div class={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    isFromFriend ? "bg-secondary/20 text-secondary" : "bg-primary/20 text-primary"
+                  }`}>
+                    {isFromFriend ? <TbOutlineUsers size={16} /> : <TbOutlineDeviceMobile size={16} />}
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium truncate">
+                      {incomingTicket.filename || t("receive.unnamedFile") || "Unnamed file"}
+                    </p>
+                    <p class="text-xs text-base-content/50">
+                      {isFromFriend
+                        ? `From ${senderName}`
+                        : "From your device"}
+                      {" • "}
+                      {incomingTicket.fileSize
+                        ? `${(incomingTicket.fileSize / 1024 / 1024).toFixed(2)} MB`
+                        : t("receive.unknownSize") || "Unknown size"}
+                    </p>
+                  </div>
+                  <TbOutlineCheck size={16} class="text-primary" />
                 </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium truncate">
-                    {incomingTicket.filename ||
-                      t("receive.unnamedFile") ||
-                      "Unnamed file"}
-                  </p>
-                  <p class="text-xs text-base-content/50">
-                    {incomingTicket.fileSize
-                      ? `${(incomingTicket.fileSize / 1024 / 1024).toFixed(2)} MB`
-                      : t("receive.unknownSize") || "Unknown size"}
-                  </p>
-                </div>
-                <TbOutlineCheck
-                  size={16}
-                  class="text-primary opacity-0 group-hover:opacity-100"
-                />
-              </div>
-            )}
+              );
+            }}
           </For>
         </div>
       </Show>

@@ -7,23 +7,51 @@
 import { DurableObject } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
-import { devices, tickets } from "~/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { devices, tickets, friends, users } from "~/lib/db/schema";
+import { eq, and, or, desc } from "drizzle-orm";
 import type { Env } from "~/lib/auth";
 
 type Device = schema.Device;
 type Ticket = schema.Ticket;
+type Friend = schema.Friend;
 
 type WebSocketMessageDevices = { type: "devices"; data: Device[] };
 type WebSocketMessageTickets = { type: "tickets"; data: Ticket[] };
 type WebSocketMessageDeviceUpdate = { type: "device_update"; data: Partial<Device> & { id: string } };
+type WebSocketMessageFriends = { type: "friends"; data: EnrichedFriend[] };
+type WebSocketMessageFriendRequest = { type: "friend_request"; data: EnrichedFriend };
 type WebSocketMessageError = { type: "error"; data: string };
 type WebSocketMessagePong = { type: "pong" };
+
+interface EnrichedFriend {
+  id: string;
+  userId: string;
+  friendUserId: string;
+  status: "pending" | "accepted";
+  createdAt: Date;
+  updatedAt: Date;
+  acceptedAt: Date | null;
+  friend: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  };
+  friendDevices: Array<{
+    id: string;
+    name: string;
+    platform: string;
+    online: boolean;
+    lastSeenAt: Date;
+  }>;
+}
 
 type WebSocketMessage =
   | WebSocketMessageDevices
   | WebSocketMessageTickets
   | WebSocketMessageDeviceUpdate
+  | WebSocketMessageFriends
+  | WebSocketMessageFriendRequest
   | WebSocketMessageError
   | WebSocketMessagePong;
 
@@ -70,6 +98,12 @@ export class UserDO extends DurableObject<Env> {
       return new Response("ok");
     }
 
+    if (pathname.endsWith("/broadcast/friends") && request.method === "POST") {
+      const { userId } = (await request.json()) as { userId: string };
+      await this.sendFriends(userId);
+      return new Response("ok");
+    }
+
     return new Response("Not found", { status: 404 });
   }
 
@@ -113,6 +147,7 @@ export class UserDO extends DurableObject<Env> {
     // Send initial state
     this.sendDevices(userId, ws);
     this.sendTickets(userId, ws);
+    this.sendFriends(userId, ws);
   }
 
   private handleDisconnect(ws: WebSocket, deviceId: string): void {
@@ -220,6 +255,66 @@ export class UserDO extends DurableObject<Env> {
     const message: WebSocketMessage = {
       type: "tickets",
       data: userTickets,
+    };
+
+    if (ws) {
+      ws.send(JSON.stringify(message));
+    } else {
+      this.broadcastToUser(message);
+    }
+  }
+
+  /**
+   * Send friends list to a specific WebSocket or broadcast to all user sessions
+   */
+  async sendFriends(userId: string, ws?: WebSocket): Promise<void> {
+    const db = drizzle(this.env.DB, { schema });
+
+    // Get all friendships (both directions)
+    const userFriendships = await db.query.friends.findMany({
+      where: or(
+        eq(friends.userId, userId),
+        eq(friends.friendUserId, userId),
+      ),
+      orderBy: [desc(schema.friends.updatedAt)],
+    });
+
+    // Enrich with friend user info and devices
+    const enrichedFriends: EnrichedFriend[] = [];
+    for (const friendship of userFriendships) {
+      const friendUserId = friendship.userId === userId 
+        ? friendship.friendUserId 
+        : friendship.userId;
+
+      const friendUser = await db.query.users.findFirst({
+        where: eq(users.id, friendUserId),
+        columns: { id: true, name: true, email: true, image: true },
+      });
+
+      if (!friendUser) continue;
+
+      // Get friend's online devices
+      const friendDevicesList = await db.query.devices.findMany({
+        where: and(
+          eq(devices.userId, friendUserId),
+          eq(devices.online, true),
+        ),
+        columns: { id: true, name: true, platform: true, online: true, lastSeenAt: true },
+        orderBy: [desc(devices.lastSeenAt)],
+        limit: 10,
+      });
+
+      enrichedFriends.push({
+        ...friendship,
+        status: friendship.status as "pending" | "accepted",
+        friend: friendUser,
+        friendDevices: friendDevicesList,
+      });
+    }
+
+    const message: WebSocketMessage = {
+      type: "friends",
+      data: enrichedFriends,
     };
 
     if (ws) {

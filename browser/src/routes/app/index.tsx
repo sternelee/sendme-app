@@ -3,6 +3,7 @@ import { initWasm } from "../../lib/commands";
 import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
 import TextTab from "../../components/sendme/TextTab";
+import FriendsTab from "../../components/sendme/FriendsTab";
 import { ThemeSwitcher } from "../../lib/ThemeSwitcher";
 import { LanguageSwitcher } from "../../lib/LanguageSwitcher";
 import { i18n } from "../../lib/i18n";
@@ -14,11 +15,12 @@ import {
   TbOutlineMessage,
   TbOutlineHistory,
   TbOutlineSettings,
+  TbOutlineUsers,
 } from "solid-icons/tb";
 
 const t = i18n.t;
 
-type ActiveTab = "send" | "receive" | "text" | "history" | "settings";
+type ActiveTab = "send" | "receive" | "text" | "friends" | "history" | "settings";
 
 export default function AppPage() {
   const [activeTab, setActiveTab] = createSignal<ActiveTab>("send");
@@ -40,6 +42,11 @@ export default function AppPage() {
       id: "receive" as ActiveTab,
       icon: TbOutlineDownload,
       label: t("common.receive"),
+    },
+    {
+      id: "friends" as ActiveTab,
+      icon: TbOutlineUsers,
+      label: t("friends.title"),
     },
     {
       id: "text" as ActiveTab,
@@ -114,6 +121,9 @@ export default function AppPage() {
                   </Show>
                   <Show when={activeTab() === "receive"}>
                     <ReceiveTab isActive={true} />
+                  </Show>
+                  <Show when={activeTab() === "friends"}>
+                    <FriendsTab />
                   </Show>
                   <Show when={activeTab() === "text"}>
                     <TextTab />

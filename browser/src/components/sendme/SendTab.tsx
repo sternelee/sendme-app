@@ -1,9 +1,10 @@
-import { Show, For, onCleanup } from "solid-js";
+import { Show, For, onCleanup, createSignal } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
 import { useAuth } from "../../lib/contexts/user-clerk";
 import { i18n } from "../../lib/i18n";
 import { useGlobalStore } from "../../lib/store";
+import { useWebSocket, type EnrichedFriend, getDeviceId } from "../../lib/composables/useWebSocket";
 import {
   TbOutlineUpload,
   TbOutlineCheck,
@@ -15,9 +16,11 @@ import {
   TbOutlineFile,
   TbOutlinePhoto,
   TbOutlineVideo,
+  TbOutlineUsers,
+  TbOutlineSend,
 } from "solid-icons/tb";
 import DeviceListModal from "../devices/DeviceListModal";
-import type { Device } from "../../lib/composables/useWebSession";
+import type { Device } from "../../lib/composables/useWebSocket";
 
 const t = i18n.t;
 
@@ -41,6 +44,8 @@ function isPreviewable(file: File): boolean {
 export default function SendTab() {
   const auth = useAuth();
   const globalStore = useGlobalStore();
+  const { friends } = useWebSocket();
+  const [isFriendModalOpen, setIsFriendModalOpen] = createSignal(false);
 
   const file = () => globalStore.send.state().file;
   const files = () => globalStore.send.state().files;
@@ -49,6 +54,14 @@ export default function SendTab() {
   const isSending = () => globalStore.send.state().isSending;
   const isDragging = () => globalStore.send.state().isDragging;
   const isDeviceModalOpen = () => globalStore.send.state().isDeviceModalOpen;
+
+  // Filter accepted friends with online devices
+  const onlineFriends = () =>
+    friends().filter(
+      (f) =>
+        f.status === "accepted" &&
+        f.friendDevices.some((d) => d.online)
+    );
 
   let fileInputRef: HTMLInputElement | undefined;
   let folderInputRef: HTMLInputElement | undefined;
@@ -165,6 +178,7 @@ export default function SendTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           deviceId: device.deviceId,
+          fromDeviceId: getDeviceId(),
           ticket: ticket(),
           filename: isFolder()
             ? currentFiles[0]?.webkitRelativePath?.split("/")[0] || "Folder"
@@ -180,6 +194,39 @@ export default function SendTab() {
       globalStore.send.setIsDeviceModalOpen(false);
     } catch (error) {
       console.error("Failed to send ticket:", error);
+      toast.error(t("send.sendToDevice") + ": " + (error as Error).message);
+    }
+  }
+
+  async function handleSendToFriend(friend: EnrichedFriend) {
+    try {
+      const currentFile = file();
+      const currentFiles = files();
+      const response = await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          friendUserId: friend.friendUserId,
+          fromDeviceId: getDeviceId(),
+          ticket: ticket(),
+          filename: isFolder()
+            ? currentFiles[0]?.webkitRelativePath?.split("/")[0] || "Folder"
+            : currentFile?.name,
+          fileSize: isFolder()
+            ? currentFiles.reduce((acc, f) => acc + f.size, 0)
+            : currentFile?.size,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error || "Failed to send ticket to friend");
+      }
+
+      toast.success(`Ticket sent to ${friend.friend.name}!`);
+      setIsFriendModalOpen(false);
+    } catch (error) {
+      console.error("Failed to send ticket to friend:", error);
       toast.error(t("send.sendToDevice") + ": " + (error as Error).message);
     }
   }
@@ -381,6 +428,14 @@ export default function SendTab() {
               <TbOutlineDevices size={16} /> {t("send.sendToDevice")}
             </button>
           </Show>
+          <Show when={auth.isSignedIn() && onlineFriends().length > 0}>
+            <button
+              onClick={() => setIsFriendModalOpen(true)}
+              class="btn btn-outline flex-1"
+            >
+              <TbOutlineUsers size={16} /> {t("friends.sendFile")}
+            </button>
+          </Show>
         </div>
       </Show>
 
@@ -391,6 +446,106 @@ export default function SendTab() {
         showSendButton={true}
         onSendToDevice={handleSendToDevice}
       />
+
+      {/* Friend Picker Modal */}
+      <Show when={isFriendModalOpen()}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setIsFriendModalOpen(false)}
+          />
+          <div class="relative glass rounded-3xl p-6 max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div class="flex items-center justify-between mb-6">
+              <div>
+                <h2 class="text-xl font-semibold">{t("friends.sendFile")}</h2>
+                <p class="text-sm text-base-content/50 mt-1">
+                  {onlineFriends().length} friend{onlineFriends().length !== 1 ? "s" : ""} online
+                </p>
+              </div>
+              <button
+                onClick={() => setIsFriendModalOpen(false)}
+                class="p-2 rounded-xl bg-base-200 hover:bg-base-300 transition-colors"
+              >
+                <TbOutlineX size={18} />
+              </button>
+            </div>
+
+            {/* Friends List */}
+            <div class="flex-1 overflow-y-auto -mx-2 px-2">
+              <Show
+                when={onlineFriends().length > 0}
+                fallback={
+                  <div class="text-center py-12 text-base-content/50">
+                    <TbOutlineUsers size={48} class="mx-auto mb-3 opacity-50" />
+                    <p class="text-sm">{t("friends.noFriends")}</p>
+                  </div>
+                }
+              >
+                <div class="space-y-2">
+                  <For each={onlineFriends()}>
+                    {(friend) => (
+                      <button
+                        onClick={() => handleSendToFriend(friend)}
+                        class="w-full group relative p-4 rounded-xl border bg-base-200 border-base-300 hover:border-primary/50 hover:bg-primary/5 transition-all text-left"
+                      >
+                        <div class="flex items-center gap-3">
+                          {/* Avatar */}
+                          <div class="avatar placeholder">
+                            <div class="bg-primary text-primary-content rounded-full w-12 h-12">
+                              <Show
+                                when={friend.friend.image}
+                                fallback={
+                                  <span class="text-lg">
+                                    {friend.friend.name.charAt(0).toUpperCase()}
+                                  </span>
+                                }
+                              >
+                                <img
+                                  src={friend.friend.image!}
+                                  alt={friend.friend.name}
+                                />
+                              </Show>
+                            </div>
+                          </div>
+
+                          {/* Info */}
+                          <div class="flex-1 min-w-0">
+                            <h3 class="font-medium truncate">
+                              {friend.friend.name}
+                            </h3>
+                            <p class="text-xs text-base-content/60 truncate">
+                              {friend.friend.email}
+                            </p>
+                            <Show when={friend.friendDevices.length > 0}>
+                              <div class="flex items-center gap-1 mt-1 text-xs text-base-content/40">
+                                <For each={friend.friendDevices.slice(0, 3)}>
+                                  {(device) => (
+                                    <span class="text-[10px] capitalize">
+                                      {device.platform}
+                                    </span>
+                                  )}
+                                </For>
+                              </div>
+                            </Show>
+                          </div>
+
+                          {/* Send button */}
+                          <div class="flex-shrink-0">
+                            <div class="btn btn-primary btn-sm">
+                              <TbOutlineSend size={14} />
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </div>
+        </div>
+      </Show>
     </div>
   );
 }
