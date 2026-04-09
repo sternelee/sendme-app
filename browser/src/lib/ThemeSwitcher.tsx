@@ -1,11 +1,7 @@
 import { createSignal, createEffect, onMount, For, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
-import {
-  TbOutlineSun,
-  TbOutlineMoon,
-  TbOutlineDeviceDesktop,
-  TbOutlineCheck,
-} from "solid-icons/tb";
+import { FiChevronDown } from "solid-icons/fi";
+import { TbOutlineSun } from "solid-icons/tb";
+import { cn } from "../lib/utils";
 
 interface ThemeSwitcherProps {
   class?: string;
@@ -17,34 +13,13 @@ interface ThemeOption {
   icon: typeof TbOutlineSun;
 }
 
-const themes: ThemeOption[] = [
-  { id: "light", name: "Light", icon: TbOutlineSun },
-  { id: "dark", name: "Dark", icon: TbOutlineMoon },
-  { id: "cupcake", name: "Cupcake", icon: TbOutlineSun },
-  { id: "synthwave", name: "Synthwave", icon: TbOutlineDeviceDesktop },
-  { id: "cyberpunk", name: "Cyberpunk", icon: TbOutlineDeviceDesktop },
-  { id: "valentine", name: "Valentine", icon: TbOutlineSun },
-  { id: "halloween", name: "Halloween", icon: TbOutlineMoon },
-  { id: "forest", name: "Forest", icon: TbOutlineDeviceDesktop },
-  { id: "aqua", name: "Aqua", icon: TbOutlineSun },
-  { id: "lofi", name: "Lo-Fi", icon: TbOutlineMoon },
-  { id: "pastel", name: "Pastel", icon: TbOutlineSun },
-  { id: "fantasy", name: "Fantasy", icon: TbOutlineDeviceDesktop },
-  { id: "black", name: "Black", icon: TbOutlineMoon },
-  { id: "luxury", name: "Luxury", icon: TbOutlineMoon },
-  { id: "dracula", name: "Dracula", icon: TbOutlineDeviceDesktop },
-  { id: "cmyk", name: "CMYK", icon: TbOutlineSun },
-  { id: "autumn", name: "Autumn", icon: TbOutlineMoon },
-  { id: "business", name: "Business", icon: TbOutlineDeviceDesktop },
-  { id: "night", name: "Night", icon: TbOutlineMoon },
-  { id: "coffee", name: "Coffee", icon: TbOutlineDeviceDesktop },
-  { id: "winter", name: "Winter", icon: TbOutlineSun },
-  { id: "dim", name: "Dim", icon: TbOutlineMoon },
-  { id: "nord", name: "Nord", icon: TbOutlineDeviceDesktop },
-  { id: "sunset", name: "Sunset", icon: TbOutlineSun },
-  { id: "caramellatte", name: "Caramel", icon: TbOutlineSun },
-  { id: "abyss", name: "Abyss", icon: TbOutlineMoon },
-  { id: "silk", name: "Silk", icon: TbOutlineSun },
+const themes = [
+  { id: "light", name: "Light" },
+  { id: "sunset", name: "Sunset" },
+  { id: "black", name: "Black" },
+  { id: "synthwave", name: "Synthwave" },
+  { id: "abyss", name: "Abyss" },
+  { id: "luxury", name: "Luxury" },
 ];
 
 export function ThemeSwitcher(props: ThemeSwitcherProps) {
@@ -53,7 +28,6 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
 
   const currentThemeInfo = () =>
     themes.find((t) => t.id === currentTheme()) || themes[1];
-  const CurrentIcon = () => currentThemeInfo().icon;
 
   onMount(() => {
     const savedTheme = localStorage.getItem("theme") || "dark";
@@ -90,10 +64,20 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
         onClick={() => setIsOpen(!isOpen())}
         class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-base-content/10"
       >
-        <Dynamic component={CurrentIcon()} size={18} />
-        <span class="text-sm font-medium hidden sm:inline">
-          {currentThemeInfo().name}
-        </span>
+        <div class="bg-base-100 group-hover:border-base-content/20 border-base-content/10 grid shrink-0 grid-cols-2 gap-0.5 rounded-md border p-1 transition-colors">
+          <div class="bg-base-content size-1 rounded-full"></div>{" "}
+          <div class="bg-primary size-1 rounded-full"></div>{" "}
+          <div class="bg-secondary size-1 rounded-full"></div>{" "}
+          <div class="bg-accent size-1 rounded-full"></div>
+        </div>
+        <span class="hidden sm:inline">{currentThemeInfo().name}</span>
+        <FiChevronDown
+          size={14}
+          class={cn(
+            "transition-transform duration-200",
+            isOpen() && "rotate-180",
+          )}
+        />
       </button>
 
       <Show when={isOpen()}>
@@ -108,16 +92,36 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
                   <button
                     type="button"
                     onClick={() => handleThemeChange(theme.id)}
-                    class={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                    data-theme={theme.id}
+                    class={cn(
+                      "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
                       currentTheme() === theme.id
-                        ? "bg-primary text-primary-content"
-                        : "hover:bg-base-200"
-                    }`}
+                        ? "bg-primary/10 text-primary"
+                        : "hover:bg-muted",
+                    )}
                   >
-                    <Dynamic component={theme.icon} size={16} />
-                    <span class="text-sm flex-1 text-left">{theme.name}</span>
+                    <div class="w-5 h-5 rounded-full flex items-center justify-center">
+                      <div class="bg-base-100 group-hover:border-base-content/20 border-base-content/10 grid shrink-0 grid-cols-2 gap-0.5 rounded-md border p-1 transition-colors">
+                        <div class="bg-base-content size-1 rounded-full"></div>{" "}
+                        <div class="bg-primary size-1 rounded-full"></div>{" "}
+                        <div class="bg-secondary size-1 rounded-full"></div>{" "}
+                        <div class="bg-accent size-1 rounded-full"></div>
+                      </div>
+                    </div>
+                    <span class="text-sm">{theme.name}</span>
                     <Show when={currentTheme() === theme.id}>
-                      <TbOutlineCheck size={16} />
+                      <div class="ml-auto">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </div>
                     </Show>
                   </button>
                 )}
