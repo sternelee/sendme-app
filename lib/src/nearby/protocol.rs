@@ -21,19 +21,14 @@ pub enum Message {
         total_size: u64,
     },
     /// Accept - receiver accepts transfer
-    Accept {
-        session_id: String,
-    },
+    Accept { session_id: String },
     /// Decline - receiver declines
     Decline {
         session_id: String,
         reason: Option<String>,
     },
     /// BlobTicket - sender sends iroh blob ticket for data transfer
-    BlobTicket {
-        session_id: String,
-        ticket: String,
-    },
+    BlobTicket { session_id: String, ticket: String },
     /// Cancel - either side cancels
     Cancel {
         session_id: String,

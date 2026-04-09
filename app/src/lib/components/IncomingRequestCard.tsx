@@ -1,11 +1,15 @@
 import { Component, Show } from "solid-js";
 import { Check, X, Loader2 } from "lucide-solid";
 import { FileManifest } from "./FileManifest";
+import { i18n } from "~/lib/i18n";
+
+const t = i18n.t;
 
 interface IncomingRequestCardProps {
   request: {
     id: string;
     senderName: string;
+    senderDeviceType?: string;
     files: Array<{ name: string; size: number }>;
     totalSize: number;
   };
@@ -15,18 +19,26 @@ interface IncomingRequestCardProps {
   state?: "pending" | "accepting" | "declining";
 }
 
-export const IncomingRequestCard: Component<IncomingRequestCardProps> = (props) => {
+export const IncomingRequestCard: Component<IncomingRequestCardProps> = (
+  props,
+) => {
   return (
-    <div class="bg-base-200 rounded-lg p-4 space-y-4">
+    <div class="bg-base-200 space-y-4 rounded-lg p-4">
       <div class="flex items-center gap-3">
         <div class="avatar placeholder">
-          <div class="bg-secondary/20 text-secondary rounded-full w-12">
+          <div class="bg-secondary/20 text-secondary flex w-12 items-center justify-center rounded-full">
             <span class="text-lg">📱</span>
           </div>
         </div>
         <div>
           <p class="font-medium">{props.request.senderName}</p>
-          <p class="text-xs opacity-60">wants to send you files</p>
+          <p class="text-xs opacity-60">
+            {props.request.senderDeviceType
+              ? t("nearby.senderWantsToSendWithDevice", {
+                  deviceType: props.request.senderDeviceType,
+                })
+              : t("nearby.senderWantsToSend")}
+          </p>
         </div>
       </div>
 
@@ -38,15 +50,15 @@ export const IncomingRequestCard: Component<IncomingRequestCardProps> = (props) 
 
       <Show when={props.state === "accepting"}>
         <div class="flex items-center justify-center py-2">
-          <Loader2 size={20} class="animate-spin text-primary mr-2" />
-          <span class="text-sm">Accepting...</span>
+          <Loader2 size={20} class="text-primary mr-2 animate-spin" />
+          <span class="text-sm">{t("nearby.accepting")}</span>
         </div>
       </Show>
 
       <Show when={props.state === "declining"}>
         <div class="flex items-center justify-center py-2">
-          <Loader2 size={20} class="animate-spin text-error mr-2" />
-          <span class="text-sm">Declining...</span>
+          <Loader2 size={20} class="text-error mr-2 animate-spin" />
+          <span class="text-sm">{t("nearby.declining")}</span>
         </div>
       </Show>
 
@@ -57,14 +69,14 @@ export const IncomingRequestCard: Component<IncomingRequestCardProps> = (props) 
             disabled={props.disabled}
             class="btn btn-outline flex-1"
           >
-            <X size={16} class="mr-1" /> Decline
+            <X size={16} class="mr-1" /> {t("nearby.decline")}
           </button>
           <button
             onClick={props.onAccept}
             disabled={props.disabled}
             class="btn btn-secondary flex-1"
           >
-            <Check size={16} class="mr-1" /> Accept
+            <Check size={16} class="mr-1" /> {t("nearby.accept")}
           </button>
         </div>
       </Show>

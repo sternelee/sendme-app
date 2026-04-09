@@ -40,7 +40,14 @@ export interface NearbySendState {
   nearbyDevices: NearbyDevice[];
   discoveryState: "idle" | "scanning" | "error";
   selectedDevice: NearbyDevice | null;
-  transferState: "idle" | "selected" | "picked" | "waiting" | "transferring" | "done" | "error";
+  transferState:
+    | "idle"
+    | "selected"
+    | "picked"
+    | "waiting"
+    | "transferring"
+    | "done"
+    | "error";
   transferProgress: TransferProgress | null;
   error: string | null;
 }
@@ -145,9 +152,10 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
   const [nearbySendState, setNearbySendState] = createStore<NearbySendState>({
     ...defaultNearbySendState,
   });
-  const [nearbyReceiveState, setNearbyReceiveState] = createStore<NearbyReceiveState>({
-    ...defaultNearbyReceiveState,
-  });
+  const [nearbyReceiveState, setNearbyReceiveState] =
+    createStore<NearbyReceiveState>({
+      ...defaultNearbyReceiveState,
+    });
 
   const store: GlobalStore = {
     send: {
@@ -179,19 +187,27 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
     nearbySend: {
       state: () => nearbySendState,
       setFiles: (files) => setNearbySendState("files", files),
-      setNearbyDevices: (devices) => setNearbySendState("nearbyDevices", devices),
-      setDiscoveryState: (discoveryState) => setNearbySendState("discoveryState", discoveryState),
-      setSelectedDevice: (device) => setNearbySendState("selectedDevice", device),
-      setTransferState: (transferState) => setNearbySendState("transferState", transferState),
-      setTransferProgress: (progress) => setNearbySendState("transferProgress", progress),
+      setNearbyDevices: (devices) =>
+        setNearbySendState("nearbyDevices", devices),
+      setDiscoveryState: (discoveryState) =>
+        setNearbySendState("discoveryState", discoveryState),
+      setSelectedDevice: (device) =>
+        setNearbySendState("selectedDevice", device),
+      setTransferState: (transferState) =>
+        setNearbySendState("transferState", transferState),
+      setTransferProgress: (progress) =>
+        setNearbySendState("transferProgress", progress),
       setError: (error) => setNearbySendState("error", error),
       reset: () => setNearbySendState(defaultNearbySendState),
     },
     nearbyReceive: {
       state: () => nearbyReceiveState,
-      setIncomingRequest: (request) => setNearbyReceiveState("incomingRequest", request),
-      setTransferState: (transferState) => setNearbyReceiveState("transferState", transferState),
-      setTransferProgress: (progress) => setNearbyReceiveState("transferProgress", progress),
+      setIncomingRequest: (request) =>
+        setNearbyReceiveState("incomingRequest", request),
+      setTransferState: (transferState) =>
+        setNearbyReceiveState("transferState", transferState),
+      setTransferProgress: (progress) =>
+        setNearbyReceiveState("transferProgress", progress),
       setError: (error) => setNearbyReceiveState("error", error),
     },
   };

@@ -18,9 +18,12 @@ import {
   clear_transfers,
   open_received_file,
   pick_directory,
+  start_nearby_discovery,
+  stop_nearby_discovery,
   accept_incoming,
   decline_incoming,
   type IncomingRequest,
+  type NearbyTransferState,
 } from "~/bindings";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -101,7 +104,8 @@ interface ProgressUpdate {
 }
 
 type Theme = "light" | "dark" | "system";
-type Tab = "send" | "receive" | "nearby" | "history" | "settings";
+type Tab = "transfer" | "nearby" | "history" | "settings";
+type TransferMode = "send" | "receive";
 
 const ticketTypes = [
   { value: "id", label: "ID Only" },
@@ -118,7 +122,8 @@ export default function MainPage() {
   const [isSmallWindow, setIsSmallWindow] = createSignal(false);
   const [isInitializing, setIsInitializing] = createSignal(true);
   const [theme, setTheme] = createSignal<Theme>("system");
-  const [activeTab, setActiveTab] = createSignal<Tab>("send");
+  const [activeTab, setActiveTab] = createSignal<Tab>("transfer");
+  const [transferMode, setTransferMode] = createSignal<TransferMode>("send");
 
   const sendPath = () => globalStore.send.state().path;
   const sendTicketType = () => globalStore.send.state().ticketType;
@@ -274,6 +279,33 @@ export default function MainPage() {
     }
   }
 
+  async function handleAcceptNearbyRequest() {
+    const request = globalStore.nearbyReceive.state().incomingRequest;
+    if (!request) return;
+
+    try {
+      await accept_incoming(request.id, receiveOutputDir() || undefined);
+      globalStore.nearbyReceive.setTransferState("receiving");
+      setTransferMode("receive");
+      setActiveTab("transfer");
+    } catch (e) {
+      toast.error(`${t("nearby.acceptFailed")}: ${e}`);
+    }
+  }
+
+  async function handleDeclineNearbyRequest() {
+    const request = globalStore.nearbyReceive.state().incomingRequest;
+    if (!request) return;
+
+    try {
+      await decline_incoming(request.id);
+      globalStore.nearbyReceive.setIncomingRequest(null);
+      globalStore.nearbyReceive.setTransferState("idle");
+    } catch (e) {
+      toast.error(`${t("nearby.declineFailed")}: ${e}`);
+    }
+  }
+
   async function handleClearTransfers() {
     try {
       await clear_transfers();
@@ -313,7 +345,7 @@ export default function MainPage() {
 
   async function copyToClipboard(text: string) {
     await navigator.clipboard.writeText(text);
-    toast.success("Copied");
+    toast.success(t("common.copied"));
   }
 
   async function handleScanBarcode() {
@@ -360,6 +392,7 @@ export default function MainPage() {
     if (savedOutputDir) globalStore.receive.setOutputDir(savedOutputDir);
 
     await loadTransfers();
+    await start_nearby_discovery().catch(() => {});
 
     const unlisten = await listen<ProgressUpdate>("progress", (event) => {
       const { transfer_id, ...data } = event.payload.data;
@@ -379,32 +412,85 @@ export default function MainPage() {
       }
     });
 
-    const unlistenNearby = await listen<IncomingRequest>("incoming_nearby_request", (event) => {
-      globalStore.nearbyReceive.setIncomingRequest(event.payload);
-      globalStore.nearbyReceive.setTransferState("review");
-    });
+    const unlistenNearby = await listen<IncomingRequest>(
+      "incoming_nearby_request",
+      (event) => {
+        globalStore.nearbyReceive.setIncomingRequest(event.payload);
+        globalStore.nearbyReceive.setTransferProgress(null);
+        globalStore.nearbyReceive.setError(null);
+        globalStore.nearbyReceive.setTransferState("review");
+      },
+    );
 
-    const unlistenNearbyCancel = await listen<{ requestId: string }>("nearby_request_cancelled", (event) => {
-      if (globalStore.nearbyReceive.state().incomingRequest?.id === event.payload.requestId) {
-        globalStore.nearbyReceive.setIncomingRequest(null);
-        globalStore.nearbyReceive.setTransferState("idle");
-        toast.info("Sender cancelled the request");
-      }
-    });
+    const unlistenNearbyCancel = await listen<{ requestId: string }>(
+      "nearby_request_cancelled",
+      (event) => {
+        if (
+          globalStore.nearbyReceive.state().incomingRequest?.id ===
+          event.payload.requestId
+        ) {
+          globalStore.nearbyReceive.setIncomingRequest(null);
+          globalStore.nearbyReceive.setTransferState("idle");
+          toast.info(t("nearby.senderCancelled"));
+        }
+      },
+    );
 
-    const unlistenNearbyDecline = await listen<{ requestId: string }>("nearby_request_declined", (event) => {
-      if (globalStore.nearbyReceive.state().incomingRequest?.id === event.payload.requestId) {
-        globalStore.nearbyReceive.setIncomingRequest(null);
-        globalStore.nearbyReceive.setTransferState("idle");
-        toast.info("Request declined");
-      }
-    });
+    const unlistenNearbyDecline = await listen<{ requestId: string }>(
+      "nearby_request_declined",
+      (event) => {
+        if (
+          globalStore.nearbyReceive.state().incomingRequest?.id ===
+          event.payload.requestId
+        ) {
+          globalStore.nearbyReceive.setIncomingRequest(null);
+          globalStore.nearbyReceive.setTransferProgress(null);
+          globalStore.nearbyReceive.setTransferState("idle");
+          toast.info(t("nearby.requestDeclined"));
+        }
+      },
+    );
+
+    const unlistenNearbyReceive = await listen<NearbyTransferState>(
+      "nearby_receive_state",
+      (event) => {
+        const payload = event.payload;
+        if (payload.progress) {
+          globalStore.nearbyReceive.setTransferProgress(payload.progress);
+        }
+
+        if (payload.state === "receiving") {
+          globalStore.nearbyReceive.setTransferState("receiving");
+          return;
+        }
+
+        if (payload.state === "done") {
+          globalStore.nearbyReceive.setIncomingRequest(null);
+          globalStore.nearbyReceive.setTransferProgress(null);
+          globalStore.nearbyReceive.setTransferState("idle");
+          toast.success(payload.message ?? t("nearby.transferComplete"));
+          return;
+        }
+
+        if (payload.state === "error") {
+          globalStore.nearbyReceive.setIncomingRequest(null);
+          globalStore.nearbyReceive.setTransferProgress(null);
+          globalStore.nearbyReceive.setTransferState("idle");
+          globalStore.nearbyReceive.setError(
+            payload.message ?? t("nearby.transferFailed"),
+          );
+          toast.error(payload.message ?? t("nearby.transferFailed"));
+        }
+      },
+    );
 
     onCleanup(() => {
       unlisten();
       unlistenNearby();
       unlistenNearbyCancel();
       unlistenNearbyDecline();
+      unlistenNearbyReceive();
+      stop_nearby_discovery().catch(() => {});
     });
     setIsInitializing(false);
   });
@@ -441,288 +527,308 @@ export default function MainPage() {
         <main class="flex-1 overflow-auto p-4 pb-24">
           <Presence exitBeforeEnter>
             <Switch>
-              <Match when={activeTab() === "send"}>
+              <Match when={activeTab() === "transfer"}>
                 <Motion.div
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.15 }}
                   class="space-y-4"
                 >
-                  <div class="card bg-base-200">
-                    <div class="card-body gap-4">
-                      <div class="flex items-center justify-between">
-                        <h2 class="card-title text-base-content/60 text-sm tracking-wider uppercase">
-                          Send
-                        </h2>
-                        <div class="join">
-                          <button
-                            class={`join-item btn btn-sm ${!isTextMode() ? "btn-primary" : "btn-ghost"}`}
-                            onClick={() =>
-                              globalStore.send.setIsTextMode(false)
-                            }
-                          >
-                            {t("common.files")}
-                          </button>
-                          <button
-                            class={`join-item btn btn-sm ${isTextMode() ? "btn-primary" : "btn-ghost"}`}
-                            onClick={() => globalStore.send.setIsTextMode(true)}
-                          >
-                            {t("common.text")}
-                          </button>
-                        </div>
-                      </div>
-
-                      <Show when={isTextMode()}>
-                        <textarea
-                          value={textContent()}
-                          onInput={(e) =>
-                            globalStore.send.setTextContent(
-                              e.currentTarget.value,
-                            )
-                          }
-                          placeholder={t("text.placeholder")}
-                          class="textarea textarea-bordered w-full"
-                          rows={4}
-                        />
-                      </Show>
-
-                      <Show when={!isTextMode()}>
-                        <div
-                          onClick={selectFile}
-                          class="border-base-300 bg-base-300/30 hover:border-primary hover:bg-primary/5 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 transition-colors"
-                        >
-                          <SendIcon size={32} class="mb-2 opacity-40" />
-                          <span class="text-sm opacity-60">
-                            {sendPath()
-                              ? getDisplayName(sendPath())
-                              : t("common.selectFileOrFolder")}
-                          </span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                          <button onClick={selectFile} class="btn btn-outline">
-                            <FileText size={16} /> {t("common.files")}
-                          </button>
-                          <button
-                            onClick={selectDirectory}
-                            class="btn btn-outline"
-                          >
-                            <FolderOpen size={16} /> {t("send.chooseFolder")}
-                          </button>
-                        </div>
-                      </Show>
-
-                      <div class="form-control w-full">
-                        <select
-                          class="select select-bordered"
-                          value={sendTicketType()}
-                          onChange={(e) =>
-                            globalStore.send.setTicketType(
-                              e.currentTarget.value,
-                            )
-                          }
-                        >
-                          <For each={ticketTypes}>
-                            {(t) => <option value={t.value}>{t.label}</option>}
-                          </For>
-                        </select>
-                      </div>
-
-                      <button
-                        onClick={handleSend}
-                        disabled={isSending() || (!isTextMode() && !sendPath())}
-                        class={`btn btn-primary ${isSending() ? "loading" : ""}`}
-                      >
-                        <Show when={!isSending()}>
-                          <Zap size={18} /> {t("common.share")}
-                        </Show>
-                      </button>
-
-                      <Show when={sendTicket()}>
-                        <div class="divider"></div>
-                        <div class="flex flex-col items-center gap-4">
-                          <Show when={sendTicketQrCode()}>
-                            <div class="rounded-xl bg-white p-2">
-                              <img
-                                src={sendTicketQrCode()!}
-                                alt="QR"
-                                class="h-60 w-60"
-                              />
-                            </div>
-                          </Show>
-                          <div class="w-full">
-                            <div class="bg-base-300 overflow-hidden rounded-lg p-2">
-                              <code class="text-primary font-mono text-xs break-all">
-                                g{sendTicket()}
-                              </code>
-                            </div>
-                            <div class="mt-2 flex gap-2">
-                              <button
-                                onClick={() => copyToClipboard(sendTicket()!)}
-                                class="btn btn-sm btn-outline flex-1"
-                              >
-                                <Copy size={14} /> {t("common.copy")}
-                              </button>
-                              <Show
-                                when={
-                                  typeof navigator !== "undefined" &&
-                                  "share" in navigator
-                                }
-                              >
-                                <button
-                                  onClick={() =>
-                                    navigator.share?.({ text: sendTicket()! })
-                                  }
-                                  class="btn btn-sm btn-outline flex-1"
-                                >
-                                  <Share2 size={14} /> {t("common.share")}
-                                </button>
-                              </Show>
-                            </div>
+                  <Show when={transferMode() === "send"}>
+                    <div class="card bg-base-200">
+                      <div class="card-body gap-4">
+                        <div class="flex items-center justify-between">
+                          <div class="join">
+                            <button
+                              class={`join-item btn btn-sm ${transferMode() === "send" ? "btn-primary" : "btn-ghost"}`}
+                              onClick={() => setTransferMode("send")}
+                            >
+                              {t("common.send")}
+                            </button>
+                            <button
+                              class={`join-item btn btn-sm ${transferMode() === "receive" ? "btn-primary" : "btn-ghost"}`}
+                              onClick={() => setTransferMode("receive")}
+                            >
+                              {t("common.receive")}
+                            </button>
+                          </div>
+                          <div class="join">
+                            <button
+                              class={`join-item btn btn-sm ${!isTextMode() ? "btn-primary" : "btn-ghost"}`}
+                              onClick={() =>
+                                globalStore.send.setIsTextMode(false)
+                              }
+                            >
+                              {t("common.files")}
+                            </button>
+                            <button
+                              class={`join-item btn btn-sm ${isTextMode() ? "btn-primary" : "btn-ghost"}`}
+                              onClick={() => globalStore.send.setIsTextMode(true)}
+                            >
+                              {t("common.text")}
+                            </button>
                           </div>
                         </div>
-                      </Show>
-                    </div>
-                  </div>
-                </Motion.div>
-              </Match>
 
-              <Match when={activeTab() === "receive"}>
-                <Motion.div
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.15 }}
-                  class="space-y-4"
-                >
-                  <div class="card bg-base-200">
-                    <div class="card-body gap-4">
-                      <h2 class="card-title text-base-content/60 text-sm tracking-wider uppercase">
-                        Receive
-                      </h2>
-
-                      <div class="form-control w-full">
-                        <label class="input input-bordered flex w-full items-center gap-2">
-                          <Shield size={18} class="opacity-40" />
-                          <input
-                            type="text"
-                            value={receiveTicket()}
+                        <Show when={isTextMode()}>
+                          <textarea
+                            value={textContent()}
                             onInput={(e) =>
-                              globalStore.receive.setTicket(
+                              globalStore.send.setTextContent(
                                 e.currentTarget.value,
                               )
                             }
-                            placeholder={t("common.pasteTicket")}
-                            class="grow"
+                            placeholder={t("text.placeholder")}
+                            class="textarea textarea-bordered w-full"
+                            rows={4}
                           />
-                          <Show when={isMobile()}>
-                            <button
-                              onClick={() => {
-                                console.log("[DEBUG] Scan button clicked");
-                                handleScanBarcode();
-                              }}
-                              class="text-primary"
-                            >
-                              <Scan size={18} />
-                            </button>
-                          </Show>
-                        </label>
-                      </div>
-
-                      <div class="form-control w-full">
-                        <label class="input input-bordered flex w-full items-center gap-2">
-                          <FolderOpen size={18} class="opacity-40" />
-                          <input
-                            type="text"
-                            readonly
-                            value={
-                              receiveOutputDir() || t("common.defaultDownloads")
-                            }
-                            class="grow text-sm"
-                          />
-                          <button
-                            onClick={selectOutputDirectory}
-                            class="btn btn-ghost btn-sm"
-                          >
-                            <RefreshCw size={14} />
-                          </button>
-                        </label>
-                      </div>
-
-                      <button
-                        onClick={handleReceive}
-                        disabled={isReceiving() || !receiveTicket()}
-                        class={`btn btn-secondary ${isReceiving() ? "loading" : ""}`}
-                      >
-                        <Show when={!isReceiving()}>
-                          <Download size={18} /> {t("common.receive")}
                         </Show>
-                      </button>
 
-                      <Show when={currentReceivingId()}>
-                        <div class="bg-secondary/10 border-secondary/20 rounded-lg border p-4">
-                          <div class="mb-2 flex items-center justify-between">
-                            <span class="text-xs font-bold uppercase opacity-60">
-                              {t("common.receiving")}
-                            </span>
-                            <span class="font-mono text-sm font-bold">
-                              {Math.round(receiveProgressPercent())}%
+                        <Show when={!isTextMode()}>
+                          <div
+                            onClick={selectFile}
+                            class="border-base-300 bg-base-300/30 hover:border-primary hover:bg-primary/5 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 transition-colors"
+                          >
+                            <SendIcon size={32} class="mb-2 opacity-40" />
+                            <span class="text-sm opacity-60">
+                              {sendPath()
+                                ? getDisplayName(sendPath())
+                                : t("common.selectFileOrFolder")}
                             </span>
                           </div>
-                          <progress
-                            class="progress progress-secondary w-full"
-                            value={receiveProgressPercent()}
-                            max="100"
-                          ></progress>
-                          <button
-                            onClick={() =>
-                              handleCancelById(currentReceivingId()!)
-                            }
-                            class="btn btn-ghost btn-sm text-error mt-2"
-                          >
-                            {t("common.cancel")}
-                          </button>
-                        </div>
-                      </Show>
+                          <div class="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={selectFile}
+                              class="btn btn-outline"
+                            >
+                              <FileText size={16} /> {t("common.files")}
+                            </button>
+                            <button
+                              onClick={selectDirectory}
+                              class="btn btn-outline"
+                            >
+                              <FolderOpen size={16} /> {t("send.chooseFolder")}
+                            </button>
+                          </div>
+                        </Show>
 
-                      <Show when={globalStore.nearbyReceive.state().incomingRequest}>
-                        <IncomingRequestCard
-                          request={globalStore.nearbyReceive.state().incomingRequest!}
-                          onAccept={async () => {
-                            try {
-                              await accept_incoming(globalStore.nearbyReceive.state().incomingRequest!.id);
-                              globalStore.nearbyReceive.setTransferState("receiving");
-                            } catch (e) {
-                              toast.error(`Failed to accept: ${e}`);
+                        <div class="form-control w-full">
+                          <select
+                            class="select select-bordered"
+                            value={sendTicketType()}
+                            onChange={(e) =>
+                              globalStore.send.setTicketType(
+                                e.currentTarget.value,
+                              )
                             }
-                          }}
-                          onDecline={async () => {
-                            try {
-                              await decline_incoming(globalStore.nearbyReceive.state().incomingRequest!.id);
+                          >
+                            <For each={ticketTypes}>
+                              {(t) => (
+                                <option value={t.value}>{t.label}</option>
+                              )}
+                            </For>
+                          </select>
+                        </div>
+
+                        <button
+                          onClick={handleSend}
+                          disabled={
+                            isSending() || (!isTextMode() && !sendPath())
+                          }
+                          class={`btn btn-primary ${isSending() ? "loading" : ""}`}
+                        >
+                          <Show when={!isSending()}>
+                            <Zap size={18} /> {t("common.share")}
+                          </Show>
+                        </button>
+
+                        <Show when={sendTicket()}>
+                          <div class="divider"></div>
+                          <div class="flex flex-col items-center gap-4">
+                            <Show when={sendTicketQrCode()}>
+                              <div class="rounded-xl bg-white p-2">
+                                <img
+                                  src={sendTicketQrCode()!}
+                                  alt="QR"
+                                  class="h-60 w-60"
+                                />
+                              </div>
+                            </Show>
+                            <div class="w-full">
+                              <div class="bg-base-300 overflow-hidden rounded-lg p-2">
+                                <code class="text-primary font-mono text-xs break-all">
+                                  g{sendTicket()}
+                                </code>
+                              </div>
+                              <div class="mt-2 flex gap-2">
+                                <button
+                                  onClick={() => copyToClipboard(sendTicket()!)}
+                                  class="btn btn-sm btn-outline flex-1"
+                                >
+                                  <Copy size={14} /> {t("common.copy")}
+                                </button>
+                                <Show
+                                  when={
+                                    typeof navigator !== "undefined" &&
+                                    "share" in navigator
+                                  }
+                                >
+                                  <button
+                                    onClick={() =>
+                                      navigator.share?.({ text: sendTicket()! })
+                                    }
+                                    class="btn btn-sm btn-outline flex-1"
+                                  >
+                                    <Share2 size={14} /> {t("common.share")}
+                                  </button>
+                                </Show>
+                              </div>
+                            </div>
+                          </div>
+                        </Show>
+                      </div>
+                    </div>
+                  </Show>
+
+                  <Show when={transferMode() === "receive"}>
+                    <div class="card bg-base-200">
+                      <div class="card-body gap-4">
+                        <div class="card-title">
+                          <div class="join">
+                            <button
+                              class={`join-item btn btn-sm ${transferMode() === "send" ? "btn-primary" : "btn-ghost"}`}
+                              onClick={() => setTransferMode("send")}
+                            >
+                              {t("common.send")}
+                            </button>
+                            <button
+                              class={`join-item btn btn-sm ${transferMode() === "receive" ? "btn-primary" : "btn-ghost"}`}
+                              onClick={() => setTransferMode("receive")}
+                            >
+                              {t("common.receive")}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div class="form-control w-full">
+                          <label class="input input-bordered flex w-full items-center gap-2">
+                            <Shield size={18} class="opacity-40" />
+                            <input
+                              type="text"
+                              value={receiveTicket()}
+                              onInput={(e) =>
+                                globalStore.receive.setTicket(
+                                  e.currentTarget.value,
+                                )
+                              }
+                              placeholder={t("common.pasteTicket")}
+                              class="grow"
+                            />
+                            <Show when={isMobile()}>
+                              <button
+                                onClick={() => {
+                                  console.log("[DEBUG] Scan button clicked");
+                                  handleScanBarcode();
+                                }}
+                                class="text-primary"
+                              >
+                                <Scan size={18} />
+                              </button>
+                            </Show>
+                          </label>
+                        </div>
+
+                        <div class="form-control w-full">
+                          <label class="input input-bordered flex w-full items-center gap-2">
+                            <FolderOpen size={18} class="opacity-40" />
+                            <input
+                              type="text"
+                              readonly
+                              value={
+                                receiveOutputDir() ||
+                                t("common.defaultDownloads")
+                              }
+                              class="grow text-sm"
+                            />
+                            <button
+                              onClick={selectOutputDirectory}
+                              class="btn btn-ghost btn-sm"
+                            >
+                              <RefreshCw size={14} />
+                            </button>
+                          </label>
+                        </div>
+
+                        <button
+                          onClick={handleReceive}
+                          disabled={isReceiving() || !receiveTicket()}
+                          class={`btn btn-secondary ${isReceiving() ? "loading" : ""}`}
+                        >
+                          <Show when={!isReceiving()}>
+                            <Download size={18} /> {t("common.receive")}
+                          </Show>
+                        </button>
+
+                        <Show when={currentReceivingId()}>
+                          <div class="bg-secondary/10 border-secondary/20 rounded-lg border p-4">
+                            <div class="mb-2 flex items-center justify-between">
+                              <span class="text-xs font-bold uppercase opacity-60">
+                                {t("common.receiving")}
+                              </span>
+                              <span class="font-mono text-sm font-bold">
+                                {Math.round(receiveProgressPercent())}%
+                              </span>
+                            </div>
+                            <progress
+                              class="progress progress-secondary w-full"
+                              value={receiveProgressPercent()}
+                              max="100"
+                            ></progress>
+                            <button
+                              onClick={() =>
+                                handleCancelById(currentReceivingId()!)
+                              }
+                              class="btn btn-ghost btn-sm text-error mt-2"
+                            >
+                              {t("common.cancel")}
+                            </button>
+                          </div>
+                        </Show>
+
+                        <Show
+                          when={
+                            globalStore.nearbyReceive.state().transferState ===
+                              "receiving" &&
+                            globalStore.nearbyReceive.state().transferProgress
+                          }
+                        >
+                          <TransferProgress
+                            transferred={
+                              globalStore.nearbyReceive.state()
+                                .transferProgress!.transferred
+                            }
+                            total={
+                              globalStore.nearbyReceive.state()
+                                .transferProgress!.total
+                            }
+                            speed={
+                              globalStore.nearbyReceive.state()
+                                .transferProgress!.speed
+                            }
+                            eta={
+                              globalStore.nearbyReceive.state()
+                                .transferProgress!.eta
+                            }
+                            isReceiving={true}
+                            onCancel={async () => {
                               globalStore.nearbyReceive.setIncomingRequest(null);
                               globalStore.nearbyReceive.setTransferState("idle");
-                            } catch (e) {
-                              toast.error(`Failed to decline: ${e}`);
-                            }
-                          }}
-                          disabled={globalStore.nearbyReceive.state().transferState !== "review"}
-                          state={globalStore.nearbyReceive.state().transferState === "receiving" ? "accepting" : "pending"}
-                        />
-                      </Show>
-
-                      <Show when={globalStore.nearbyReceive.state().transferState === "receiving" && globalStore.nearbyReceive.state().transferProgress}>
-                        <TransferProgress
-                          transferred={globalStore.nearbyReceive.state().transferProgress!.transferred}
-                          total={globalStore.nearbyReceive.state().transferProgress!.total}
-                          speed={globalStore.nearbyReceive.state().transferProgress!.speed}
-                          eta={globalStore.nearbyReceive.state().transferProgress!.eta}
-                          isReceiving={true}
-                          onCancel={async () => {
-                            globalStore.nearbyReceive.setIncomingRequest(null);
-                            globalStore.nearbyReceive.setTransferState("idle");
-                          }}
-                        />
-                      </Show>
+                            }}
+                          />
+                        </Show>
+                      </div>
                     </div>
-                  </div>
+                  </Show>
                 </Motion.div>
               </Match>
 
@@ -917,6 +1023,49 @@ export default function MainPage() {
           </Presence>
         </main>
 
+        <Show when={globalStore.nearbyReceive.state().incomingRequest}>
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+            <div class="card bg-base-100 w-full max-w-md shadow-2xl">
+              <div class="card-body gap-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-base font-bold">
+                      {t("nearby.transferRequest")}
+                    </h3>
+                    <p class="text-sm opacity-60">
+                      {t("nearby.requestModalHint")}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setTransferMode("receive");
+                      setActiveTab("transfer");
+                    }}
+                    class="btn btn-ghost btn-sm"
+                  >
+                    {t("nearby.openReceive")}
+                  </button>
+                </div>
+
+                <IncomingRequestCard
+                  request={globalStore.nearbyReceive.state().incomingRequest!}
+                  onAccept={handleAcceptNearbyRequest}
+                  onDecline={handleDeclineNearbyRequest}
+                  disabled={
+                    globalStore.nearbyReceive.state().transferState !== "review"
+                  }
+                  state={
+                    globalStore.nearbyReceive.state().transferState ===
+                    "receiving"
+                      ? "accepting"
+                      : "pending"
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </Show>
+
         <Show when={globalStore.send.state().showReshareModal}>
           <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div class="card bg-base-200 w-full max-w-sm">
@@ -979,25 +1128,18 @@ export default function MainPage() {
 
         <nav class="dock dock-md bg-base-200/80 border-base-300 border-t backdrop-blur-lg">
           <button
-            class={`dock-label ${activeTab() === "send" ? "active" : ""}`}
-            onClick={() => setActiveTab("send")}
+            class={`dock-label ${activeTab() === "transfer" ? "active" : ""}`}
+            onClick={() => setActiveTab("transfer")}
           >
             <Send size={24} />
-            <span>{t("common.send")}</span>
-          </button>
-          <button
-            class={`dock-label ${activeTab() === "receive" ? "active" : ""}`}
-            onClick={() => setActiveTab("receive")}
-          >
-            <Download size={24} />
-            <span>{t("common.receive")}</span>
+            <span>{t("common.transfer")}</span>
           </button>
           <button
             class={`dock-label ${activeTab() === "nearby" ? "active" : ""}`}
             onClick={() => setActiveTab("nearby")}
           >
             <Radio size={24} />
-            <span>Nearby</span>
+            <span>{t("nearby.title")}</span>
           </button>
           <button
             class={`dock-label ${activeTab() === "history" ? "active" : ""}`}

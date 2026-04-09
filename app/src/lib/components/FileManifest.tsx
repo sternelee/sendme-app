@@ -1,5 +1,8 @@
 import { Component, For } from "solid-js";
 import { formatFileSize } from "~/lib/utils";
+import { i18n } from "~/lib/i18n";
+
+const t = i18n.t;
 
 interface FileManifestProps {
   files: Array<{ name: string; size: number }>;
@@ -9,9 +12,11 @@ interface FileManifestProps {
 
 export const FileManifest: Component<FileManifestProps> = (props) => {
   return (
-    <div class="bg-base-200 rounded-lg p-3 space-y-2">
+    <div class="bg-base-200 space-y-2 rounded-lg p-3">
       <div class="flex justify-between text-xs font-medium opacity-60">
-        <span>{props.files.length} file{props.files.length !== 1 ? "s" : ""}</span>
+        <span>
+          {t("nearby.fileCount", { count: props.files.length })}
+        </span>
         <span>{formatFileSize(props.totalSize)}</span>
       </div>
       <div
@@ -22,7 +27,9 @@ export const FileManifest: Component<FileManifestProps> = (props) => {
           {(file) => (
             <div class="flex justify-between text-sm">
               <span class="truncate">{file.name}</span>
-              <span class="text-xs opacity-60 ml-2">{formatFileSize(file.size)}</span>
+              <span class="ml-2 text-xs opacity-60">
+                {formatFileSize(file.size)}
+              </span>
             </div>
           )}
         </For>

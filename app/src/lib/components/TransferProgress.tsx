@@ -1,6 +1,9 @@
 import { Component } from "solid-js";
 import { X } from "lucide-solid";
 import { formatFileSize } from "~/lib/utils";
+import { i18n } from "~/lib/i18n";
+
+const t = i18n.t;
 
 interface TransferProgressProps {
   transferred: number;
@@ -21,7 +24,7 @@ export const TransferProgress: Component<TransferProgressProps> = (props) => {
   };
 
   return (
-    <div class="bg-base-200 rounded-lg p-4 space-y-3">
+    <div class="bg-base-200 space-y-3 rounded-lg p-4">
       <div class="flex justify-between text-sm font-medium">
         <span>{percent()}%</span>
         <span class="opacity-60">{speedStr()}</span>
@@ -32,11 +35,16 @@ export const TransferProgress: Component<TransferProgressProps> = (props) => {
         max={props.total}
       ></progress>
       <div class="flex justify-between text-xs opacity-60">
-        <span>{formatFileSize(props.transferred)} / {formatFileSize(props.total)}</span>
-        <span>{etaStr()} remaining</span>
+        <span>
+          {formatFileSize(props.transferred)} / {formatFileSize(props.total)}
+        </span>
+        <span>{t("nearby.remaining", { time: etaStr() })}</span>
       </div>
-      <button onClick={props.onCancel} class="btn btn-ghost btn-sm text-error w-full mt-2">
-        <X size={14} class="mr-1" /> Cancel
+      <button
+        onClick={props.onCancel}
+        class="btn btn-ghost btn-sm text-error mt-2 w-full"
+      >
+        <X size={14} class="mr-1" /> {t("common.cancel")}
       </button>
     </div>
   );

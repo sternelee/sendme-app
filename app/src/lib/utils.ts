@@ -51,7 +51,11 @@ export function getFileIcon(filename: string): string {
   if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) {
     return "FileArchive";
   }
-  if (["ts", "js", "py", "rs", "go", "html", "css", "vue", "tsx", "jsx"].includes(ext)) {
+  if (
+    ["ts", "js", "py", "rs", "go", "html", "css", "vue", "tsx", "jsx"].includes(
+      ext,
+    )
+  ) {
     return "FileCode";
   }
   return "FileText";

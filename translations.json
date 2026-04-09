@@ -18,6 +18,7 @@
       "confirm": "Confirm",
       "loading": "Loading...",
       "share": "Share",
+      "transfer": "Transfer",
       "files": "Files",
       "copy": "Copy",
       "online": "Online",
@@ -31,7 +32,9 @@
       "defaultDownloads": "Default Downloads",
       "receiving": "Receiving",
       "noHistoryYet": "No history yet",
-      "ticketNotFound": "Ticket not found"
+      "ticketNotFound": "Ticket not found",
+      "done": "Done",
+      "tryAgain": "Try Again"
     },
     "landing": {
       "hero": {
@@ -160,6 +163,35 @@
       "subtitle": "Choose a device to send the ticket to",
       "noDevices": "No devices found",
       "refresh": "Refresh"
+    },
+    "nearby": {
+      "title": "Nearby",
+      "devices": "Nearby Devices",
+      "scanning": "Scanning...",
+      "noDevicesFound": "No devices found on network",
+      "noDevicesHint": "Make sure other devices are running Sendme",
+      "selectFilesFirst": "Please select files first",
+      "transferComplete": "Transfer Complete!",
+      "transferFailed": "Nearby transfer failed",
+      "transferRequest": "Nearby transfer request",
+      "requestModalHint": "You can respond without switching tabs.",
+      "openReceive": "Open Receive",
+      "senderCancelled": "Sender cancelled the request",
+      "requestDeclined": "Request declined",
+      "acceptFailed": "Failed to accept",
+      "declineFailed": "Failed to decline",
+      "accept": "Accept",
+      "decline": "Decline",
+      "accepting": "Accepting...",
+      "declining": "Declining...",
+      "senderWantsToSend": "wants to send you files",
+      "senderWantsToSendWithDevice": "{deviceType} wants to send you files",
+      "waitingForAccept": "Waiting for {deviceName} to accept...",
+      "waitingHint": "They'll see a preview of your files",
+      "fileCount": "{count} files",
+      "remaining": "{time} remaining",
+      "dropFilesHere": "Drop files here",
+      "dropFilesOrTap": "Drop files or tap to select"
     }
   },
   "zh-CN": {
@@ -181,6 +213,7 @@
       "confirm": "确认",
       "loading": "加载中...",
       "share": "分享",
+      "transfer": "传输",
       "files": "文件",
       "copy": "复制",
       "online": "在线",
@@ -194,7 +227,9 @@
       "defaultDownloads": "默认下载目录",
       "receiving": "接收中",
       "noHistoryYet": "暂无历史记录",
-      "ticketNotFound": "未找到票据"
+      "ticketNotFound": "未找到票据",
+      "done": "完成",
+      "tryAgain": "重试"
     },
     "landing": {
       "hero": {
@@ -323,6 +358,35 @@
       "subtitle": "选择要发送票据的设备",
       "noDevices": "未找到设备",
       "refresh": "刷新"
+    },
+    "nearby": {
+      "title": "附近",
+      "devices": "附近设备",
+      "scanning": "扫描中...",
+      "noDevicesFound": "未在网络中找到设备",
+      "noDevicesHint": "请确认其他设备正在运行 Sendme",
+      "selectFilesFirst": "请先选择文件",
+      "transferComplete": "传输完成！",
+      "transferFailed": "附近传输失败",
+      "transferRequest": "附近传输请求",
+      "requestModalHint": "无需切换标签页即可响应。",
+      "openReceive": "打开接收",
+      "senderCancelled": "发送方已取消请求",
+      "requestDeclined": "请求已被拒绝",
+      "acceptFailed": "接受失败",
+      "declineFailed": "拒绝失败",
+      "accept": "接受",
+      "decline": "拒绝",
+      "accepting": "接受中...",
+      "declining": "拒绝中...",
+      "senderWantsToSend": "想向你发送文件",
+      "senderWantsToSendWithDevice": "{deviceType} 想向你发送文件",
+      "waitingForAccept": "等待 {deviceName} 接受...",
+      "waitingHint": "对方会先看到你的文件预览",
+      "fileCount": "{count} 个文件",
+      "remaining": "剩余 {time}",
+      "dropFilesHere": "将文件拖放到这里",
+      "dropFilesOrTap": "拖放文件或点击选择"
     }
   }
 }

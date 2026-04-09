@@ -2,12 +2,12 @@
 //!
 //! Provides P2P file transfer between devices on the same network.
 
-pub mod protocol;
 pub mod core;
-pub mod sender;
+pub mod protocol;
 pub mod receiver;
+pub mod sender;
 
 pub use core::{DeviceType, NearbyDevice, NearbyDiscovery, SERVICE_TYPE};
-pub use protocol::{ALPN, Message, FileInfo, TransferManifest};
-pub use sender::{NearbySender, SenderEvent};
+pub use protocol::{FileInfo, Message, TransferManifest, ALPN};
 pub use receiver::{NearbyReceiver, ReceiverEvent};
+pub use sender::{NearbySender, SenderEvent};

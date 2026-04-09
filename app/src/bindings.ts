@@ -235,6 +235,7 @@ export interface NearbyDevice {
 export interface IncomingRequest {
   id: string;
   senderName: string;
+  senderDeviceType: string;
   files: Array<{ name: string; size: number }>;
   totalSize: number;
 }
@@ -246,6 +247,26 @@ export interface TransferProgress {
   eta: number;
 }
 
+export interface NearbyTransferState {
+  requestId?: string;
+  transferId?: string;
+  state: string;
+  deviceName?: string;
+  deviceType?: string;
+  message?: string;
+  progress?: TransferProgress;
+}
+
+export interface NearbySendItem {
+  path: string;
+  filename?: string;
+}
+
+export interface NearbyProfile {
+  name: string;
+  deviceType: string;
+}
+
 export async function start_nearby_discovery(): Promise<void> {
   return await invoke("start_nearby_discovery");
 }
@@ -254,19 +275,26 @@ export async function get_nearby_devices(): Promise<NearbyDevice[]> {
   return await invoke("get_nearby_devices");
 }
 
+export async function get_nearby_profile(): Promise<NearbyProfile> {
+  return await invoke("get_nearby_profile");
+}
+
 export async function stop_nearby_discovery(): Promise<void> {
   return await invoke("stop_nearby_discovery");
 }
 
 export async function send_to_device(
-  filePaths: string[],
+  fileItems: NearbySendItem[],
   deviceId: string,
 ): Promise<string> {
-  return await invoke("send_to_device", { filePaths, deviceId });
+  return await invoke("send_to_device", { fileItems, deviceId });
 }
 
-export async function accept_incoming(requestId: string): Promise<void> {
-  return await invoke("accept_incoming", { requestId });
+export async function accept_incoming(
+  requestId: string,
+  outputDir?: string,
+): Promise<void> {
+  return await invoke("accept_incoming", { requestId, outputDir });
 }
 
 export async function decline_incoming(requestId: string): Promise<void> {

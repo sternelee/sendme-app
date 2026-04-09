@@ -1,10 +1,15 @@
 //! Receiver implementation for nearby transfer
 
 use anyhow::{Context, Result};
+use iroh::endpoint::Incoming;
 use iroh::{Endpoint, RelayMode};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::{mpsc, RwLock};
 
-use crate::nearby::protocol::{ALPN, Message, FileInfo};
+use crate::nearby::protocol::{FileInfo, Message, ALPN};
 
 /// Events emitted by receiver
 #[derive(Debug, Clone)]
@@ -15,17 +20,42 @@ pub enum ReceiverEvent {
         sender_endpoint_id: String,
         files: Vec<FileInfo>,
         total_size: u64,
+        /// Channel to send the decision
+        response_tx: mpsc::Sender<ReceiverDecision>,
     },
-    Transferring { bytes_received: u64, total: u64 },
-    Completed { files_received: usize },
-    Failed { reason: String },
+    Transferring {
+        bytes_received: u64,
+        total: u64,
+    },
+    Completed {
+        files_received: usize,
+    },
+    Failed {
+        reason: String,
+    },
     Cancelled,
+}
+
+/// User decision on incoming transfer
+#[derive(Debug, Clone)]
+pub enum ReceiverDecision {
+    Accept,
+    Decline { reason: Option<String> },
 }
 
 /// Receiver for nearby transfer
 pub struct NearbyReceiver {
     secret_key: iroh::SecretKey,
     endpoint: Option<Endpoint>,
+    active_sessions: Arc<RwLock<HashMap<String, SessionState>>>,
+}
+
+#[allow(dead_code)]
+struct SessionState {
+    sender_name: String,
+    files: Vec<FileInfo>,
+    total_size: u64,
+    response_rx: Option<mpsc::Receiver<ReceiverDecision>>,
 }
 
 impl NearbyReceiver {
@@ -33,6 +63,7 @@ impl NearbyReceiver {
         Self {
             secret_key,
             endpoint: None,
+            active_sessions: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -52,20 +83,145 @@ impl NearbyReceiver {
 
     /// Get our endpoint ID
     pub fn endpoint_id(&self) -> Option<String> {
-        self.endpoint.as_ref().map(|_ep| self.secret_key.public().to_string())
+        self.endpoint
+            .as_ref()
+            .map(|_ep| self.secret_key.public().to_string())
     }
 
-    /// Get the endpoint for accept()
+    /// Get the endpoint
     pub fn get_endpoint(&self) -> Option<&Endpoint> {
         self.endpoint.as_ref()
     }
+
+    /// Start listening for incoming transfers
+    pub async fn listen(&self, event_tx: mpsc::Sender<ReceiverEvent>) -> Result<()> {
+        let endpoint = self.endpoint.as_ref().context("Endpoint not initialized")?;
+
+        loop {
+            match endpoint.accept().await {
+                Some(incoming) => {
+                    let event_tx = event_tx.clone();
+                    let sessions = self.active_sessions.clone();
+
+                    tokio::spawn(async move {
+                        if let Err(e) = handle_connection(incoming, event_tx, sessions).await {
+                            eprintln!("Connection handler error: {}", e);
+                        }
+                    });
+                }
+                None => {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            }
+        }
+    }
 }
 
-fn get_hostname() -> Option<String> {
-    hostname::get()
-        .ok()
-        .and_then(|h| h.into_string().ok())
-        .filter(|s| !s.is_empty())
+async fn handle_connection(
+    incoming: Incoming,
+    event_tx: mpsc::Sender<ReceiverEvent>,
+    sessions: Arc<RwLock<HashMap<String, SessionState>>>,
+) -> Result<()> {
+    let accepting = incoming.accept()?;
+    let conn = accepting.await?;
+    let (mut send, mut recv) = conn.accept_bi().await?;
+
+    // Read Hello
+    let hello: Message = read_message(&mut recv).await?;
+    let (sender_name, sender_endpoint_id) = if let Message::Hello {
+        device_name,
+        endpoint_id,
+        ..
+    } = hello
+    {
+        (device_name, endpoint_id)
+    } else {
+        return Err(anyhow::anyhow!("Expected Hello message"));
+    };
+
+    // Read Offer
+    let offer: Message = read_message(&mut recv).await?;
+    let (files, total_size, session_id) = if let Message::Offer { files, total_size } = offer {
+        let session_id = uuid::Uuid::new_v4().to_string();
+        (files, total_size, session_id)
+    } else {
+        return Err(anyhow::anyhow!("Expected Offer message"));
+    };
+
+    // Create channel for decision
+    let (response_tx, response_rx) = mpsc::channel(1);
+
+    // Store session
+    let session = SessionState {
+        sender_name: sender_name.clone(),
+        files: files.clone(),
+        total_size,
+        response_rx: Some(response_rx),
+    };
+    sessions.write().await.insert(session_id.clone(), session);
+
+    // Emit incoming request event
+    event_tx
+        .send(ReceiverEvent::IncomingRequest {
+            session_id: session_id.clone(),
+            sender_name,
+            sender_endpoint_id,
+            files: files.clone(),
+            total_size,
+            response_tx,
+        })
+        .await?;
+
+    // Wait for user decision
+    let decision = if let Some(mut rx) = sessions
+        .write()
+        .await
+        .get_mut(&session_id)
+        .and_then(|s| s.response_rx.take())
+    {
+        rx.recv().await.unwrap_or(ReceiverDecision::Decline {
+            reason: Some("timeout".to_string()),
+        })
+    } else {
+        ReceiverDecision::Decline {
+            reason: Some("session not found".to_string()),
+        }
+    };
+
+    // Send response
+    match decision {
+        ReceiverDecision::Accept => {
+            let msg = Message::Accept {
+                session_id: session_id.clone(),
+            };
+            write_message(&mut send, &msg).await?;
+
+            // Read any follow-up message (like BlobTicket)
+            // TODO: Implement blob download when sender sends ticket
+            event_tx
+                .send(ReceiverEvent::Completed {
+                    files_received: files.len(),
+                })
+                .await?;
+        }
+        ReceiverDecision::Decline { reason } => {
+            let msg = Message::Decline {
+                session_id: session_id.clone(),
+                reason: reason.clone(),
+            };
+            write_message(&mut send, &msg).await?;
+            event_tx
+                .send(ReceiverEvent::Failed {
+                    reason: reason.unwrap_or_else(|| "declined".to_string()),
+                })
+                .await?;
+        }
+    }
+
+    // Cleanup session
+    sessions.write().await.remove(&session_id);
+
+    Ok(())
 }
 
 async fn write_message(send: &mut (impl AsyncWriteExt + Unpin), msg: &Message) -> Result<()> {
