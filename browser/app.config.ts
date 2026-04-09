@@ -35,11 +35,7 @@ function cloudflareDoExportsPlugin() {
 
 export default defineConfig({
   vite: {
-    plugins: [
-      tailwindcss(),
-      wasm(),
-      topLevelAwait(),
-    ],
+    plugins: [tailwindcss(), wasm(), topLevelAwait()],
   },
 
   server: {

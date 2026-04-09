@@ -21,7 +21,13 @@ import {
 
 const t = i18n.t;
 
-type ActiveTab = "send" | "receive" | "text" | "friends" | "history" | "settings";
+type ActiveTab =
+  | "send"
+  | "receive"
+  | "text"
+  | "friends"
+  | "history"
+  | "settings";
 
 export default function AppPage() {
   const [activeTab, setActiveTab] = createSignal<ActiveTab>("send");
@@ -40,14 +46,38 @@ export default function AppPage() {
 
   const tabs = () => {
     const baseTabs = [
-      { id: "send" as ActiveTab, icon: TbOutlineUpload, label: t("common.send") },
-      { id: "receive" as ActiveTab, icon: TbOutlineDownload, label: t("common.receive") },
-      { id: "text" as ActiveTab, icon: TbOutlineMessage, label: t("common.text") },
-      { id: "history" as ActiveTab, icon: TbOutlineHistory, label: t("common.history") },
-      { id: "settings" as ActiveTab, icon: TbOutlineSettings, label: t("common.settings") },
+      {
+        id: "send" as ActiveTab,
+        icon: TbOutlineUpload,
+        label: t("common.send"),
+      },
+      {
+        id: "receive" as ActiveTab,
+        icon: TbOutlineDownload,
+        label: t("common.receive"),
+      },
+      {
+        id: "text" as ActiveTab,
+        icon: TbOutlineMessage,
+        label: t("common.text"),
+      },
+      {
+        id: "history" as ActiveTab,
+        icon: TbOutlineHistory,
+        label: t("common.history"),
+      },
+      {
+        id: "settings" as ActiveTab,
+        icon: TbOutlineSettings,
+        label: t("common.settings"),
+      },
     ];
     if (isSignedIn()) {
-      baseTabs.splice(2, 0, { id: "friends" as ActiveTab, icon: TbOutlineUsers, label: t("friends.title") });
+      baseTabs.splice(3, 0, {
+        id: "friends" as ActiveTab,
+        icon: TbOutlineUsers,
+        label: t("friends.title"),
+      });
     }
     return baseTabs;
   };
