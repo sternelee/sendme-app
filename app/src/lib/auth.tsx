@@ -5,6 +5,7 @@
 
 import { Clerk } from "@clerk/clerk-js";
 import { initClerk } from "tauri-plugin-clerk";
+import { invoke } from "@tauri-apps/api/core";
 import {
   createContext,
   useContext,
@@ -28,6 +29,7 @@ interface AuthContextValue {
   signUp: () => Promise<void>;
   signOut: () => Promise<void>;
   clerk: () => Clerk | null;
+  getToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue>();
@@ -115,6 +117,17 @@ export function AuthProvider(props: { children: JSX.Element }) {
     }
   };
 
+  const getToken = async (): Promise<string | null> => {
+    try {
+      // Use tauri-plugin-clerk to get the JWT token
+      const token = await invoke<string | null>("plugin:clerk|get_client_authorization_header");
+      return token;
+    } catch (error) {
+      console.error("Failed to get token:", error);
+      return null;
+    }
+  };
+
   const value: AuthContextValue = {
     user,
     isLoaded,
@@ -123,6 +136,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
     signUp,
     signOut,
     clerk: clerkInstance,
+    getToken,
   };
 
   return (

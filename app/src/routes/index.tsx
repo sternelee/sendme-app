@@ -81,6 +81,7 @@ import { useGlobalStore } from "~/lib/store";
 import { IncomingRequestCard } from "~/lib/components/IncomingRequestCard";
 import { TransferProgress } from "~/lib/components/TransferProgress";
 import NearbyPage from "~/routes/nearby";
+import FriendsPage from "~/routes/friends";
 
 const t = i18n.t;
 
@@ -104,7 +105,8 @@ interface ProgressUpdate {
 }
 
 type Theme = "light" | "dark" | "system";
-type Tab = "transfer" | "nearby" | "history" | "settings";
+type Tab = "transfer" | "share" | "history" | "settings";
+type ShareSubTab = "nearby" | "friends";
 type TransferMode = "send" | "receive";
 
 const ticketTypes = [
@@ -124,6 +126,7 @@ export default function MainPage() {
   const [theme, setTheme] = createSignal<Theme>("system");
   const [activeTab, setActiveTab] = createSignal<Tab>("transfer");
   const [transferMode, setTransferMode] = createSignal<TransferMode>("send");
+  const [shareSubTab, setShareSubTab] = createSignal<ShareSubTab>("nearby");
 
   const sendPath = () => globalStore.send.state().path;
   const sendTicketType = () => globalStore.send.state().ticketType;
@@ -832,8 +835,34 @@ export default function MainPage() {
                 </Motion.div>
               </Match>
 
-              <Match when={activeTab() === "nearby"}>
-                <NearbyPage />
+              <Match when={activeTab() === "share"}>
+                <div class="space-y-4">
+                  {/* Sub-tabs for Share */}
+                  <div class="tabs tabs-boxed bg-base-200 flex">
+                    <button
+                      class={`tab flex-1 ${shareSubTab() === "nearby" ? "tab-active" : ""}`}
+                      onClick={() => setShareSubTab("nearby")}
+                    >
+                      <Radio size={16} class="mr-1" />
+                      {t("nearby.title")}
+                    </button>
+                    <button
+                      class={`tab flex-1 ${shareSubTab() === "friends" ? "tab-active" : ""}`}
+                      onClick={() => setShareSubTab("friends")}
+                    >
+                      <User size={16} class="mr-1" />
+                      {t("friends.title")}
+                    </button>
+                  </div>
+
+                  {/* Sub-tab content */}
+                  <Show when={shareSubTab() === "nearby"}>
+                    <NearbyPage />
+                  </Show>
+                  <Show when={shareSubTab() === "friends"}>
+                    <FriendsPage />
+                  </Show>
+                </div>
               </Match>
 
               <Match when={activeTab() === "history"}>
@@ -1135,11 +1164,11 @@ export default function MainPage() {
             <span>{t("common.transfer")}</span>
           </button>
           <button
-            class={`dock-label ${activeTab() === "nearby" ? "active" : ""}`}
-            onClick={() => setActiveTab("nearby")}
+            class={`dock-label ${activeTab() === "share" ? "active" : ""}`}
+            onClick={() => setActiveTab("share")}
           >
             <Radio size={24} />
-            <span>{t("nearby.title")}</span>
+            <span>{t("common.share")}</span>
           </button>
           <button
             class={`dock-label ${activeTab() === "history" ? "active" : ""}`}

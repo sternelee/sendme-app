@@ -34,5 +34,12 @@ export default defineConfig(async () => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+    proxy: {
+      "/api": {
+        target: "https://sendme-browser.sternelee.workers.dev",
+        changeOrigin: true,
+        secure: true,
+      },
+    },
   },
 }));
