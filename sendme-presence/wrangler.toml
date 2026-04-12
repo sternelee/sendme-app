@@ -1,0 +1,10 @@
+name = "sendme-presence"
+main = "src/index.ts"
+compatibility_date = "2024-04-15"
+
+[[durable_objects.bindings]]
+name = "PRESENCE"
+class_name = "PresenceDO"
+
+[vars]
+ENV = "development"
