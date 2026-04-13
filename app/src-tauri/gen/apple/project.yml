@@ -1,6 +1,6 @@
 name: app
 options:
-  bundleIdPrefix: sendme.leechat.app
+  bundleIdPrefix: com.sendme.dev
   deploymentTarget:
     iOS: "26"
 fileGroups: [../../src]
@@ -11,7 +11,7 @@ settingGroups:
   app:
     base:
       PRODUCT_NAME: Sendme
-      PRODUCT_BUNDLE_IDENTIFIER: sendme.leechat.app
+      PRODUCT_BUNDLE_IDENTIFIER: com.sendme.dev
 targetTemplates:
   app:
     type: application

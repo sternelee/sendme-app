@@ -131,7 +131,7 @@ cd app && pnpm run tauri dev
 # Android dev
 cd app && pnpm run tauri android dev
 
-cp /Users/sternelee/www/github/sendme-app/app/src-tauri/android-includes/sendme/leechat/app/FileUtils.kt /Users/sternelee/www/github/sendme-app/app/src-tauri/gen/android/app/src/main/java/sendme/leechat/app/ && ls -la /Users/sternelee/www/github/sendme-app/app/src-tauri/gen/android/app/src/main/java/sendme/leechat/app/
+cp /Users/sternelee/www/github/sendme-app/app/src-tauri/android-includes/com.sendme.dev/FileUtils.kt /Users/sternelee/www/github/sendme-app/app/src-tauri/gen/android/app/src/main/java/com.sendme.dev/ && ls -la /Users/sternelee/www/github/sendme-app/app/src-tauri/gen/android/app/src/main/java/com.sendme.dev/
 
 # iOS dev (macOS only)
 cd app && pnpm run tauri ios dev

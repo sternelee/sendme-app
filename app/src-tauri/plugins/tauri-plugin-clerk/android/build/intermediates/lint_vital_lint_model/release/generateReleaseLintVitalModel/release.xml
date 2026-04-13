@@ -27,6 +27,6 @@
       applicationId="app.tauri.clerk"
       generatedSourceFolders="build/generated/ap_generated_sources/release/out"
       generatedResourceFolders="build/generated/res/resValues/release"
-      desugaredMethodsFiles="/Users/sternelee/.gradle/caches/8.14.3/transforms/9f65467a3ea05a17a93b789286312882/transformed/D8BackportedDesugaredMethods.txt">
+      desugaredMethodsFiles="/Users/sternelee/.gradle/caches/8.14.3/transforms/1c05be901ad706ee732ab315c18043eb/transformed/D8BackportedDesugaredMethods.txt">
   </artifact>
 </variant>

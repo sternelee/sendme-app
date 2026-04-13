@@ -1,4 +1,4 @@
-package sendme.leechat.app
+package com.sendme.dev
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

@@ -6,7 +6,7 @@ gradlePlugin {
     plugins {
         create("pluginsForCoolKids") {
             id = "rust"
-            implementationClass = "RustPlugin"
+            implementationClass = "com.sendme.dev.kotlin.RustPlugin"
         }
     }
 }

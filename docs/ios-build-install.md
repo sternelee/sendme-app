@@ -21,6 +21,7 @@ pnpm tauri build --target aarch64-apple-ios
 ```
 
 This creates a release build at:
+
 ```
 app/src-tauri/gen/apple/build/app_iOS.xcarchive/Products/Applications/Sendme.app
 ```
@@ -32,6 +33,7 @@ xcrun devicectl list devices
 ```
 
 Output shows device info:
+
 ```
 Name               Hostname                             Identifier                             State
 ----------------   ----------------------------------   ------------------------------------   ---------
@@ -45,7 +47,7 @@ Copy the **Identifier** (UUID) for the next step.
 ```bash
 xcrun devicectl device uninstall app \
   --device 03B551C1-4405-5372-891F-F72A02716CF7 \
-  sendme.leechat.app
+  com.sendme.dev
 ```
 
 ### 4. Install App to iPhone
@@ -57,9 +59,10 @@ xcrun devicectl device install app \
 ```
 
 Output on success:
+
 ```
 App installed:
-• bundleID: sendme.leechat.app
+• bundleID: com.sendme.dev
 • installationURL: file:///private/var/containers/Bundle/Application/.../Sendme.app/
 ```
 
@@ -107,7 +110,7 @@ cd app
 pnpm tauri build --target aarch64-apple-ios
 
 # 2. Uninstall old version
-xcrun devicectl device uninstall app --device 03B551C1-4405-5372-891F-F72A02716CF7 sendme.leechat.app
+xcrun devicectl device uninstall app --device 03B551C1-4405-5372-891F-F72A02716CF7 com.sendme.dev
 
 # 3. Install new version
 xcrun devicectl device install app --device 03B551C1-4405-5372-891F-F72A02716CF7 app/src-tauri/gen/apple/build/app_iOS.xcarchive/Products/Applications/Sendme.app
@@ -115,16 +118,17 @@ xcrun devicectl device install app --device 03B551C1-4405-5372-891F-F72A02716CF7
 
 ## Quick Reference
 
-| Action              | Command                                                                                           |
-| ------------------- | ------------------------------------------------------------------------------------------------- |
-| Build iOS           | `cd app && pnpm tauri build --target aarch64-apple-ios`                                          |
-| List devices        | `xcrun devicectl list devices`                                                                    |
-| Uninstall app       | `xcrun devicectl device uninstall app --device <UUID> sendme.leechat.app`                         |
-| Install app         | `xcrun devicectl device install app --device <UUID> app/src-tauri/gen/apple/build/app_iOS.xcarchive/Products/Applications/Sendme.app` |
+| Action        | Command                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Build iOS     | `cd app && pnpm tauri build --target aarch64-apple-ios`                                                                               |
+| List devices  | `xcrun devicectl list devices`                                                                                                        |
+| Uninstall app | `xcrun devicectl device uninstall app --device <UUID> com.sendme.dev`                                                                 |
+| Install app   | `xcrun devicectl device install app --device <UUID> app/src-tauri/gen/apple/build/app_iOS.xcarchive/Products/Applications/Sendme.app` |
 
 ## Alternative: Using Xcode Directly
 
 1. Open the Xcode project:
+
    ```bash
    open app/src-tauri/gen/apple/app.xcodeproj
    ```

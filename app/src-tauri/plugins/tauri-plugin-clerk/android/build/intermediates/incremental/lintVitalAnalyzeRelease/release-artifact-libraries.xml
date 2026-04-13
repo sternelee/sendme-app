@@ -1,9 +1,9 @@
 <libraries>
   <library
       name=":@@:tauri-android::release"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/6d6004d2493b72ee3ca9f5f18bc9af36/transformed/out/jars/classes.jar:/Users/sternelee/.gradle/caches/8.14.3/transforms/6d6004d2493b72ee3ca9f5f18bc9af36/transformed/out/jars/libs/R.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/d2beff8e1db6b5db9015fabc15721b76/transformed/out/jars/classes.jar:/Users/sternelee/.gradle/caches/8.14.3/transforms/d2beff8e1db6b5db9015fabc15721b76/transformed/out/jars/libs/R.jar"
       resolved="android:tauri-android:unspecified"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/6d6004d2493b72ee3ca9f5f18bc9af36/transformed/out"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/d2beff8e1db6b5db9015fabc15721b76/transformed/out"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -14,9 +14,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.appcompat:appcompat:1.6.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/3ef1f6d66cc4fa9599d5bb1889f000fa/transformed/appcompat-1.6.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/40beb798e23d86a8d615c0e32a15c99a/transformed/appcompat-1.6.0/jars/classes.jar"
       resolved="androidx.appcompat:appcompat:1.6.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/3ef1f6d66cc4fa9599d5bb1889f000fa/transformed/appcompat-1.6.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/40beb798e23d86a8d615c0e32a15c99a/transformed/appcompat-1.6.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -27,9 +27,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.fragment:fragment:1.3.6@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/628081b8ad6c926268dee73d69391ffb/transformed/fragment-1.3.6/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/a102b6d63a6d4fa759c42c57f2979aa6/transformed/fragment-1.3.6/jars/classes.jar"
       resolved="androidx.fragment:fragment:1.3.6"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/628081b8ad6c926268dee73d69391ffb/transformed/fragment-1.3.6"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/a102b6d63a6d4fa759c42c57f2979aa6/transformed/fragment-1.3.6"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -40,9 +40,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.activity:activity:1.6.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/c3f8c0cc05c9b9ce233e5f7c0c20f3f0/transformed/activity-1.6.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/4e9c05276010fa30260f6c0494e4c232/transformed/activity-1.6.0/jars/classes.jar"
       resolved="androidx.activity:activity:1.6.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/c3f8c0cc05c9b9ce233e5f7c0c20f3f0/transformed/activity-1.6.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/4e9c05276010fa30260f6c0494e4c232/transformed/activity-1.6.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -53,9 +53,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.lifecycle:lifecycle-viewmodel-savedstate:2.5.1@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/0fba722ff46e68335d20a5d64d8a0572/transformed/lifecycle-viewmodel-savedstate-2.5.1/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/85dd07abab46187fa2c3251352796f86/transformed/lifecycle-viewmodel-savedstate-2.5.1/jars/classes.jar"
       resolved="androidx.lifecycle:lifecycle-viewmodel-savedstate:2.5.1"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/0fba722ff46e68335d20a5d64d8a0572/transformed/lifecycle-viewmodel-savedstate-2.5.1"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/85dd07abab46187fa2c3251352796f86/transformed/lifecycle-viewmodel-savedstate-2.5.1"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -66,9 +66,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.core:core-ktx:1.9.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/f20a46377efa64dc0db5b8b8d079c90f/transformed/core-ktx-1.9.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/1802f43198f434d087d41739f4970a89/transformed/core-ktx-1.9.0/jars/classes.jar"
       resolved="androidx.core:core-ktx:1.9.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/f20a46377efa64dc0db5b8b8d079c90f/transformed/core-ktx-1.9.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/1802f43198f434d087d41739f4970a89/transformed/core-ktx-1.9.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -79,9 +79,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.savedstate:savedstate:1.2.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/1aa5bd245566de793a781dd260599218/transformed/savedstate-1.2.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/0f02d01f9f4fd697b576a5ab40376c45/transformed/savedstate-1.2.0/jars/classes.jar"
       resolved="androidx.savedstate:savedstate:1.2.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/1aa5bd245566de793a781dd260599218/transformed/savedstate-1.2.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/0f02d01f9f4fd697b576a5ab40376c45/transformed/savedstate-1.2.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -92,9 +92,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.appcompat:appcompat-resources:1.6.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/fa961300f3f333e6b7f94513fbb229f4/transformed/appcompat-resources-1.6.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/e8943194229e4eb15211b2c977ef493e/transformed/appcompat-resources-1.6.0/jars/classes.jar"
       resolved="androidx.appcompat:appcompat-resources:1.6.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/fa961300f3f333e6b7f94513fbb229f4/transformed/appcompat-resources-1.6.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/e8943194229e4eb15211b2c977ef493e/transformed/appcompat-resources-1.6.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -105,9 +105,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.drawerlayout:drawerlayout:1.1.1@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/29548c1a17da5b09e6c35baf1541e866/transformed/drawerlayout-1.1.1/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/02e0f6324d89af40834490438ffc7cc4/transformed/drawerlayout-1.1.1/jars/classes.jar"
       resolved="androidx.drawerlayout:drawerlayout:1.1.1"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/29548c1a17da5b09e6c35baf1541e866/transformed/drawerlayout-1.1.1"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/02e0f6324d89af40834490438ffc7cc4/transformed/drawerlayout-1.1.1"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -118,9 +118,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.vectordrawable:vectordrawable-animated:1.1.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/c7070b30930f8a0ca8d4226f6b8286ab/transformed/vectordrawable-animated-1.1.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/878abd92ac5500e0b3296fbf2f801ed0/transformed/vectordrawable-animated-1.1.0/jars/classes.jar"
       resolved="androidx.vectordrawable:vectordrawable-animated:1.1.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/c7070b30930f8a0ca8d4226f6b8286ab/transformed/vectordrawable-animated-1.1.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/878abd92ac5500e0b3296fbf2f801ed0/transformed/vectordrawable-animated-1.1.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -131,9 +131,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.vectordrawable:vectordrawable:1.1.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/cba4ea550d7ffd5ce442c61629f1480d/transformed/vectordrawable-1.1.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/4633efde1489c453abf8328eb40444a8/transformed/vectordrawable-1.1.0/jars/classes.jar"
       resolved="androidx.vectordrawable:vectordrawable:1.1.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/cba4ea550d7ffd5ce442c61629f1480d/transformed/vectordrawable-1.1.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/4633efde1489c453abf8328eb40444a8/transformed/vectordrawable-1.1.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -144,9 +144,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.viewpager:viewpager:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/7145f1277a462d5635b6b7a45702697e/transformed/viewpager-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/54705e30ba8a9e8f26d23afc52bf76b0/transformed/viewpager-1.0.0/jars/classes.jar"
       resolved="androidx.viewpager:viewpager:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/7145f1277a462d5635b6b7a45702697e/transformed/viewpager-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/54705e30ba8a9e8f26d23afc52bf76b0/transformed/viewpager-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -157,9 +157,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.customview:customview:1.1.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/b74fd549cf685e16257efcc36d0d0d03/transformed/customview-1.1.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/30ace3090d80ea853abfbd7165de3bc3/transformed/customview-1.1.0/jars/classes.jar"
       resolved="androidx.customview:customview:1.1.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/b74fd549cf685e16257efcc36d0d0d03/transformed/customview-1.1.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/30ace3090d80ea853abfbd7165de3bc3/transformed/customview-1.1.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -170,9 +170,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.loader:loader:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/ce2de076a10dd5c515dab322216cef09/transformed/loader-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/d8e70ae231b6f29005381ac072c22622/transformed/loader-1.0.0/jars/classes.jar"
       resolved="androidx.loader:loader:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/ce2de076a10dd5c515dab322216cef09/transformed/loader-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/d8e70ae231b6f29005381ac072c22622/transformed/loader-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -183,9 +183,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.core:core:1.9.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/18c44be18def471802a8d4f661689208/transformed/core-1.9.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/8e1313d79c420c692c207ebd9b695655/transformed/core-1.9.0/jars/classes.jar"
       resolved="androidx.core:core:1.9.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/18c44be18def471802a8d4f661689208/transformed/core-1.9.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/8e1313d79c420c692c207ebd9b695655/transformed/core-1.9.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -196,9 +196,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.annotation:annotation-experimental:1.3.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/bb793cc022d4f0c26c284701c559cc83/transformed/annotation-experimental-1.3.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/6349e190a8f16a8253fa7cce5c0ca65c/transformed/annotation-experimental-1.3.0/jars/classes.jar"
       resolved="androidx.annotation:annotation-experimental:1.3.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/bb793cc022d4f0c26c284701c559cc83/transformed/annotation-experimental-1.3.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/6349e190a8f16a8253fa7cce5c0ca65c/transformed/annotation-experimental-1.3.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -209,9 +209,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.lifecycle:lifecycle-viewmodel:2.5.1@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/d324de09582600a5a2f7a8587767f40c/transformed/lifecycle-viewmodel-2.5.1/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/99b98536e4d47bbe2abcb0fcde8dddf6/transformed/lifecycle-viewmodel-2.5.1/jars/classes.jar"
       resolved="androidx.lifecycle:lifecycle-viewmodel:2.5.1"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/d324de09582600a5a2f7a8587767f40c/transformed/lifecycle-viewmodel-2.5.1"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/99b98536e4d47bbe2abcb0fcde8dddf6/transformed/lifecycle-viewmodel-2.5.1"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -246,9 +246,9 @@
       resolved="org.jetbrains:annotations:13.0"/>
   <library
       name="androidx.cursoradapter:cursoradapter:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/b1509bbb2addddcd74601d8c305d162f/transformed/cursoradapter-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/08da963c7a6f653a2ab59a86b17b853e/transformed/cursoradapter-1.0.0/jars/classes.jar"
       resolved="androidx.cursoradapter:cursoradapter:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/b1509bbb2addddcd74601d8c305d162f/transformed/cursoradapter-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/08da963c7a6f653a2ab59a86b17b853e/transformed/cursoradapter-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -259,9 +259,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.lifecycle:lifecycle-runtime:2.5.1@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/cda963735f6f7c1999bdf9f626894b9a/transformed/lifecycle-runtime-2.5.1/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/5d76c2a277544bc2bd5250d6f2d0b8d5/transformed/lifecycle-runtime-2.5.1/jars/classes.jar"
       resolved="androidx.lifecycle:lifecycle-runtime:2.5.1"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/cda963735f6f7c1999bdf9f626894b9a/transformed/lifecycle-runtime-2.5.1"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/5d76c2a277544bc2bd5250d6f2d0b8d5/transformed/lifecycle-runtime-2.5.1"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -272,9 +272,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.versionedparcelable:versionedparcelable:1.1.1@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/9a63363ee7639e64e4819ef664c73c83/transformed/versionedparcelable-1.1.1/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/b958579722b9b295a2e5715cb6c29292/transformed/versionedparcelable-1.1.1/jars/classes.jar"
       resolved="androidx.versionedparcelable:versionedparcelable:1.1.1"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/9a63363ee7639e64e4819ef664c73c83/transformed/versionedparcelable-1.1.1"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/b958579722b9b295a2e5715cb6c29292/transformed/versionedparcelable-1.1.1"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -289,9 +289,9 @@
       resolved="androidx.collection:collection:1.1.0"/>
   <library
       name="androidx.lifecycle:lifecycle-livedata:2.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/5c80abee6e5dad012bf3ff2ad0897c08/transformed/lifecycle-livedata-2.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/cdd714112135dbc35c2eb53b552492e6/transformed/lifecycle-livedata-2.0.0/jars/classes.jar"
       resolved="androidx.lifecycle:lifecycle-livedata:2.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/5c80abee6e5dad012bf3ff2ad0897c08/transformed/lifecycle-livedata-2.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/cdd714112135dbc35c2eb53b552492e6/transformed/lifecycle-livedata-2.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -302,9 +302,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.arch.core:core-runtime:2.1.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/f1e32027c102ca98d7a27b325e746161/transformed/core-runtime-2.1.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/5782805d59624b6fbf9bfb772f50b46e/transformed/core-runtime-2.1.0/jars/classes.jar"
       resolved="androidx.arch.core:core-runtime:2.1.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/f1e32027c102ca98d7a27b325e746161/transformed/core-runtime-2.1.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/5782805d59624b6fbf9bfb772f50b46e/transformed/core-runtime-2.1.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -319,9 +319,9 @@
       resolved="androidx.arch.core:core-common:2.1.0"/>
   <library
       name="androidx.lifecycle:lifecycle-livedata-core:2.5.1@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/214b6c29fee5f61731ee6cc29e1bfa2a/transformed/lifecycle-livedata-core-2.5.1/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/af7b12e95415530a3a5047cb26c186e7/transformed/lifecycle-livedata-core-2.5.1/jars/classes.jar"
       resolved="androidx.lifecycle:lifecycle-livedata-core:2.5.1"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/214b6c29fee5f61731ee6cc29e1bfa2a/transformed/lifecycle-livedata-core-2.5.1"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/af7b12e95415530a3a5047cb26c186e7/transformed/lifecycle-livedata-core-2.5.1"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -336,9 +336,9 @@
       resolved="androidx.lifecycle:lifecycle-common:2.5.1"/>
   <library
       name="androidx.interpolator:interpolator:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/8663d7b84ae7a79f45a4f4533a8a6937/transformed/interpolator-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/caa2163d928e7dc76727cb434669e0cb/transformed/interpolator-1.0.0/jars/classes.jar"
       resolved="androidx.interpolator:interpolator:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/8663d7b84ae7a79f45a4f4533a8a6937/transformed/interpolator-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/caa2163d928e7dc76727cb434669e0cb/transformed/interpolator-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -353,9 +353,9 @@
       resolved="androidx.annotation:annotation:1.3.0"/>
   <library
       name="com.google.android.material:material:1.7.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/75d78fdab04f62467bfedfd2740ffb05/transformed/material-1.7.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/d61c9d1dc320f9738e448cc4ea815ead/transformed/material-1.7.0/jars/classes.jar"
       resolved="com.google.android.material:material:1.7.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/75d78fdab04f62467bfedfd2740ffb05/transformed/material-1.7.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/d61c9d1dc320f9738e448cc4ea815ead/transformed/material-1.7.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -366,9 +366,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.constraintlayout:constraintlayout:2.0.1@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/573ae3dfea92a4fb712e7f052c9d8302/transformed/constraintlayout-2.0.1/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/2c7090709cd0744f436e53551f31b972/transformed/constraintlayout-2.0.1/jars/classes.jar"
       resolved="androidx.constraintlayout:constraintlayout:2.0.1"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/573ae3dfea92a4fb712e7f052c9d8302/transformed/constraintlayout-2.0.1"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/2c7090709cd0744f436e53551f31b972/transformed/constraintlayout-2.0.1"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -379,9 +379,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.viewpager2:viewpager2:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/59a8c4660838122e63fbb3cadf38b822/transformed/viewpager2-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/c07d7c13bb1f97a5a517376922c80fd5/transformed/viewpager2-1.0.0/jars/classes.jar"
       resolved="androidx.viewpager2:viewpager2:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/59a8c4660838122e63fbb3cadf38b822/transformed/viewpager2-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/c07d7c13bb1f97a5a517376922c80fd5/transformed/viewpager2-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -392,9 +392,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.emoji2:emoji2-views-helper:1.2.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/06dc0092942fb2b9f28de66b233bcb7d/transformed/emoji2-views-helper-1.2.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/c8554ea7ed64cdb2424bcbe0df920831/transformed/emoji2-views-helper-1.2.0/jars/classes.jar"
       resolved="androidx.emoji2:emoji2-views-helper:1.2.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/06dc0092942fb2b9f28de66b233bcb7d/transformed/emoji2-views-helper-1.2.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/c8554ea7ed64cdb2424bcbe0df920831/transformed/emoji2-views-helper-1.2.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -405,9 +405,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.emoji2:emoji2:1.2.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/e12f3601db4315ec3633d3b741416f42/transformed/emoji2-1.2.0/jars/classes.jar:/Users/sternelee/.gradle/caches/8.14.3/transforms/e12f3601db4315ec3633d3b741416f42/transformed/emoji2-1.2.0/jars/libs/repackaged.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/87716dfd1ae368382c5eb9a8fa75149d/transformed/emoji2-1.2.0/jars/classes.jar:/Users/sternelee/.gradle/caches/8.14.3/transforms/87716dfd1ae368382c5eb9a8fa75149d/transformed/emoji2-1.2.0/jars/libs/repackaged.jar"
       resolved="androidx.emoji2:emoji2:1.2.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/e12f3601db4315ec3633d3b741416f42/transformed/emoji2-1.2.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/87716dfd1ae368382c5eb9a8fa75149d/transformed/emoji2-1.2.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -418,9 +418,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.coordinatorlayout:coordinatorlayout:1.1.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/f106d447cb76f8dcffc97b7b3df072ca/transformed/coordinatorlayout-1.1.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/87d3b0b0d4fb29de3284fb85ca1746a2/transformed/coordinatorlayout-1.1.0/jars/classes.jar"
       resolved="androidx.coordinatorlayout:coordinatorlayout:1.1.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/f106d447cb76f8dcffc97b7b3df072ca/transformed/coordinatorlayout-1.1.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/87d3b0b0d4fb29de3284fb85ca1746a2/transformed/coordinatorlayout-1.1.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -431,9 +431,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.dynamicanimation:dynamicanimation:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/d7d741475a8d654a247101655b12bdd2/transformed/dynamicanimation-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/1ed251daf384d7ba92c9000a2346d901/transformed/dynamicanimation-1.0.0/jars/classes.jar"
       resolved="androidx.dynamicanimation:dynamicanimation:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/d7d741475a8d654a247101655b12bdd2/transformed/dynamicanimation-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/1ed251daf384d7ba92c9000a2346d901/transformed/dynamicanimation-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -444,9 +444,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.transition:transition:1.2.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/4a24d3f8c863450034ed4dd54457f11a/transformed/transition-1.2.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/162275290636d5be0c96575564d44e6a/transformed/transition-1.2.0/jars/classes.jar"
       resolved="androidx.transition:transition:1.2.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/4a24d3f8c863450034ed4dd54457f11a/transformed/transition-1.2.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/162275290636d5be0c96575564d44e6a/transformed/transition-1.2.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -457,9 +457,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.legacy:legacy-support-core-utils:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/77bc92d32940ae3297fb044b6d95febe/transformed/legacy-support-core-utils-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/893b04f084f89bb9c2c2f3918766a8ce/transformed/legacy-support-core-utils-1.0.0/jars/classes.jar"
       resolved="androidx.legacy:legacy-support-core-utils:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/77bc92d32940ae3297fb044b6d95febe/transformed/legacy-support-core-utils-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/893b04f084f89bb9c2c2f3918766a8ce/transformed/legacy-support-core-utils-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -470,9 +470,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.recyclerview:recyclerview:1.1.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/1f64051eb40acdc5d8459f6e4ffdd1a0/transformed/recyclerview-1.1.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/a17e16cae04f27b359670784c18c6b14/transformed/recyclerview-1.1.0/jars/classes.jar"
       resolved="androidx.recyclerview:recyclerview:1.1.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/1f64051eb40acdc5d8459f6e4ffdd1a0/transformed/recyclerview-1.1.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/a17e16cae04f27b359670784c18c6b14/transformed/recyclerview-1.1.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -495,9 +495,9 @@
       resolved="com.fasterxml.jackson.core:jackson-databind:2.15.3"/>
   <library
       name="androidx.lifecycle:lifecycle-process:2.4.1@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/dc7d94e5d6c52ee99ecc467689285f17/transformed/lifecycle-process-2.4.1/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/104cc390f7e7331ccf8d079a98817f0f/transformed/lifecycle-process-2.4.1/jars/classes.jar"
       resolved="androidx.lifecycle:lifecycle-process:2.4.1"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/dc7d94e5d6c52ee99ecc467689285f17/transformed/lifecycle-process-2.4.1"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/104cc390f7e7331ccf8d079a98817f0f/transformed/lifecycle-process-2.4.1"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -512,9 +512,9 @@
       resolved="androidx.resourceinspection:resourceinspection-annotation:1.0.1"/>
   <library
       name="androidx.cardview:cardview:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/a47f55a599720aaf5f90238200d0d726/transformed/cardview-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/af9dccc1a23d8796c3a5750a16517659/transformed/cardview-1.0.0/jars/classes.jar"
       resolved="androidx.cardview:cardview:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/a47f55a599720aaf5f90238200d0d726/transformed/cardview-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/af9dccc1a23d8796c3a5750a16517659/transformed/cardview-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -529,9 +529,9 @@
       resolved="androidx.concurrent:concurrent-futures:1.0.0"/>
   <library
       name="androidx.startup:startup-runtime:1.1.1@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/399c7536b81e1e8cda0ec3b5c0a13a99/transformed/startup-runtime-1.1.1/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/cd31afdd5083687c02e3763c7dcce704/transformed/startup-runtime-1.1.1/jars/classes.jar"
       resolved="androidx.startup:startup-runtime:1.1.1"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/399c7536b81e1e8cda0ec3b5c0a13a99/transformed/startup-runtime-1.1.1"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/cd31afdd5083687c02e3763c7dcce704/transformed/startup-runtime-1.1.1"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -542,9 +542,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.tracing:tracing:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/06b5108d029f5b26422c22d249282021/transformed/tracing-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/3e845a678a5e75277f259ca57b6eabc4/transformed/tracing-1.0.0/jars/classes.jar"
       resolved="androidx.tracing:tracing:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/06b5108d029f5b26422c22d249282021/transformed/tracing-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/3e845a678a5e75277f259ca57b6eabc4/transformed/tracing-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -555,9 +555,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.documentfile:documentfile:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/03b1aeb5c9e16e16acbe326fe0ec5c7e/transformed/documentfile-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/07c1129d10a99f6673403f223469170b/transformed/documentfile-1.0.0/jars/classes.jar"
       resolved="androidx.documentfile:documentfile:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/03b1aeb5c9e16e16acbe326fe0ec5c7e/transformed/documentfile-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/07c1129d10a99f6673403f223469170b/transformed/documentfile-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -568,9 +568,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.localbroadcastmanager:localbroadcastmanager:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/3bd982badf2bf19e2610e37e324b610f/transformed/localbroadcastmanager-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/0893d1c3dc0bbb55fcea8084e48d1d96/transformed/localbroadcastmanager-1.0.0/jars/classes.jar"
       resolved="androidx.localbroadcastmanager:localbroadcastmanager:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/3bd982badf2bf19e2610e37e324b610f/transformed/localbroadcastmanager-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/0893d1c3dc0bbb55fcea8084e48d1d96/transformed/localbroadcastmanager-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
@@ -581,9 +581,9 @@
       proguardRules="proguard.txt"/>
   <library
       name="androidx.print:print:1.0.0@aar"
-      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/485dff1809d27614924c9584d349b902/transformed/print-1.0.0/jars/classes.jar"
+      jars="/Users/sternelee/.gradle/caches/8.14.3/transforms/e244f1a5d0d796c58d0333ad88451a46/transformed/print-1.0.0/jars/classes.jar"
       resolved="androidx.print:print:1.0.0"
-      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/485dff1809d27614924c9584d349b902/transformed/print-1.0.0"
+      folder="/Users/sternelee/.gradle/caches/8.14.3/transforms/e244f1a5d0d796c58d0333ad88451a46/transformed/print-1.0.0"
       manifest="AndroidManifest.xml"
       resFolder="res"
       assetsFolder="assets"
