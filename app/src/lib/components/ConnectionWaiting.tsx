@@ -11,9 +11,10 @@ interface ConnectionWaitingProps {
 
 export const ConnectionWaiting: Component<ConnectionWaitingProps> = (props) => {
   return (
-    <div class="bg-base-200 space-y-4 rounded-lg p-6 text-center">
+    <div class="border-base-300/70 bg-base-100/80 rounded-3xl border p-6 text-center shadow-sm">
       <div class="flex justify-center">
         <div class="relative">
+          <div class="bg-primary/10 absolute inset-0 animate-ping rounded-full"></div>
           <div class="absolute inset-0 flex items-center justify-center">
             <div class="border-base-300 h-16 w-16 rounded-full border-4"></div>
           </div>
@@ -22,13 +23,18 @@ export const ConnectionWaiting: Component<ConnectionWaitingProps> = (props) => {
           </div>
         </div>
       </div>
-      <div class="space-y-1">
-        <p class="font-medium">
+      <div class="mt-4 space-y-2">
+        <p class="text-lg font-semibold">
           {t("nearby.waitingForAccept", { deviceName: props.deviceName })}
         </p>
-        <p class="text-xs opacity-60">{t("nearby.waitingHint")}</p>
+        <p class="text-base-content/60 text-sm leading-6">
+          {t("nearby.waitingHint")}
+        </p>
       </div>
-      <button onClick={props.onCancel} class="btn btn-outline btn-sm">
+      <button
+        onClick={props.onCancel}
+        class="btn btn-outline btn-sm mt-4 rounded-2xl"
+      >
         {t("common.cancel")}
       </button>
     </div>

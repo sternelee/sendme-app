@@ -15,7 +15,8 @@ interface TransferProgressProps {
 }
 
 export const TransferProgress: Component<TransferProgressProps> = (props) => {
-  const percent = () => Math.round((props.transferred / props.total) * 100);
+  const percent = () =>
+    props.total > 0 ? Math.round((props.transferred / props.total) * 100) : 0;
   const speedStr = () => formatFileSize(props.speed) + "/s";
   const etaStr = () => {
     if (props.eta < 60) return "~0 min";
@@ -24,25 +25,35 @@ export const TransferProgress: Component<TransferProgressProps> = (props) => {
   };
 
   return (
-    <div class="bg-base-200 space-y-3 rounded-lg p-4">
-      <div class="flex justify-between text-sm font-medium">
-        <span>{percent()}%</span>
-        <span class="opacity-60">{speedStr()}</span>
+    <div class="border-base-300/70 bg-base-100/80 rounded-3xl border p-4 shadow-sm">
+      <div class="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <p class="text-base-content/55 text-xs font-semibold tracking-[0.2em] uppercase">
+            {props.isReceiving ? t("common.receiving") : t("common.send")}
+          </p>
+          <p class="mt-2 text-2xl font-semibold">{percent()}%</p>
+        </div>
+        <div class="text-right text-sm opacity-65">
+          <p>{speedStr()}</p>
+          <p class="mt-1 text-xs">
+            {t("nearby.remaining", { time: etaStr() })}
+          </p>
+        </div>
       </div>
+
       <progress
         class={`progress w-full ${props.isReceiving ? "progress-secondary" : "progress-primary"}`}
         value={props.transferred}
         max={props.total}
       ></progress>
-      <div class="flex justify-between text-xs opacity-60">
+      <div class="mt-3 flex justify-between text-xs opacity-60">
         <span>
           {formatFileSize(props.transferred)} / {formatFileSize(props.total)}
         </span>
-        <span>{t("nearby.remaining", { time: etaStr() })}</span>
       </div>
       <button
         onClick={props.onCancel}
-        class="btn btn-ghost btn-sm text-error mt-2 w-full"
+        class="btn btn-ghost btn-sm text-error mt-4 w-full rounded-2xl"
       >
         <X size={14} class="mr-1" /> {t("common.cancel")}
       </button>

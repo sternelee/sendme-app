@@ -21,6 +21,7 @@
       "transfer": "Transfer",
       "files": "Files",
       "copy": "Copy",
+      "paste": "Paste",
       "online": "Online",
       "activity": "Activity",
       "clear": "Clear",
@@ -110,7 +111,10 @@
       "targetLocked": "Target Locked",
       "copy": "Copy",
       "sendToDevice": "Send to Device",
-      "failed": "Failed to share"
+      "failed": "Failed to share",
+      "ticketTypeLabel": "Ticket format",
+      "readyToShare": "Ready to share",
+      "readyHint": "Keep this screen open until the receiver joins, or copy the ticket and send it through any chat app."
     },
     "receive": {
       "title": "Receive Files",
@@ -156,7 +160,9 @@
       "title": "Settings",
       "theme": "Theme",
       "language": "Language",
-      "about": "About"
+      "about": "About",
+      "languageDescription": "Choose the language used across menus, buttons, and status text.",
+      "themeDescription": "Adjust the app's appearance for the environment and visual comfort."
     },
     "devices": {
       "title": "Select Device",
@@ -201,6 +207,7 @@
     "nearby": {
       "title": "Nearby",
       "devices": "Nearby Devices",
+      "devicesFound": "{count} devices ready",
       "scanning": "Scanning...",
       "noDevicesFound": "No devices found on network",
       "noDevicesHint": "Make sure other devices are running Sendme",
@@ -225,7 +232,9 @@
       "fileCount": "{count} files",
       "remaining": "{time} remaining",
       "dropFilesHere": "Drop files here",
-      "dropFilesOrTap": "Drop files or tap to select"
+      "dropFilesOrTap": "Drop files or tap to select",
+      "workspaceTitle": "More ways to share",
+      "workspaceSubtitle": "Use Nearby for devices on the same network, or Friends when you want a repeatable trusted path."
     }
   },
   "zh-CN": {
@@ -250,6 +259,7 @@
       "transfer": "传输",
       "files": "文件",
       "copy": "复制",
+      "paste": "粘贴",
       "online": "在线",
       "activity": "活动",
       "clear": "清除",
@@ -339,7 +349,10 @@
       "targetLocked": "目标已锁定",
       "copy": "复制",
       "sendToDevice": "发送到设备",
-      "failed": "分享失败"
+      "failed": "分享失败",
+      "ticketTypeLabel": "票据格式",
+      "readyToShare": "可以分享了",
+      "readyHint": "在接收方加入前请保持此页面开启，或复制票据并通过任意聊天工具发送。"
     },
     "receive": {
       "title": "接收文件",
@@ -385,7 +398,9 @@
       "title": "设置",
       "theme": "主题",
       "language": "语言",
-      "about": "关于"
+      "about": "关于",
+      "languageDescription": "选择应用内菜单、按钮和状态信息所使用的语言。",
+      "themeDescription": "根据当前环境和视觉偏好调整应用外观。"
     },
     "devices": {
       "title": "选择设备",
@@ -430,6 +445,7 @@
     "nearby": {
       "title": "附近",
       "devices": "附近设备",
+      "devicesFound": "已发现 {count} 台设备",
       "scanning": "扫描中...",
       "noDevicesFound": "未在网络中找到设备",
       "noDevicesHint": "请确认其他设备正在运行 Sendme",
@@ -454,7 +470,9 @@
       "fileCount": "{count} 个文件",
       "remaining": "剩余 {time}",
       "dropFilesHere": "将文件拖放到这里",
-      "dropFilesOrTap": "拖放文件或点击选择"
+      "dropFilesOrTap": "拖放文件或点击选择",
+      "workspaceTitle": "更多分享方式",
+      "workspaceSubtitle": "同一网络下优先用附近分享；需要长期可信通道时用好友。"
     }
   }
 }

@@ -36,12 +36,19 @@ const DeviceIcon: Component<{ type: string }> = (props) => {
 
 export const NearbyDeviceList: Component<NearbyDeviceListProps> = (props) => {
   return (
-    <div class="space-y-3">
+    <div class="space-y-4">
       <div class="flex items-center justify-between">
-        <span class="text-sm font-medium opacity-60">{t("nearby.devices")}</span>
+        <div>
+          <p class="text-sm font-medium">{t("nearby.devices")}</p>
+          <p class="text-base-content/55 mt-1 text-xs">
+            {props.devices.length > 0
+              ? t("nearby.devicesFound", { count: props.devices.length })
+              : t("nearby.noDevicesHint")}
+          </p>
+        </div>
         <button
           onClick={props.onRefresh}
-          class={`btn btn-ghost btn-xs ${props.isScanning ? "loading" : ""}`}
+          class={`btn btn-ghost btn-sm rounded-xl ${props.isScanning ? "loading" : ""}`}
           disabled={props.isScanning}
         >
           <RefreshCw size={14} class={props.isScanning ? "animate-spin" : ""} />
@@ -49,7 +56,9 @@ export const NearbyDeviceList: Component<NearbyDeviceListProps> = (props) => {
       </div>
 
       <Show when={props.error}>
-        <div class="text-error text-sm">{props.error}</div>
+        <div class="border-error/20 bg-error/10 text-error rounded-2xl border px-4 py-3 text-sm">
+          {props.error}
+        </div>
       </Show>
 
       <Show
@@ -64,28 +73,38 @@ export const NearbyDeviceList: Component<NearbyDeviceListProps> = (props) => {
         <Show
           when={props.devices.length > 0}
           fallback={
-            <div class="py-8 text-center opacity-40">
+            <div class="border-base-300/80 rounded-2xl border border-dashed py-8 text-center opacity-50">
               <p class="text-sm">{t("nearby.noDevicesFound")}</p>
               <p class="mt-1 text-xs">{t("nearby.noDevicesHint")}</p>
             </div>
           }
         >
-          <div class="flex gap-3 overflow-x-auto pb-2">
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <For each={props.devices}>
               {(device) => (
                 <button
                   onClick={() => props.onDeviceSelect(device)}
-                  class={`flex flex-shrink-0 flex-col items-center rounded-xl border-2 p-4 transition-colors ${
+                  class={`flex items-center gap-4 rounded-3xl border p-4 text-left transition-all ${
                     props.selectedDeviceId === device.id
-                      ? "border-primary bg-primary/10"
-                      : "border-base-300 bg-base-200 hover:border-primary/50"
+                      ? "border-primary bg-primary/10 shadow-sm"
+                      : "border-base-300/70 bg-base-100/80 hover:border-primary/40 hover:bg-primary/5"
                   }`}
                 >
-                  <DeviceIcon type={device.deviceType} />
-                  <span class="mt-2 text-xs font-medium">{device.name}</span>
-                  <span class="text-xs opacity-40">
-                    {device.id.slice(0, 8)}
-                  </span>
+                  <div
+                    class={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                      props.selectedDeviceId === device.id
+                        ? "bg-primary/15 text-primary"
+                        : "bg-base-200 text-base-content/70"
+                    }`}
+                  >
+                    <DeviceIcon type={device.deviceType} />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-medium">{device.name}</p>
+                    <p class="mt-1 text-xs opacity-45">
+                      {device.id.slice(0, 8)}
+                    </p>
+                  </div>
                 </button>
               )}
             </For>
