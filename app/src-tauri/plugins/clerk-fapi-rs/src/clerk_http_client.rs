@@ -50,11 +50,16 @@ impl ClerkHttpClient {
 
     /// Process the request before sending
     fn process_request(&self, mut req: Request) -> Request {
+        // CRITICAL: Strip Origin header to avoid Clerk's
+        // origin_authorization_headers_conflict error.
+        // On Android, native HTTP layers may auto-add Origin, but Clerk
+        // forbids having both Origin and Authorization in native app contexts.
+        req.headers_mut().remove("Origin");
+
         // When running in non standard browser we need to tell Clerk
         // API that with the _is_native query parameter
-        let url = req.url_mut();
         if self.client_kind == ClientKind::NonBrowser {
-            url.query_pairs_mut().append_pair("_is_native", "1");
+            req.url_mut().query_pairs_mut().append_pair("_is_native", "1");
         }
 
         let token_id = {
@@ -63,7 +68,8 @@ impl ClerkHttpClient {
         };
 
         if let Some(dev_browser_token_id) = token_id {
-            url.query_pairs_mut()
+            req.url_mut()
+                .query_pairs_mut()
                 .append_pair("__clerk_db_jwt", &dev_browser_token_id);
         }
 

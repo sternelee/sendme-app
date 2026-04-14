@@ -11,4 +11,5 @@ commands.allow = [
     "initialize",
     "get_client_authorization_header",
     "set_client_authorization_header",
+    "clerk_proxy",
 ]

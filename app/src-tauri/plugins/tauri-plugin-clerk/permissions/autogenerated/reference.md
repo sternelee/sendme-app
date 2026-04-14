@@ -18,6 +18,32 @@ Default permissions for the plugin
 <tr>
 <td>
 
+`clerk:allow-clerk-proxy`
+
+</td>
+<td>
+
+Enables the clerk_proxy command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`clerk:deny-clerk-proxy`
+
+</td>
+<td>
+
+Denies the clerk_proxy command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `clerk:allow-get-client-authorization-header`
 
 </td>

@@ -175,7 +175,8 @@ impl ClerkPluginBuilder {
             .invoke_handler(tauri::generate_handler![
                 commands::initialize,
                 commands::get_client_authorization_header,
-                commands::set_client_authorization_header
+                commands::set_client_authorization_header,
+                commands::clerk_proxy
             ])
             .setup(move |app, _api| {
                 let publishable_key = self

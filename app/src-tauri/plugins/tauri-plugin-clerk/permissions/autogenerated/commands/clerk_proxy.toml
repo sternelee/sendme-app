@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-clerk-proxy"
+description = "Enables the clerk_proxy command without any pre-configured scope."
+commands.allow = ["clerk_proxy"]
+
+[[permission]]
+identifier = "deny-clerk-proxy"
+description = "Denies the clerk_proxy command without any pre-configured scope."
+commands.deny = ["clerk_proxy"]

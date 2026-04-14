@@ -16,6 +16,7 @@ tauri = "2"
 serde = "1.0"
 thiserror = "2"
 clerk-fapi-rs = { path = "../clerk-fapi-rs" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 tokio = { version = "1", features = ["sync"] }
 tracing = "0.1.41"
 parking_lot = "0.12"
