@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
+#[cfg(desktop)]
+use tauri::WebviewWindowBuilder;
 use tauri_plugin_fs::FsExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, RwLock};
@@ -1835,6 +1837,22 @@ pub fn run() {
             app.manage(transfers.clone());
             // Store nearby runtime in app state
             app.manage(nearby.clone());
+
+            #[cfg(desktop)]
+            {
+                if let Some(splash_config) = app
+                    .config()
+                    .app
+                    .windows
+                    .iter()
+                    .find(|window| window.label == "splashscreen")
+                {
+                    WebviewWindowBuilder::from_config(app.handle(), splash_config)
+                        .map_err(|e| format!("Failed to configure splashscreen: {e}"))?
+                        .build()
+                        .map_err(|e| format!("Failed to create splashscreen: {e}"))?;
+                }
+            }
 
             // Create system tray icon on macOS
             #[cfg(target_os = "macos")]

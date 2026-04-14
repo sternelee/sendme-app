@@ -53,7 +53,6 @@ import {
   Settings,
   Scan,
   Trash2,
-  Sparkles,
   Shield,
   Zap,
   User,
@@ -158,6 +157,17 @@ export default function MainPage() {
   function setTransferView(mode: TransferMode) {
     setTransferMode(mode);
     globalStore.send.setIsTextMode(mode === "text");
+  }
+
+  function renderTransferTitleIcon() {
+    if (transferMode() === "receive") {
+      return <Download size={18} class="text-secondary" />;
+    }
+    if (transferMode() === "text") {
+      return <FileText size={18} class="text-accent" />;
+    }
+
+    return <Send size={18} class="text-primary" />;
   }
 
   function applyTheme(newTheme: Theme) {
@@ -569,7 +579,7 @@ export default function MainPage() {
         <SplashScreen stage="shell" />
       </Show>
 
-      <main class="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-auto px-4 pt-4 pb-28">
+      <main class="safe-area-top-offset mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-auto px-4 pb-28">
         <Presence exitBeforeEnter>
           <Switch>
             <Match when={activeTab() === "transfer"}>
@@ -583,13 +593,15 @@ export default function MainPage() {
                   <section class="surface-card space-y-5 p-5 md:p-6">
                     <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                       <div class="space-y-2">
-                        <div class="badge badge-outline gap-2 rounded-full px-3 py-3 text-xl">
-                          <Sparkles size={14} />
-                          {transferMode() === "send"
-                            ? t("send.title")
-                            : transferMode() === "receive"
-                              ? t("receive.title")
-                              : t("text.title")}
+                        <div class="flex items-center gap-2">
+                          {renderTransferTitleIcon()}
+                          <h1 class="text-xl font-semibold md:text-2xl">
+                            {transferMode() === "send"
+                              ? t("send.title")
+                              : transferMode() === "receive"
+                                ? t("receive.title")
+                                : t("text.title")}
+                          </h1>
                         </div>
                         <div>
                           <p class="text-base-content/65 mt-2 max-w-2xl text-sm leading-6">
@@ -669,11 +681,11 @@ export default function MainPage() {
 
                           <div class="border-base-300/70 bg-base-100/70 rounded-3xl border p-4">
                             <div class="mb-2 flex items-center justify-between gap-3">
-                              <div>
+                              <div class="min-w-0 flex-1">
                                 <p class="text-sm font-medium">
                                   {t("common.defaultDownloads")}
                                 </p>
-                                <p class="text-base-content/60 mt-1 text-xs">
+                                <p class="text-base-content/60 mt-1 truncate text-xs">
                                   {receiveOutputDir()
                                     ? getDisplayName(receiveOutputDir())
                                     : t("common.defaultDownloads")}
@@ -681,13 +693,13 @@ export default function MainPage() {
                               </div>
                               <button
                                 onClick={selectOutputDirectory}
-                                class="btn btn-outline btn-sm rounded-xl"
+                                class="btn btn-outline btn-sm shrink-0 rounded-xl"
                               >
                                 <RefreshCw size={14} />
                                 {t("send.chooseFolder")}
                               </button>
                             </div>
-                            <div class="border-base-300/70 bg-base-100 text-base-content/75 rounded-2xl border px-4 py-3 text-sm">
+                            <div class="border-base-300/70 bg-base-100 text-base-content/75 max-w-full min-w-0 overflow-hidden rounded-2xl border px-4 py-3 text-sm break-all">
                               {receiveOutputDir() ||
                                 t("common.defaultDownloads")}
                             </div>
@@ -773,16 +785,16 @@ export default function MainPage() {
                         <Show
                           when={isTextMode()}
                           fallback={
-                            <div class="grid gap-3">
+                            <div class="grid min-w-0 gap-3">
                               <button
                                 onClick={selectFile}
-                                class="border-base-300 bg-base-100/75 hover:border-primary/60 hover:bg-primary/5 flex min-h-48 flex-col items-start justify-between rounded-3xl border border-dashed p-5 text-left transition"
+                                class="border-base-300 bg-base-100/75 hover:border-primary/60 hover:bg-primary/5 flex min-h-48 w-full min-w-0 flex-col items-start justify-between overflow-hidden rounded-3xl border border-dashed p-5 text-left transition"
                               >
                                 <div class="bg-primary/10 text-primary rounded-2xl p-3">
                                   <SendIcon size={24} />
                                 </div>
-                                <div class="space-y-2">
-                                  <p class="text-sm font-medium">
+                                <div class="w-full min-w-0 space-y-2">
+                                  <p class="max-w-full truncate text-sm font-medium">
                                     {sendPath()
                                       ? getDisplayName(sendPath())
                                       : t("common.selectFileOrFolder")}
@@ -948,10 +960,12 @@ export default function MainPage() {
                 <section class="surface-card space-y-4 p-4 md:p-5">
                   <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
-                      <p class="section-label">{t("common.share")}</p>
-                      <h2 class="mt-1 text-xl font-semibold">
-                        {t("nearby.workspaceTitle")}
-                      </h2>
+                      <div class="flex items-center gap-2">
+                        <Share2 size={18} class="text-primary" />
+                        <h2 class="text-xl font-semibold">
+                          {t("nearby.workspaceTitle")}
+                        </h2>
+                      </div>
                       <p class="text-base-content/65 mt-2 text-sm leading-6">
                         {t("nearby.workspaceSubtitle")}
                       </p>

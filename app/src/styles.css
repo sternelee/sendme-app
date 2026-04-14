@@ -192,6 +192,10 @@ html {
     padding-top: env(safe-area-inset-top);
   }
 
+  .safe-area-top-offset {
+    padding-top: calc(1rem + env(safe-area-inset-top));
+  }
+
   .safe-area-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
