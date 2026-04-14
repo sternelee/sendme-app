@@ -12,12 +12,28 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Sendme by P2P",
         "width": 400,
         "height": 560,
         "resizable": true,
         "alwaysOnTop": false,
-        "fullscreen": false
+        "fullscreen": false,
+        "visible": true,
+        "backgroundColor": "#12151D"
+      },
+      {
+        "label": "splashscreen",
+        "title": "Sendme",
+        "url": "native-splash.html",
+        "width": 400,
+        "height": 560,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "fullscreen": false,
+        "decorations": false,
+        "visible": true,
+        "backgroundColor": "#12151D"
       }
     ],
     "security": {

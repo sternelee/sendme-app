@@ -1727,6 +1727,24 @@ async fn read_nearby_message(
     serde_json::from_slice(&buf).map_err(|e| format!("Failed to decode nearby message: {e}"))
 }
 
+#[tauri::command]
+fn app_ready(app: AppHandle) -> Result<(), String> {
+    close_splashscreen(&app);
+
+    Ok(())
+}
+
+fn close_splashscreen(app: &AppHandle) {
+    if let Some(splashscreen) = app.get_webview_window("splashscreen") {
+        let _ = splashscreen.close();
+    }
+
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.show();
+        let _ = main_window.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging for Android
@@ -1797,6 +1815,17 @@ pub fn run() {
     }
 
     builder
+        .on_page_load(|window, _payload| {
+            if window.label() != "main" {
+                return;
+            }
+
+            let app = window.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(1400)).await;
+                close_splashscreen(&app);
+            });
+        })
         .setup(move |app| {
             // Store transfers in app state
             app.manage(transfers.clone());
@@ -1838,6 +1867,7 @@ pub fn run() {
             send_to_device,
             accept_incoming,
             decline_incoming,
+            app_ready,
             // Menubar commands
             #[cfg(target_os = "macos")]
             menubar_cmd::init_menubar,

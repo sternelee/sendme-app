@@ -164,6 +164,16 @@
       "languageDescription": "Choose the language used across menus, buttons, and status text.",
       "themeDescription": "Adjust the app's appearance for the environment and visual comfort."
     },
+    "splash": {
+      "eyebrow": "Private transfer workspace",
+      "title": "Preparing Sendme",
+      "subtitle": "Launching a secure peer-to-peer session and restoring the tools you need to share right away.",
+      "loadingAuth": "Connecting secure services",
+      "loadingShell": "Loading transfer tools",
+      "stepNetwork": "Preparing encrypted transport",
+      "stepPreferences": "Restoring app preferences",
+      "stepWorkspace": "Opening transfer workspace"
+    },
     "devices": {
       "title": "Select Device",
       "subtitle": "Choose a device to send the ticket to",
@@ -401,6 +411,16 @@
       "about": "关于",
       "languageDescription": "选择应用内菜单、按钮和状态信息所使用的语言。",
       "themeDescription": "根据当前环境和视觉偏好调整应用外观。"
+    },
+    "splash": {
+      "eyebrow": "私密传输工作区",
+      "title": "正在准备 Sendme",
+      "subtitle": "正在启动安全的点对点会话，并恢复你进入传输所需的关键工具。",
+      "loadingAuth": "正在连接安全服务",
+      "loadingShell": "正在加载传输工具",
+      "stepNetwork": "准备加密传输通道",
+      "stepPreferences": "恢复应用偏好设置",
+      "stepWorkspace": "打开传输工作区"
     },
     "devices": {
       "title": "选择设备",

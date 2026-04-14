@@ -3,7 +3,8 @@
   "description": "permissions for desktop app",
   "local": true,
   "windows": [
-    "main"
+    "main",
+    "splashscreen"
   ],
   "permissions": [
     "dialog:default",
