@@ -25,9 +25,6 @@ export function SplashScreen(props: SplashScreenProps) {
 
   return (
     <div class="app-shell splash-screen">
-      <div class="splash-screen__glow splash-screen__glow--primary" />
-      <div class="splash-screen__glow splash-screen__glow--secondary" />
-
       <div class="splash-card">
         <div class="splash-card__brand">
           <div class="splash-card__logo">

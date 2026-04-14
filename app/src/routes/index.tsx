@@ -38,7 +38,6 @@ import {
 import QRCode from "qrcode";
 import { Motion, Presence } from "solid-motionone";
 import {
-  FolderOpen,
   SendIcon,
   Copy,
   Share2,
@@ -75,6 +74,7 @@ import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
 import { i18n } from "~/lib/i18n";
 import { useGlobalStore } from "~/lib/store";
 import { IncomingRequestCard } from "~/lib/components/IncomingRequestCard";
+import { SplashScreen } from "~/lib/components/SplashScreen";
 import { TransferProgress } from "~/lib/components/TransferProgress";
 import NearbyPage from "~/routes/nearby";
 import FriendsPage from "~/routes/friends";
@@ -103,7 +103,7 @@ interface ProgressUpdate {
 type Theme = "light" | "dark" | "system";
 type Tab = "transfer" | "history" | "settings";
 type ShareSubTab = "nearby" | "friends";
-type TransferMode = "send" | "receive";
+type TransferMode = "send" | "receive" | "text";
 
 const ticketTypes = [
   { value: "id", label: "ID Only" },
@@ -129,7 +129,7 @@ export default function MainPage() {
   const sendTicket = () => globalStore.send.state().ticket;
   const sendTicketQrCode = () => globalStore.send.state().ticketQrCode;
   const isSending = () => globalStore.send.state().isSending;
-  const isTextMode = () => globalStore.send.state().isTextMode;
+  const isTextMode = () => transferMode() === "text";
   const textContent = () => globalStore.send.state().textContent;
 
   const receiveTicket = () => globalStore.receive.state().ticket;
@@ -154,6 +154,11 @@ export default function MainPage() {
     if (data.progress.type === "completed") return 100;
     return 0;
   };
+
+  function setTransferView(mode: TransferMode) {
+    setTransferMode(mode);
+    globalStore.send.setIsTextMode(mode === "text");
+  }
 
   function applyTheme(newTheme: Theme) {
     const root = window.document.documentElement;
@@ -278,7 +283,7 @@ export default function MainPage() {
     try {
       await accept_incoming(request.id, receiveOutputDir() || undefined);
       globalStore.nearbyReceive.setTransferState("receiving");
-      setTransferMode("receive");
+      setTransferView("receive");
       setActiveTab("transfer");
     } catch (e) {
       toast.error(`${t("nearby.acceptFailed")}: ${e}`);
@@ -556,887 +561,855 @@ export default function MainPage() {
     localStorage.setItem("receive-output-dir", outputDir);
   });
 
-  const LoadingUI = () => (
-    <div class="app-shell flex min-h-screen flex-col items-center justify-center">
-      <span class="loading loading-spinner loading-lg text-primary"></span>
-      <p class="text-base-content/60 mt-4 text-sm">{t("common.loading")}</p>
-    </div>
-  );
-
   return (
-    <Show when={!isInitializing()} fallback={<LoadingUI />}>
-      <div class="app-shell text-base-content flex min-h-screen flex-col">
-        <Toaster position="top-center" />
+    <div class="app-shell text-base-content flex min-h-screen flex-col">
+      <Toaster position="top-center" />
 
-        <main class="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-auto px-4 pt-4 pb-28">
-          <Presence exitBeforeEnter>
-            <Switch>
-              <Match when={activeTab() === "transfer"}>
-                <Motion.div
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.15 }}
-                  class="space-y-6"
-                >
-                  <div class="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
-                    <section class="surface-card space-y-5 p-5 md:p-6">
-                      <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div class="space-y-2">
-                          <div class="badge badge-outline gap-2 rounded-full px-3 py-3">
-                            <Sparkles size={14} />
-                            {transferMode() === "send"
-                              ? t("send.title")
-                              : t("receive.title")}
-                          </div>
-                          <div>
-                            <h1 class="text-2xl font-semibold tracking-tight md:text-3xl">
-                              {transferMode() === "send"
-                                ? t("send.title")
-                                : t("receive.title")}
-                            </h1>
-                            <p class="text-base-content/65 mt-2 max-w-2xl text-sm leading-6">
-                              {transferMode() === "send"
-                                ? t("send.subtitle")
-                                : t("receive.subtitle")}
-                            </p>
-                          </div>
+      <Show when={isInitializing()}>
+        <SplashScreen stage="shell" />
+      </Show>
+
+      <main class="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-auto px-4 pt-4 pb-28">
+        <Presence exitBeforeEnter>
+          <Switch>
+            <Match when={activeTab() === "transfer"}>
+              <Motion.div
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.15 }}
+                class="space-y-6"
+              >
+                <div class="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
+                  <section class="surface-card space-y-5 p-5 md:p-6">
+                    <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                      <div class="space-y-2">
+                        <div class="badge badge-outline gap-2 rounded-full px-3 py-3 text-xl">
+                          <Sparkles size={14} />
+                          {transferMode() === "send"
+                            ? t("send.title")
+                            : transferMode() === "receive"
+                              ? t("receive.title")
+                              : t("text.title")}
                         </div>
-
-                        <div class="join border-base-300/80 bg-base-100/60 flex gap-2 self-start rounded-2xl border p-1">
-                          <button
-                            class={`join-item btn rounded-2xl border-0 ${transferMode() === "send" ? "btn-primary" : "btn-ghost"}`}
-                            onClick={() => setTransferMode("send")}
-                          >
-                            {t("common.send")}
-                          </button>
-                          <button
-                            class={`join-item btn rounded-2xl border-0 ${transferMode() === "receive" ? "btn-secondary" : "btn-ghost"}`}
-                            onClick={() => setTransferMode("receive")}
-                          >
-                            {t("common.receive")}
-                          </button>
+                        <div>
+                          <p class="text-base-content/65 mt-2 max-w-2xl text-sm leading-6">
+                            {transferMode() === "send"
+                              ? t("send.subtitle")
+                              : transferMode() === "receive"
+                                ? t("receive.subtitle")
+                                : t("text.subtitle")}
+                          </p>
                         </div>
                       </div>
 
-                      <Show
-                        when={transferMode() === "send"}
-                        fallback={
-                          <div class="space-y-4">
-                            <div class="border-base-300/70 bg-base-100/70 rounded-3xl border p-4">
-                              <div class="mb-2 flex items-center justify-between gap-3">
-                                <label class="text-sm font-medium">
-                                  {t("common.pasteTicket")}
-                                </label>
-                                <button
-                                  onClick={pasteTicketFromClipboard}
-                                  class="btn btn-ghost btn-xs"
-                                  title={t("receive.pasteFromClipboard")}
-                                >
-                                  <Copy size={14} />
-                                  {t("common.paste")}
-                                </button>
-                              </div>
-                              <label class="input input-bordered bg-base-100 flex w-full items-center gap-2 rounded-2xl">
-                                <Shield size={18} class="opacity-40" />
-                                <input
-                                  type="text"
-                                  value={receiveTicket()}
-                                  onInput={(e) =>
-                                    globalStore.receive.setTicket(
-                                      e.currentTarget.value,
-                                    )
-                                  }
-                                  placeholder={t("common.pasteTicket")}
-                                  class="grow"
-                                />
-                                <Show when={isMobile()}>
-                                  <button
-                                    onClick={handleScanBarcode}
-                                    class="btn btn-ghost btn-sm btn-circle"
-                                    title="Scan QR"
-                                  >
-                                    <Scan size={18} />
-                                  </button>
-                                </Show>
-                              </label>
-                            </div>
+                      <div class="join border-base-300/80 bg-base-100/60 flex gap-2 self-start rounded-2xl border p-1">
+                        <button
+                          class={`join-item btn rounded-2xl border-0 ${transferMode() === "send" ? "btn-primary" : "btn-ghost"}`}
+                          onClick={() => setTransferView("send")}
+                        >
+                          {t("common.send")}
+                        </button>
+                        <button
+                          class={`join-item btn rounded-2xl border-0 ${transferMode() === "receive" ? "btn-secondary" : "btn-ghost"}`}
+                          onClick={() => setTransferView("receive")}
+                        >
+                          {t("common.receive")}
+                        </button>
+                        <button
+                          class={`join-item btn rounded-2xl border-0 ${transferMode() === "text" ? "btn-accent" : "btn-ghost"}`}
+                          onClick={() => setTransferView("text")}
+                        >
+                          {t("common.text")}
+                        </button>
+                      </div>
+                    </div>
 
-                            <div class="border-base-300/70 bg-base-100/70 rounded-3xl border p-4">
-                              <div class="mb-2 flex items-center justify-between gap-3">
-                                <div>
-                                  <p class="text-sm font-medium">
-                                    {t("common.defaultDownloads")}
-                                  </p>
-                                  <p class="text-base-content/60 mt-1 text-xs">
-                                    {receiveOutputDir()
-                                      ? getDisplayName(receiveOutputDir())
-                                      : t("common.defaultDownloads")}
-                                  </p>
-                                </div>
-                                <button
-                                  onClick={selectOutputDirectory}
-                                  class="btn btn-outline btn-sm rounded-xl"
-                                >
-                                  <RefreshCw size={14} />
-                                  {t("send.chooseFolder")}
-                                </button>
-                              </div>
-                              <div class="border-base-300/70 bg-base-100 text-base-content/75 rounded-2xl border px-4 py-3 text-sm">
-                                {receiveOutputDir() ||
-                                  t("common.defaultDownloads")}
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={handleReceive}
-                              disabled={
-                                isReceiving() || !receiveTicket().trim()
-                              }
-                              class={`btn btn-secondary btn-lg w-full rounded-2xl shadow-sm ${isReceiving() ? "loading" : ""}`}
-                            >
-                              <Show when={!isReceiving()}>
-                                <Download size={18} />{" "}
-                                {t("receive.receiveFile")}
-                              </Show>
-                            </button>
-
-                            <Show when={currentReceivingId()}>
-                              <div class="border-secondary/20 bg-secondary/10 rounded-3xl border p-4">
-                                <div class="mb-3 flex items-center justify-between">
-                                  <span class="text-secondary/80 text-xs font-semibold tracking-[0.2em] uppercase">
-                                    {t("common.receiving")}
-                                  </span>
-                                  <span class="font-mono text-sm font-semibold">
-                                    {Math.round(receiveProgressPercent())}%
-                                  </span>
-                                </div>
-                                <progress
-                                  class="progress progress-secondary w-full"
-                                  value={receiveProgressPercent()}
-                                  max="100"
-                                ></progress>
-                                <div class="mt-3 flex justify-end">
-                                  <button
-                                    onClick={() =>
-                                      handleCancelById(currentReceivingId()!)
-                                    }
-                                    class="btn btn-ghost btn-sm text-error"
-                                  >
-                                    {t("common.cancel")}
-                                  </button>
-                                </div>
-                              </div>
-                            </Show>
-
-                            <Show
-                              when={
-                                globalStore.nearbyReceive.state()
-                                  .transferState === "receiving" &&
-                                globalStore.nearbyReceive.state()
-                                  .transferProgress
-                              }
-                            >
-                              <TransferProgress
-                                transferred={
-                                  globalStore.nearbyReceive.state()
-                                    .transferProgress!.transferred
-                                }
-                                total={
-                                  globalStore.nearbyReceive.state()
-                                    .transferProgress!.total
-                                }
-                                speed={
-                                  globalStore.nearbyReceive.state()
-                                    .transferProgress!.speed
-                                }
-                                eta={
-                                  globalStore.nearbyReceive.state()
-                                    .transferProgress!.eta
-                                }
-                                isReceiving={true}
-                                onCancel={async () => {
-                                  globalStore.nearbyReceive.setIncomingRequest(
-                                    null,
-                                  );
-                                  globalStore.nearbyReceive.setTransferState(
-                                    "idle",
-                                  );
-                                }}
-                              />
-                            </Show>
-                          </div>
-                        }
-                      >
+                    <Show
+                      when={transferMode() !== "receive"}
+                      fallback={
                         <div class="space-y-4">
-                          <div class="flex flex-col gap-3">
-                            <div class="join border-base-300/80 bg-base-100/60 flex gap-2 rounded-2xl border p-1">
+                          <div class="border-base-300/70 bg-base-100/70 rounded-3xl border p-4">
+                            <div class="mb-2 flex items-center justify-between gap-3">
+                              <label class="text-sm font-medium">
+                                {t("common.pasteTicket")}
+                              </label>
                               <button
-                                class={`join-item btn rounded-2xl border-0 ${!isTextMode() ? "btn-primary" : "btn-ghost"}`}
-                                onClick={() =>
-                                  globalStore.send.setIsTextMode(false)
-                                }
+                                onClick={pasteTicketFromClipboard}
+                                class="btn btn-ghost btn-xs"
+                                title={t("receive.pasteFromClipboard")}
                               >
-                                {t("common.files")}
-                              </button>
-                              <button
-                                class={`join-item btn rounded-2xl border-0 ${isTextMode() ? "btn-primary" : "btn-ghost"}`}
-                                onClick={() =>
-                                  globalStore.send.setIsTextMode(true)
-                                }
-                              >
-                                {t("common.text")}
+                                <Copy size={14} />
+                                {t("common.paste")}
                               </button>
                             </div>
-                          </div>
-
-                          <Show
-                            when={isTextMode()}
-                            fallback={
-                              <div class="grid gap-3">
+                            <label class="input input-bordered bg-base-100 flex w-full items-center gap-2 rounded-2xl">
+                              <Shield size={18} class="opacity-40" />
+                              <input
+                                type="text"
+                                value={receiveTicket()}
+                                onInput={(e) =>
+                                  globalStore.receive.setTicket(
+                                    e.currentTarget.value,
+                                  )
+                                }
+                                placeholder={t("common.pasteTicket")}
+                                class="grow"
+                              />
+                              <Show when={isMobile()}>
                                 <button
-                                  onClick={selectFile}
-                                  class="border-base-300 bg-base-100/75 hover:border-primary/60 hover:bg-primary/5 flex min-h-48 flex-col items-start justify-between rounded-3xl border border-dashed p-5 text-left transition"
+                                  onClick={handleScanBarcode}
+                                  class="btn btn-ghost btn-sm btn-circle"
+                                  title="Scan QR"
                                 >
-                                  <div class="bg-primary/10 text-primary rounded-2xl p-3">
-                                    <SendIcon size={24} />
-                                  </div>
-                                  <div class="space-y-2">
-                                    <p class="text-sm font-medium">
-                                      {sendPath()
-                                        ? getDisplayName(sendPath())
-                                        : t("common.selectFileOrFolder")}
-                                    </p>
-                                    <p class="text-base-content/60 text-xs leading-5">
-                                      {t("send.dragDrop")}
-                                    </p>
-                                  </div>
+                                  <Scan size={18} />
                                 </button>
-                              </div>
-                            }
-                          >
-                            <textarea
-                              value={textContent()}
-                              onInput={(e) =>
-                                globalStore.send.setTextContent(
-                                  e.currentTarget.value,
-                                )
-                              }
-                              placeholder={t("text.placeholder")}
-                              class="textarea textarea-bordered bg-base-100/75 min-h-48 w-full rounded-3xl p-4"
-                            />
-                          </Show>
+                              </Show>
+                            </label>
+                          </div>
 
                           <div class="border-base-300/70 bg-base-100/70 rounded-3xl border p-4">
-                            <label class="mb-2 block text-sm font-medium">
-                              {t("send.ticketTypeLabel")}
-                            </label>
-                            <select
-                              class="select select-bordered bg-base-100 w-full rounded-2xl"
-                              value={sendTicketType()}
-                              onChange={(e) =>
-                                globalStore.send.setTicketType(
-                                  e.currentTarget.value,
-                                )
-                              }
-                            >
-                              <For each={ticketTypes}>
-                                {(ticketType) => (
-                                  <option value={ticketType.value}>
-                                    {ticketType.label}
-                                  </option>
-                                )}
-                              </For>
-                            </select>
+                            <div class="mb-2 flex items-center justify-between gap-3">
+                              <div>
+                                <p class="text-sm font-medium">
+                                  {t("common.defaultDownloads")}
+                                </p>
+                                <p class="text-base-content/60 mt-1 text-xs">
+                                  {receiveOutputDir()
+                                    ? getDisplayName(receiveOutputDir())
+                                    : t("common.defaultDownloads")}
+                                </p>
+                              </div>
+                              <button
+                                onClick={selectOutputDirectory}
+                                class="btn btn-outline btn-sm rounded-xl"
+                              >
+                                <RefreshCw size={14} />
+                                {t("send.chooseFolder")}
+                              </button>
+                            </div>
+                            <div class="border-base-300/70 bg-base-100 text-base-content/75 rounded-2xl border px-4 py-3 text-sm">
+                              {receiveOutputDir() ||
+                                t("common.defaultDownloads")}
+                            </div>
                           </div>
 
                           <button
-                            onClick={handleSend}
-                            disabled={
-                              isSending() ||
-                              (!isTextMode() && !sendPath()) ||
-                              (isTextMode() && !textContent().trim())
-                            }
-                            class={`btn btn-primary btn-lg w-full rounded-2xl shadow-sm ${isSending() ? "loading" : ""}`}
+                            onClick={handleReceive}
+                            disabled={isReceiving() || !receiveTicket().trim()}
+                            class={`btn btn-secondary btn-lg w-full rounded-2xl shadow-sm ${isReceiving() ? "loading" : ""}`}
                           >
-                            <Show when={!isSending()}>
-                              <Zap size={18} /> {t("send.generateTicket")}
+                            <Show when={!isReceiving()}>
+                              <Download size={18} /> {t("receive.receiveFile")}
                             </Show>
                           </button>
 
-                          <Show when={sendTicket()}>
-                            <div class="border-primary/20 bg-primary/10 rounded-3xl border p-4 md:p-5">
-                              <div class="flex flex-col gap-5 lg:flex-row lg:items-center">
-                                <Show when={sendTicketQrCode()}>
-                                  <div class="flex justify-center lg:justify-start">
-                                    <div class="rounded-[28px] bg-white p-3 shadow-sm">
-                                      <img
-                                        src={sendTicketQrCode()!}
-                                        alt="QR"
-                                        class={
-                                          isSmallWindow()
-                                            ? "h-40 w-40"
-                                            : "h-48 w-48 md:h-56 md:w-56"
-                                        }
-                                      />
-                                    </div>
-                                  </div>
-                                </Show>
+                          <Show when={currentReceivingId()}>
+                            <div class="border-secondary/20 bg-secondary/10 rounded-3xl border p-4">
+                              <div class="mb-3 flex items-center justify-between">
+                                <span class="text-secondary/80 text-xs font-semibold tracking-[0.2em] uppercase">
+                                  {t("common.receiving")}
+                                </span>
+                                <span class="font-mono text-sm font-semibold">
+                                  {Math.round(receiveProgressPercent())}%
+                                </span>
+                              </div>
+                              <progress
+                                class="progress progress-secondary w-full"
+                                value={receiveProgressPercent()}
+                                max="100"
+                              ></progress>
+                              <div class="mt-3 flex justify-end">
+                                <button
+                                  onClick={() =>
+                                    handleCancelById(currentReceivingId()!)
+                                  }
+                                  class="btn btn-ghost btn-sm text-error"
+                                >
+                                  {t("common.cancel")}
+                                </button>
+                              </div>
+                            </div>
+                          </Show>
 
-                                <div class="min-w-0 flex-1 space-y-4">
-                                  <div class="space-y-2">
-                                    <div class="badge badge-primary badge-outline rounded-full px-3 py-3">
-                                      {t("send.readyToShare")}
-                                    </div>
-                                    <p class="text-base-content/70 text-sm leading-6">
-                                      {t("send.readyHint")}
-                                    </p>
-                                  </div>
+                          <Show
+                            when={
+                              globalStore.nearbyReceive.state()
+                                .transferState === "receiving" &&
+                              globalStore.nearbyReceive.state().transferProgress
+                            }
+                          >
+                            <TransferProgress
+                              transferred={
+                                globalStore.nearbyReceive.state()
+                                  .transferProgress!.transferred
+                              }
+                              total={
+                                globalStore.nearbyReceive.state()
+                                  .transferProgress!.total
+                              }
+                              speed={
+                                globalStore.nearbyReceive.state()
+                                  .transferProgress!.speed
+                              }
+                              eta={
+                                globalStore.nearbyReceive.state()
+                                  .transferProgress!.eta
+                              }
+                              isReceiving={true}
+                              onCancel={async () => {
+                                globalStore.nearbyReceive.setIncomingRequest(
+                                  null,
+                                );
+                                globalStore.nearbyReceive.setTransferState(
+                                  "idle",
+                                );
+                              }}
+                            />
+                          </Show>
+                        </div>
+                      }
+                    >
+                      <div class="space-y-4">
+                        <Show
+                          when={isTextMode()}
+                          fallback={
+                            <div class="grid gap-3">
+                              <button
+                                onClick={selectFile}
+                                class="border-base-300 bg-base-100/75 hover:border-primary/60 hover:bg-primary/5 flex min-h-48 flex-col items-start justify-between rounded-3xl border border-dashed p-5 text-left transition"
+                              >
+                                <div class="bg-primary/10 text-primary rounded-2xl p-3">
+                                  <SendIcon size={24} />
+                                </div>
+                                <div class="space-y-2">
+                                  <p class="text-sm font-medium">
+                                    {sendPath()
+                                      ? getDisplayName(sendPath())
+                                      : t("common.selectFileOrFolder")}
+                                  </p>
+                                  <p class="text-base-content/60 text-xs leading-5">
+                                    {t("send.dragDrop")}
+                                  </p>
+                                </div>
+                              </button>
+                            </div>
+                          }
+                        >
+                          <textarea
+                            value={textContent()}
+                            onInput={(e) =>
+                              globalStore.send.setTextContent(
+                                e.currentTarget.value,
+                              )
+                            }
+                            placeholder={t("text.placeholder")}
+                            class="textarea textarea-bordered bg-base-100/75 min-h-48 w-full rounded-3xl p-4"
+                          />
+                        </Show>
 
-                                  <div class="border-primary/15 bg-base-100/80 rounded-2xl border p-3">
-                                    <code class="text-primary font-mono text-xs break-all">
-                                      {sendTicket()}
-                                    </code>
-                                  </div>
+                        <div class="border-base-300/70 bg-base-100/70 rounded-3xl border p-4">
+                          <label class="mb-2 block text-sm font-medium">
+                            {t("send.ticketTypeLabel")}
+                          </label>
+                          <select
+                            class="select select-bordered bg-base-100 w-full rounded-2xl"
+                            value={sendTicketType()}
+                            onChange={(e) =>
+                              globalStore.send.setTicketType(
+                                e.currentTarget.value,
+                              )
+                            }
+                          >
+                            <For each={ticketTypes}>
+                              {(ticketType) => (
+                                <option value={ticketType.value}>
+                                  {ticketType.label}
+                                </option>
+                              )}
+                            </For>
+                          </select>
+                        </div>
 
-                                  <div class="flex flex-col gap-2 sm:flex-row">
+                        <button
+                          onClick={handleSend}
+                          disabled={
+                            isSending() ||
+                            (!isTextMode() && !sendPath()) ||
+                            (isTextMode() && !textContent().trim())
+                          }
+                          class={`btn btn-primary btn-lg w-full rounded-2xl shadow-sm ${isSending() ? "loading" : ""}`}
+                        >
+                          <Show when={!isSending()}>
+                            <Zap size={18} />{" "}
+                            {isTextMode()
+                              ? t("text.generateTicket")
+                              : t("send.generateTicket")}
+                          </Show>
+                        </button>
+
+                        <Show when={sendTicket()}>
+                          <div class="border-primary/20 bg-primary/10 rounded-3xl border p-4 md:p-5">
+                            <div class="flex flex-col gap-5 lg:flex-row lg:items-center">
+                              <Show when={sendTicketQrCode()}>
+                                <div class="flex justify-center lg:justify-start">
+                                  <div class="rounded-[28px] bg-white p-3 shadow-sm">
+                                    <img
+                                      src={sendTicketQrCode()!}
+                                      alt="QR"
+                                      class={
+                                        isSmallWindow()
+                                          ? "h-40 w-40"
+                                          : "h-48 w-48 md:h-56 md:w-56"
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              </Show>
+
+                              <div class="min-w-0 flex-1 space-y-4">
+                                <div class="space-y-2">
+                                  <div class="badge badge-primary badge-outline rounded-full px-3 py-3">
+                                    {t("send.readyToShare")}
+                                  </div>
+                                  <p class="text-base-content/70 text-sm leading-6">
+                                    {t("send.readyHint")}
+                                  </p>
+                                </div>
+
+                                <div class="border-primary/15 bg-base-100/80 rounded-2xl border p-3">
+                                  <code class="text-primary font-mono text-xs break-all">
+                                    {sendTicket()}
+                                  </code>
+                                </div>
+
+                                <div class="flex flex-col gap-2 sm:flex-row">
+                                  <button
+                                    onClick={() =>
+                                      copyToClipboard(sendTicket()!)
+                                    }
+                                    class="btn btn-outline flex-1 rounded-2xl"
+                                  >
+                                    <Copy size={14} /> {t("common.copy")}
+                                  </button>
+                                  <Show
+                                    when={
+                                      typeof navigator !== "undefined" &&
+                                      "share" in navigator
+                                    }
+                                  >
                                     <button
                                       onClick={() =>
-                                        copyToClipboard(sendTicket()!)
+                                        handleNativeShare(sendTicket()!)
                                       }
                                       class="btn btn-outline flex-1 rounded-2xl"
                                     >
-                                      <Copy size={14} /> {t("common.copy")}
+                                      <Share2 size={14} /> {t("common.share")}
                                     </button>
-                                    <Show
-                                      when={
-                                        typeof navigator !== "undefined" &&
-                                        "share" in navigator
-                                      }
-                                    >
-                                      <button
-                                        onClick={() =>
-                                          handleNativeShare(sendTicket()!)
-                                        }
-                                        class="btn btn-outline flex-1 rounded-2xl"
-                                      >
-                                        <Share2 size={14} /> {t("common.share")}
-                                      </button>
-                                    </Show>
-                                  </div>
+                                  </Show>
                                 </div>
                               </div>
                             </div>
-                          </Show>
-                        </div>
-                      </Show>
-                    </section>
-
-                    <div class="space-y-4">
-                      <Show
-                        when={
-                          globalStore.nearbyReceive.state().incomingRequest &&
-                          globalStore.nearbyReceive.state().transferState ===
-                            "review"
-                        }
-                      >
-                        <div class="surface-card border-secondary/20 bg-secondary/10 p-5">
-                          <div class="flex items-start justify-between gap-3">
-                            <div>
-                              <p class="text-secondary/80 text-xs font-semibold tracking-[0.2em] uppercase">
-                                {t("nearby.transferRequest")}
-                              </p>
-                              <p class="text-base-content/75 mt-2 text-sm leading-6">
-                                {t("nearby.requestModalHint")}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => setTransferMode("receive")}
-                              class="btn btn-secondary btn-sm rounded-xl"
-                            >
-                              {t("nearby.openReceive")}
-                            </button>
                           </div>
+                        </Show>
+                      </div>
+                    </Show>
+                  </section>
+
+                  <div class="space-y-4">
+                    <Show
+                      when={
+                        globalStore.nearbyReceive.state().incomingRequest &&
+                        globalStore.nearbyReceive.state().transferState ===
+                          "review"
+                      }
+                    >
+                      <div class="surface-card border-secondary/20 bg-secondary/10 p-5">
+                        <div class="flex items-start justify-between gap-3">
+                          <div>
+                            <p class="text-secondary/80 text-xs font-semibold tracking-[0.2em] uppercase">
+                              {t("nearby.transferRequest")}
+                            </p>
+                            <p class="text-base-content/75 mt-2 text-sm leading-6">
+                              {t("nearby.requestModalHint")}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setTransferView("receive")}
+                            class="btn btn-secondary btn-sm rounded-xl"
+                          >
+                            {t("nearby.openReceive")}
+                          </button>
                         </div>
-                      </Show>
+                      </div>
+                    </Show>
+                  </div>
+                </div>
+
+                <section class="surface-card space-y-4 p-4 md:p-5">
+                  <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p class="section-label">{t("common.share")}</p>
+                      <h2 class="mt-1 text-xl font-semibold">
+                        {t("nearby.workspaceTitle")}
+                      </h2>
+                      <p class="text-base-content/65 mt-2 text-sm leading-6">
+                        {t("nearby.workspaceSubtitle")}
+                      </p>
+                    </div>
+
+                    <div class="tabs tabs-boxed bg-base-100/80 p-1">
+                      <button
+                        class={`tab gap-2 rounded-2xl ${shareSubTab() === "nearby" ? "tab-active" : ""}`}
+                        onClick={() => setShareSubTab("nearby")}
+                      >
+                        <Radio size={16} />
+                        {t("nearby.title")}
+                      </button>
+                      <button
+                        class={`tab gap-2 rounded-2xl ${shareSubTab() === "friends" ? "tab-active" : ""}`}
+                        onClick={() => setShareSubTab("friends")}
+                      >
+                        <User size={16} />
+                        {t("friends.title")}
+                      </button>
                     </div>
                   </div>
 
-                  <section class="surface-card space-y-4 p-4 md:p-5">
-                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p class="section-label">{t("common.share")}</p>
-                        <h2 class="mt-1 text-xl font-semibold">
-                          {t("nearby.workspaceTitle")}
-                        </h2>
-                        <p class="text-base-content/65 mt-2 text-sm leading-6">
-                          {t("nearby.workspaceSubtitle")}
-                        </p>
-                      </div>
+                  <Show when={shareSubTab() === "nearby"}>
+                    <NearbyPage />
+                  </Show>
+                  <Show when={shareSubTab() === "friends"}>
+                    <FriendsPage />
+                  </Show>
+                </section>
 
-                      <div class="tabs tabs-boxed bg-base-100/80 p-1">
-                        <button
-                          class={`tab gap-2 rounded-2xl ${shareSubTab() === "nearby" ? "tab-active" : ""}`}
-                          onClick={() => setShareSubTab("nearby")}
-                        >
-                          <Radio size={16} />
-                          {t("nearby.title")}
-                        </button>
-                        <button
-                          class={`tab gap-2 rounded-2xl ${shareSubTab() === "friends" ? "tab-active" : ""}`}
-                          onClick={() => setShareSubTab("friends")}
-                        >
-                          <User size={16} />
-                          {t("friends.title")}
-                        </button>
-                      </div>
+                <section class="surface-card p-5">
+                  <div class="mb-4 flex items-center gap-2">
+                    <Shield size={18} class="text-primary" />
+                    <h2 class="text-lg font-semibold">
+                      {t("common.protocol")}
+                    </h2>
+                  </div>
+                  <div class="space-y-3">
+                    <div class="border-base-300/70 bg-base-100/70 rounded-2xl border p-4">
+                      <p class="text-sm font-medium">
+                        {t("landing.features.encryptedTitle")}
+                      </p>
+                      <p class="text-base-content/65 mt-1 text-xs leading-5">
+                        {t("landing.features.encryptedDesc")}
+                      </p>
                     </div>
-
-                    <Show when={shareSubTab() === "nearby"}>
-                      <NearbyPage />
-                    </Show>
-                    <Show when={shareSubTab() === "friends"}>
-                      <FriendsPage />
-                    </Show>
-                  </section>
-
-                  <section class="surface-card p-5">
-                    <div class="mb-4 flex items-center gap-2">
-                      <Shield size={18} class="text-primary" />
-                      <h2 class="text-lg font-semibold">
-                        {t("common.protocol")}
-                      </h2>
+                    <div class="border-base-300/70 bg-base-100/70 rounded-2xl border p-4">
+                      <p class="text-sm font-medium">
+                        {t("landing.features.fastTitle")}
+                      </p>
+                      <p class="text-base-content/65 mt-1 text-xs leading-5">
+                        {t("landing.features.fastDesc")}
+                      </p>
                     </div>
-                    <div class="space-y-3">
-                      <div class="border-base-300/70 bg-base-100/70 rounded-2xl border p-4">
-                        <p class="text-sm font-medium">
-                          {t("landing.features.encryptedTitle")}
-                        </p>
-                        <p class="text-base-content/65 mt-1 text-xs leading-5">
-                          {t("landing.features.encryptedDesc")}
-                        </p>
-                      </div>
-                      <div class="border-base-300/70 bg-base-100/70 rounded-2xl border p-4">
-                        <p class="text-sm font-medium">
-                          {t("landing.features.fastTitle")}
-                        </p>
-                        <p class="text-base-content/65 mt-1 text-xs leading-5">
-                          {t("landing.features.fastDesc")}
-                        </p>
-                      </div>
-                    </div>
-                  </section>
-                </Motion.div>
-              </Match>
+                  </div>
+                </section>
+              </Motion.div>
+            </Match>
 
-              <Match when={activeTab() === "history"}>
-                <Motion.div
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  class="space-y-6"
-                >
-                  <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                    <div>
-                      <p class="section-label">{t("common.activity")}</p>
-                      <h2 class="mt-1 text-2xl font-semibold">
-                        {t("history.title")}
-                      </h2>
-                      <p class="text-base-content/65 mt-2 text-sm leading-6">
+            <Match when={activeTab() === "history"}>
+              <Motion.div
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                class="space-y-6"
+              >
+                <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p class="section-label">{t("common.activity")}</p>
+                    <p class="text-base-content/65 mt-2 text-sm leading-6">
+                      {t("history.emptyDesc")}
+                    </p>
+                  </div>
+                  <div class="flex gap-2">
+                    <button
+                      onClick={() => setActiveTab("transfer")}
+                      class="btn btn-ghost btn-sm rounded-xl"
+                    >
+                      {t("common.transfer")}
+                    </button>
+                    <button
+                      onClick={handleClearTransfers}
+                      class="btn btn-ghost btn-sm text-error rounded-xl"
+                    >
+                      {t("common.clear")}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div class="surface-card p-4">
+                    <p class="text-base-content/55 text-xs uppercase">
+                      {t("history.sent")}
+                    </p>
+                    <p class="mt-2 text-2xl font-semibold">
+                      {transferSummary().sent}
+                    </p>
+                  </div>
+                  <div class="surface-card p-4">
+                    <p class="text-base-content/55 text-xs uppercase">
+                      {t("history.received")}
+                    </p>
+                    <p class="mt-2 text-2xl font-semibold">
+                      {transferSummary().received}
+                    </p>
+                  </div>
+                  <div class="surface-card p-4">
+                    <p class="text-base-content/55 text-xs uppercase">
+                      {t("common.online")}
+                    </p>
+                    <p class="mt-2 text-2xl font-semibold">
+                      {transferSummary().active}
+                    </p>
+                  </div>
+                  <div class="surface-card p-4">
+                    <p class="text-base-content/55 text-xs uppercase">
+                      {t("common.done")}
+                    </p>
+                    <p class="mt-2 text-2xl font-semibold">
+                      {transferSummary().completed}
+                    </p>
+                  </div>
+                </div>
+
+                <Show
+                  when={transfers().length > 0}
+                  fallback={
+                    <div class="surface-card flex flex-col items-center justify-center py-16 text-center opacity-70">
+                      <History size={48} class="mb-3 opacity-30" />
+                      <p class="text-sm font-medium">{t("history.empty")}</p>
+                      <p class="text-base-content/60 mt-1 text-xs">
                         {t("history.emptyDesc")}
                       </p>
                     </div>
-                    <div class="flex gap-2">
-                      <button
-                        onClick={() => setActiveTab("transfer")}
-                        class="btn btn-ghost btn-sm rounded-xl"
-                      >
-                        {t("common.transfer")}
-                      </button>
-                      <button
-                        onClick={handleClearTransfers}
-                        class="btn btn-ghost btn-sm text-error rounded-xl"
-                      >
-                        {t("common.clear")}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <div class="surface-card p-4">
-                      <p class="text-base-content/55 text-xs uppercase">
-                        {t("history.sent")}
-                      </p>
-                      <p class="mt-2 text-2xl font-semibold">
-                        {transferSummary().sent}
-                      </p>
-                    </div>
-                    <div class="surface-card p-4">
-                      <p class="text-base-content/55 text-xs uppercase">
-                        {t("history.received")}
-                      </p>
-                      <p class="mt-2 text-2xl font-semibold">
-                        {transferSummary().received}
-                      </p>
-                    </div>
-                    <div class="surface-card p-4">
-                      <p class="text-base-content/55 text-xs uppercase">
-                        {t("common.online")}
-                      </p>
-                      <p class="mt-2 text-2xl font-semibold">
-                        {transferSummary().active}
-                      </p>
-                    </div>
-                    <div class="surface-card p-4">
-                      <p class="text-base-content/55 text-xs uppercase">
-                        {t("common.done")}
-                      </p>
-                      <p class="mt-2 text-2xl font-semibold">
-                        {transferSummary().completed}
-                      </p>
-                    </div>
-                  </div>
-
-                  <Show
-                    when={transfers().length > 0}
-                    fallback={
-                      <div class="surface-card flex flex-col items-center justify-center py-16 text-center opacity-70">
-                        <History size={48} class="mb-3 opacity-30" />
-                        <p class="text-sm font-medium">{t("history.empty")}</p>
-                        <p class="text-base-content/60 mt-1 text-xs">
-                          {t("history.emptyDesc")}
-                        </p>
-                      </div>
-                    }
-                  >
-                    <div class="space-y-3">
-                      <For each={transfers()}>
-                        {(transfer) => {
-                          const status = getTransferStatus(transfer.status);
-                          return (
-                            <div class="surface-card p-4">
-                              <div class="flex flex-col gap-4 md:flex-row md:items-center">
-                                <div
-                                  class={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                                    transfer.transfer_type === "send"
-                                      ? "bg-primary/12 text-primary"
-                                      : "bg-secondary/12 text-secondary"
-                                  }`}
+                  }
+                >
+                  <div class="space-y-3">
+                    <For each={transfers()}>
+                      {(transfer) => {
+                        const status = getTransferStatus(transfer.status);
+                        return (
+                          <div class="surface-card p-4">
+                            <div class="flex flex-col gap-4 md:flex-row md:items-center">
+                              <div
+                                class={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                                  transfer.transfer_type === "send"
+                                    ? "bg-primary/12 text-primary"
+                                    : "bg-secondary/12 text-secondary"
+                                }`}
+                              >
+                                <Show
+                                  when={transfer.transfer_type === "send"}
+                                  fallback={renderFileTypeIcon(transfer.path)}
                                 >
-                                  <Show
-                                    when={transfer.transfer_type === "send"}
-                                    fallback={renderFileTypeIcon(transfer.path)}
-                                  >
-                                    <Send size={18} />
-                                  </Show>
-                                </div>
+                                  <Send size={18} />
+                                </Show>
+                              </div>
 
-                                <div class="min-w-0 flex-1">
-                                  <button
-                                    onClick={() => handleOpenFile(transfer)}
-                                    class="hover:text-primary truncate text-left text-sm font-semibold"
+                              <div class="min-w-0 flex-1">
+                                <button
+                                  onClick={() => handleOpenFile(transfer)}
+                                  class="hover:text-primary truncate text-left text-sm font-semibold"
+                                >
+                                  {getDisplayName(transfer.path)}
+                                </button>
+                                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-70">
+                                  <span
+                                    class={`badge badge-sm border-0 ${
+                                      transfer.transfer_type === "send"
+                                        ? "bg-primary/12 text-primary"
+                                        : "bg-secondary/12 text-secondary"
+                                    }`}
                                   >
-                                    {getDisplayName(transfer.path)}
-                                  </button>
-                                  <div class="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-70">
-                                    <span
-                                      class={`badge badge-sm border-0 ${
-                                        transfer.transfer_type === "send"
-                                          ? "bg-primary/12 text-primary"
-                                          : "bg-secondary/12 text-secondary"
-                                      }`}
-                                    >
-                                      {status.label}
-                                    </span>
-                                    <span>
-                                      {formatDate(transfer.created_at)}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div class="flex gap-2 md:self-start">
-                                  <Show
-                                    when={transfer.transfer_type === "send"}
-                                  >
-                                    <button
-                                      onClick={() => handleReshare(transfer)}
-                                      class="btn btn-ghost btn-sm text-primary rounded-xl"
-                                      title={t("common.share")}
-                                    >
-                                      <SendIcon size={16} />
-                                    </button>
-                                  </Show>
-                                  <button
-                                    onClick={() => handleCancel(transfer)}
-                                    class="btn btn-ghost btn-sm rounded-xl"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
+                                    {status.label}
+                                  </span>
+                                  <span>{formatDate(transfer.created_at)}</span>
                                 </div>
                               </div>
+
+                              <div class="flex gap-2 md:self-start">
+                                <Show when={transfer.transfer_type === "send"}>
+                                  <button
+                                    onClick={() => handleReshare(transfer)}
+                                    class="btn btn-ghost btn-sm text-primary rounded-xl"
+                                    title={t("common.share")}
+                                  >
+                                    <SendIcon size={16} />
+                                  </button>
+                                </Show>
+                                <button
+                                  onClick={() => handleCancel(transfer)}
+                                  class="btn btn-ghost btn-sm rounded-xl"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
                             </div>
-                          );
-                        }}
-                      </For>
-                    </div>
-                  </Show>
-                </Motion.div>
-              </Match>
-
-              <Match when={activeTab() === "settings"}>
-                <Motion.div
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  class="space-y-4"
-                >
-                  <div>
-                    <p class="section-label">{t("settings.title")}</p>
-                    <h2 class="mt-1 text-2xl font-semibold">
-                      {t("settings.title")}
-                    </h2>
+                          </div>
+                        );
+                      }}
+                    </For>
                   </div>
+                </Show>
+              </Motion.div>
+            </Match>
 
-                  <Show
-                    when={auth.isSignedIn()}
-                    fallback={
-                      <div class="surface-card p-5">
+            <Match when={activeTab() === "settings"}>
+              <Motion.div
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                class="space-y-4"
+              >
+                <div>
+                  <p class="section-label">{t("settings.title")}</p>
+                </div>
+
+                <Show
+                  when={auth.isSignedIn()}
+                  fallback={
+                    <div class="surface-card p-5">
+                      <div class="flex items-center gap-3">
+                        <div class="avatar placeholder">
+                          <div class="bg-primary text-primary-content flex w-12 items-center justify-center rounded-2xl">
+                            <User size={20} />
+                          </div>
+                        </div>
+                        <div class="flex-1">
+                          <p class="font-semibold">{t("common.account")}</p>
+                          <p class="text-xs opacity-60">
+                            {t("common.signInToSync")}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => auth.signIn()}
+                        class="btn btn-primary mt-4 rounded-2xl"
+                      >
+                        {t("common.signIn")}
+                      </button>
+                    </div>
+                  }
+                >
+                  <div class="surface-card p-5">
+                    <div class="flex items-center gap-3">
+                      <Show when={auth.user()?.imageUrl}>
+                        <img
+                          src={auth.user()!.imageUrl}
+                          class="h-12 w-12 rounded-2xl"
+                          alt="avatar"
+                        />
+                      </Show>
+                      <Show when={!auth.user()?.imageUrl}>
                         <div class="flex items-center gap-3">
                           <div class="avatar placeholder">
                             <div class="bg-primary text-primary-content flex w-12 items-center justify-center rounded-2xl">
                               <User size={20} />
                             </div>
                           </div>
-                          <div class="flex-1">
-                            <p class="font-semibold">{t("common.account")}</p>
-                            <p class="text-xs opacity-60">
-                              {t("common.signInToSync")}
-                            </p>
-                          </div>
                         </div>
-                        <button
-                          onClick={() => auth.signIn()}
-                          class="btn btn-primary mt-4 rounded-2xl"
-                        >
-                          {t("common.signIn")}
-                        </button>
+                      </Show>
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate font-semibold">
+                          {auth.user()?.name || "User"}
+                        </p>
+                        <p class="truncate text-xs opacity-60">
+                          {auth.user()?.email}
+                        </p>
                       </div>
-                    }
-                  >
-                    <div class="surface-card p-5">
-                      <div class="flex items-center gap-3">
-                        <Show when={auth.user()?.imageUrl}>
-                          <img
-                            src={auth.user()!.imageUrl}
-                            class="h-12 w-12 rounded-2xl"
-                            alt="avatar"
-                          />
-                        </Show>
-                        <Show when={!auth.user()?.imageUrl}>
-                          <div class="flex items-center gap-3">
-                            <div class="avatar placeholder">
-                              <div class="bg-primary text-primary-content flex w-12 items-center justify-center rounded-2xl">
-                                <User size={20} />
-                              </div>
-                            </div>
-                          </div>
-                        </Show>
-                        <div class="min-w-0 flex-1">
-                          <p class="truncate font-semibold">
-                            {auth.user()?.name || "User"}
-                          </p>
-                          <p class="truncate text-xs opacity-60">
-                            {auth.user()?.email}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => auth.signOut()}
-                          class="btn btn-ghost btn-sm rounded-xl"
-                        >
-                          <LogOut size={18} />
-                        </button>
-                      </div>
-                    </div>
-                  </Show>
-
-                  <div class="grid gap-4 md:grid-cols-2">
-                    <div class="surface-card p-5">
-                      <div class="flex items-start justify-between gap-4">
-                        <div>
-                          <p class="font-semibold">{t("settings.language")}</p>
-                          <p class="text-base-content/60 mt-2 text-sm">
-                            {t("settings.languageDescription")}
-                          </p>
-                        </div>
-                        <LanguageSwitcher />
-                      </div>
-                    </div>
-
-                    <div class="surface-card p-5">
-                      <div class="flex items-start justify-between gap-4">
-                        <div>
-                          <p class="font-semibold">{t("settings.theme")}</p>
-                          <p class="text-base-content/60 mt-2 text-sm">
-                            {t("settings.themeDescription")}
-                          </p>
-                        </div>
-                        <ThemeSwitcher />
-                      </div>
-                    </div>
-
-                    <div class="surface-card p-5">
-                      <div class="flex items-center justify-between">
-                        <span class="font-semibold">{t("common.online")}</span>
-                        <span class="badge badge-success gap-1 rounded-full">
-                          <span class="bg-success-content h-2 w-2 animate-pulse rounded-full"></span>
-                          {t("common.p2pReady")}
-                        </span>
-                      </div>
-                      <p class="text-base-content/60 mt-4 text-sm">
-                        {t("landing.features.fastDesc")}
-                      </p>
-                    </div>
-
-                    <div class="surface-card p-5">
-                      <p class="font-semibold">{t("common.version")}</p>
-                      <p class="text-base-content/60 mt-2 text-sm">
-                        {t("common.appName")} v0.31.0
-                      </p>
-                      <p class="text-base-content/50 mt-1 text-xs">
-                        {t("common.poweredBy")}
-                      </p>
-                    </div>
-                  </div>
-                </Motion.div>
-              </Match>
-            </Switch>
-          </Presence>
-        </main>
-
-        <Show when={globalStore.nearbyReceive.state().incomingRequest}>
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-            <div class="card bg-base-100 w-full max-w-md shadow-2xl">
-              <div class="card-body gap-3">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 class="text-base font-bold">
-                      {t("nearby.transferRequest")}
-                    </h3>
-                    <p class="text-sm opacity-60">
-                      {t("nearby.requestModalHint")}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setTransferMode("receive");
-                      setActiveTab("transfer");
-                    }}
-                    class="btn btn-ghost btn-sm"
-                  >
-                    {t("nearby.openReceive")}
-                  </button>
-                </div>
-
-                <IncomingRequestCard
-                  request={globalStore.nearbyReceive.state().incomingRequest!}
-                  onAccept={handleAcceptNearbyRequest}
-                  onDecline={handleDeclineNearbyRequest}
-                  disabled={
-                    globalStore.nearbyReceive.state().transferState !== "review"
-                  }
-                  state={
-                    globalStore.nearbyReceive.state().transferState ===
-                    "receiving"
-                      ? "accepting"
-                      : "pending"
-                  }
-                />
-              </div>
-            </div>
-          </div>
-        </Show>
-
-        <Show when={globalStore.send.state().showReshareModal}>
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div class="card bg-base-200 w-full max-w-sm">
-              <div class="card-body gap-4">
-                <div class="flex items-center justify-between">
-                  <h3 class="card-title text-base">{t("common.share")}</h3>
-                  <button
-                    onClick={() => globalStore.send.setShowReshareModal(false)}
-                    class="btn btn-ghost btn-sm btn-circle"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-                <Show when={globalStore.send.state().ticketQrCode}>
-                  <div class="flex justify-center">
-                    <div class="rounded-xl bg-white p-2">
-                      <img
-                        src={globalStore.send.state().ticketQrCode}
-                        alt="QR"
-                        class="h-48 w-48"
-                      />
+                      <button
+                        onClick={() => auth.signOut()}
+                        class="btn btn-ghost btn-sm rounded-xl"
+                      >
+                        <LogOut size={18} />
+                      </button>
                     </div>
                   </div>
                 </Show>
-                <div class="bg-base-300 overflow-hidden rounded-lg p-2">
-                  <code class="text-primary font-mono text-xs break-all">
-                    {globalStore.send.state().ticket}
-                  </code>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div class="surface-card p-5">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <p class="font-semibold">{t("settings.language")}</p>
+                        <p class="text-base-content/60 mt-2 text-sm">
+                          {t("settings.languageDescription")}
+                        </p>
+                      </div>
+                      <LanguageSwitcher />
+                    </div>
+                  </div>
+
+                  <div class="surface-card p-5">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <p class="font-semibold">{t("settings.theme")}</p>
+                        <p class="text-base-content/60 mt-2 text-sm">
+                          {t("settings.themeDescription")}
+                        </p>
+                      </div>
+                      <ThemeSwitcher />
+                    </div>
+                  </div>
+
+                  <div class="surface-card p-5">
+                    <div class="flex items-center justify-between">
+                      <span class="font-semibold">{t("common.online")}</span>
+                      <span class="badge badge-success gap-1 rounded-full">
+                        <span class="bg-success-content h-2 w-2 animate-pulse rounded-full"></span>
+                        {t("common.p2pReady")}
+                      </span>
+                    </div>
+                    <p class="text-base-content/60 mt-4 text-sm">
+                      {t("landing.features.fastDesc")}
+                    </p>
+                  </div>
+
+                  <div class="surface-card p-5">
+                    <p class="font-semibold">{t("common.version")}</p>
+                    <p class="text-base-content/60 mt-2 text-sm">
+                      {t("common.appName")} v0.31.0
+                    </p>
+                    <p class="text-base-content/50 mt-1 text-xs">
+                      {t("common.poweredBy")}
+                    </p>
+                  </div>
                 </div>
-                <div class="flex gap-2">
+              </Motion.div>
+            </Match>
+          </Switch>
+        </Presence>
+      </main>
+
+      <Show when={globalStore.nearbyReceive.state().incomingRequest}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div class="card bg-base-100 w-full max-w-md shadow-2xl">
+            <div class="card-body gap-3">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h3 class="text-base font-bold">
+                    {t("nearby.transferRequest")}
+                  </h3>
+                  <p class="text-sm opacity-60">
+                    {t("nearby.requestModalHint")}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setTransferView("receive");
+                    setActiveTab("transfer");
+                  }}
+                  class="btn btn-ghost btn-sm"
+                >
+                  {t("nearby.openReceive")}
+                </button>
+              </div>
+
+              <IncomingRequestCard
+                request={globalStore.nearbyReceive.state().incomingRequest!}
+                onAccept={handleAcceptNearbyRequest}
+                onDecline={handleDeclineNearbyRequest}
+                disabled={
+                  globalStore.nearbyReceive.state().transferState !== "review"
+                }
+                state={
+                  globalStore.nearbyReceive.state().transferState ===
+                  "receiving"
+                    ? "accepting"
+                    : "pending"
+                }
+              />
+            </div>
+          </div>
+        </div>
+      </Show>
+
+      <Show when={globalStore.send.state().showReshareModal}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div class="card bg-base-200 w-full max-w-sm">
+            <div class="card-body gap-4">
+              <div class="flex items-center justify-between">
+                <h3 class="card-title text-base">{t("common.share")}</h3>
+                <button
+                  onClick={() => globalStore.send.setShowReshareModal(false)}
+                  class="btn btn-ghost btn-sm btn-circle"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <Show when={globalStore.send.state().ticketQrCode}>
+                <div class="flex justify-center">
+                  <div class="rounded-xl bg-white p-2">
+                    <img
+                      src={globalStore.send.state().ticketQrCode}
+                      alt="QR"
+                      class="h-48 w-48"
+                    />
+                  </div>
+                </div>
+              </Show>
+              <div class="bg-base-300 overflow-hidden rounded-lg p-2">
+                <code class="text-primary font-mono text-xs break-all">
+                  {globalStore.send.state().ticket}
+                </code>
+              </div>
+              <div class="flex gap-2">
+                <button
+                  onClick={() =>
+                    copyToClipboard(globalStore.send.state().ticket)
+                  }
+                  class="btn btn-outline flex-1"
+                >
+                  <Copy size={14} /> {t("common.copy")}
+                </button>
+                <Show
+                  when={
+                    typeof navigator !== "undefined" && "share" in navigator
+                  }
+                >
                   <button
                     onClick={() =>
-                      copyToClipboard(globalStore.send.state().ticket)
+                      handleNativeShare(globalStore.send.state().ticket)
                     }
                     class="btn btn-outline flex-1"
                   >
-                    <Copy size={14} /> {t("common.copy")}
+                    <Share2 size={14} /> {t("common.share")}
                   </button>
-                  <Show
-                    when={
-                      typeof navigator !== "undefined" && "share" in navigator
-                    }
-                  >
-                    <button
-                      onClick={() =>
-                        handleNativeShare(globalStore.send.state().ticket)
-                      }
-                      class="btn btn-outline flex-1"
-                    >
-                      <Share2 size={14} /> {t("common.share")}
-                    </button>
-                  </Show>
-                </div>
+                </Show>
               </div>
             </div>
           </div>
-        </Show>
+        </div>
+      </Show>
 
-        <nav class="dock dock-md border-base-300 bg-base-100/85 border-t backdrop-blur-xl">
-          <button
-            class={`dock-label ${activeTab() === "transfer" ? "active" : ""}`}
-            onClick={() => setActiveTab("transfer")}
-          >
-            <Send size={24} />
-            <span>{t("common.transfer")}</span>
-          </button>
-          <button
-            class={`dock-label ${activeTab() === "history" ? "active" : ""}`}
-            onClick={() => setActiveTab("history")}
-          >
-            <History size={24} />
-            <span>{t("common.history")}</span>
-          </button>
-          <button
-            class={`dock-label ${activeTab() === "settings" ? "active" : ""}`}
-            onClick={() => setActiveTab("settings")}
-          >
-            <Settings size={24} />
-            <span>{t("common.settings")}</span>
-          </button>
-        </nav>
-      </div>
-    </Show>
+      <nav class="dock dock-md border-base-300 bg-base-100/85 border-t backdrop-blur-xl">
+        <button
+          class={`dock-label ${activeTab() === "transfer" ? "active" : ""}`}
+          onClick={() => setActiveTab("transfer")}
+        >
+          <Send size={24} />
+          <span>{t("common.transfer")}</span>
+        </button>
+        <button
+          class={`dock-label ${activeTab() === "history" ? "active" : ""}`}
+          onClick={() => setActiveTab("history")}
+        >
+          <History size={24} />
+          <span>{t("common.history")}</span>
+        </button>
+        <button
+          class={`dock-label ${activeTab() === "settings" ? "active" : ""}`}
+          onClick={() => setActiveTab("settings")}
+        >
+          <Settings size={24} />
+          <span>{t("common.settings")}</span>
+        </button>
+      </nav>
+    </div>
   );
 }

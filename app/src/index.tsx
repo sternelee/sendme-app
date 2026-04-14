@@ -10,7 +10,20 @@ if (/android|ios/i.test(navigator.userAgent)) {
   });
 }
 
-render(() => <App />, document.getElementById("app") as HTMLElement);
+const appRoot = document.getElementById("app");
+if (!(appRoot instanceof HTMLElement)) {
+  throw new Error("App root not found");
+}
+
+const bootFallback = document.getElementById("boot-fallback");
+render(() => <App />, appRoot);
+
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    bootFallback?.classList.add("is-hidden");
+    window.setTimeout(() => bootFallback?.remove(), 220);
+  });
+});
 
 function notifyAppReady(attempt = 0) {
   void invoke("app_ready").catch((error) => {

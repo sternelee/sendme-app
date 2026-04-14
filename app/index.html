@@ -1,14 +1,450 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#120e26" />
     <link rel="icon" type="image/svg+xml" href="/solid.svg" />
     <title>Sendme</title>
+    <script>
+      (() => {
+        try {
+          const locale = localStorage.getItem("sendme.locale") || "en";
+          const storedTheme = localStorage.getItem("theme") || "system";
+          const resolvedTheme =
+            storedTheme === "system"
+              ? window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : storedTheme;
+
+          document.documentElement.lang = locale === "zh-CN" ? "zh-CN" : "en";
+          document.documentElement.dataset.theme = resolvedTheme;
+          window.__SENDME_BOOT_LOCALE__ = locale;
+        } catch (_) {
+          document.documentElement.lang = "en";
+          document.documentElement.dataset.theme = "dark";
+          window.__SENDME_BOOT_LOCALE__ = "en";
+        }
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        --boot-color-base-100: oklch(100% 0 0);
+        --boot-color-base-200: oklch(98% 0 0);
+        --boot-color-base-300: oklch(95% 0 0);
+        --boot-color-base-content: oklch(21% 0.006 285.885);
+        --boot-color-primary: oklch(45% 0.24 277.023);
+        --boot-color-secondary: oklch(65% 0.241 354.308);
+        --boot-bg-primary: oklch(
+          from var(--boot-color-base-100) calc(l + 0.015) c h
+        );
+        --boot-bg-secondary: var(--boot-color-base-200);
+        --boot-glow-primary: oklch(from var(--boot-color-primary) l c h / 0.18);
+        --boot-glow-secondary: oklch(
+          from var(--boot-color-secondary) l c h / 0.14
+        );
+        --boot-card-bg: rgba(255, 255, 255, 0.82);
+        --boot-card-border: rgba(203, 213, 225, 0.45);
+        --boot-status-bg: rgba(255, 255, 255, 0.62);
+        --boot-text: var(--boot-color-base-content);
+        --boot-soft-text: oklch(
+          from var(--boot-color-base-content) l c h / 0.72
+        );
+        --boot-accent: var(--boot-color-primary);
+        --boot-accent-2: var(--boot-color-secondary);
+      }
+
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --boot-color-base-100: oklch(25.33% 0.016 252.42);
+        --boot-color-base-200: oklch(23.26% 0.014 253.1);
+        --boot-color-base-300: oklch(21.15% 0.012 254.09);
+        --boot-color-base-content: oklch(97.807% 0.029 256.847);
+        --boot-color-primary: oklch(58% 0.233 277.117);
+        --boot-color-secondary: oklch(65% 0.241 354.308);
+        --boot-bg-primary: var(--boot-color-base-200);
+        --boot-bg-secondary: oklch(
+          from var(--boot-color-base-300) calc(l - 0.02) c h
+        );
+        --boot-glow-primary: oklch(from var(--boot-color-primary) l c h / 0.24);
+        --boot-glow-secondary: oklch(
+          from var(--boot-color-secondary) l c h / 0.18
+        );
+        --boot-card-bg: rgba(24, 30, 43, 0.84);
+        --boot-card-border: rgba(255, 255, 255, 0.08);
+        --boot-status-bg: rgba(15, 23, 42, 0.42);
+        --boot-text: var(--boot-color-base-content);
+        --boot-soft-text: oklch(
+          from var(--boot-color-base-content) l c h / 0.72
+        );
+      }
+
+      :root[data-theme="sunset"] {
+        color-scheme: dark;
+        --boot-color-base-100: oklch(22% 0.019 237.69);
+        --boot-color-base-200: oklch(20% 0.019 237.69);
+        --boot-color-base-300: oklch(18% 0.019 237.69);
+        --boot-color-base-content: oklch(77.383% 0.043 245.096);
+        --boot-color-primary: oklch(74.703% 0.158 39.947);
+        --boot-color-secondary: oklch(72.537% 0.177 2.72);
+        --boot-bg-primary: var(--boot-color-base-200);
+        --boot-bg-secondary: oklch(
+          from var(--boot-color-base-300) calc(l - 0.02) c h
+        );
+        --boot-glow-primary: oklch(from var(--boot-color-primary) l c h / 0.24);
+        --boot-glow-secondary: oklch(
+          from var(--boot-color-secondary) l c h / 0.18
+        );
+        --boot-card-bg: rgba(24, 30, 43, 0.84);
+        --boot-card-border: rgba(255, 255, 255, 0.08);
+        --boot-status-bg: rgba(15, 23, 42, 0.42);
+        --boot-text: var(--boot-color-base-content);
+        --boot-soft-text: oklch(
+          from var(--boot-color-base-content) l c h / 0.72
+        );
+      }
+
+      :root[data-theme="black"] {
+        color-scheme: dark;
+        --boot-color-base-100: oklch(0% 0 0);
+        --boot-color-base-200: oklch(19% 0 0);
+        --boot-color-base-300: oklch(22% 0 0);
+        --boot-color-base-content: oklch(87.609% 0 0);
+        --boot-color-primary: oklch(35% 0 0);
+        --boot-color-secondary: oklch(35% 0 0);
+        --boot-bg-primary: var(--boot-color-base-200);
+        --boot-bg-secondary: oklch(
+          from var(--boot-color-base-300) calc(l - 0.02) c h
+        );
+        --boot-glow-primary: oklch(from var(--boot-color-primary) l c h / 0.24);
+        --boot-glow-secondary: oklch(
+          from var(--boot-color-secondary) l c h / 0.18
+        );
+        --boot-card-bg: rgba(24, 30, 43, 0.84);
+        --boot-card-border: rgba(255, 255, 255, 0.08);
+        --boot-status-bg: rgba(15, 23, 42, 0.42);
+        --boot-text: var(--boot-color-base-content);
+        --boot-soft-text: oklch(
+          from var(--boot-color-base-content) l c h / 0.72
+        );
+      }
+
+      :root[data-theme="synthwave"] {
+        color-scheme: dark;
+        --boot-color-base-100: oklch(15% 0.09 281.288);
+        --boot-color-base-200: oklch(20% 0.09 281.288);
+        --boot-color-base-300: oklch(25% 0.09 281.288);
+        --boot-color-base-content: oklch(78% 0.115 274.713);
+        --boot-color-primary: oklch(71% 0.202 349.761);
+        --boot-color-secondary: oklch(82% 0.111 230.318);
+        --boot-bg-primary: var(--boot-color-base-200);
+        --boot-bg-secondary: oklch(
+          from var(--boot-color-base-300) calc(l - 0.02) c h
+        );
+        --boot-glow-primary: oklch(from var(--boot-color-primary) l c h / 0.24);
+        --boot-glow-secondary: oklch(
+          from var(--boot-color-secondary) l c h / 0.18
+        );
+        --boot-card-bg: rgba(24, 30, 43, 0.84);
+        --boot-card-border: rgba(255, 255, 255, 0.08);
+        --boot-status-bg: rgba(15, 23, 42, 0.42);
+        --boot-text: var(--boot-color-base-content);
+        --boot-soft-text: oklch(
+          from var(--boot-color-base-content) l c h / 0.72
+        );
+      }
+
+      :root[data-theme="abyss"] {
+        color-scheme: dark;
+        --boot-color-base-100: oklch(20% 0.08 209);
+        --boot-color-base-200: oklch(15% 0.08 209);
+        --boot-color-base-300: oklch(10% 0.08 209);
+        --boot-color-base-content: oklch(90% 0.076 70.697);
+        --boot-color-primary: oklch(92% 0.2653 125);
+        --boot-color-secondary: oklch(83.27% 0.0764 298.3);
+        --boot-bg-primary: var(--boot-color-base-200);
+        --boot-bg-secondary: oklch(
+          from var(--boot-color-base-300) calc(l - 0.02) c h
+        );
+        --boot-glow-primary: oklch(from var(--boot-color-primary) l c h / 0.24);
+        --boot-glow-secondary: oklch(
+          from var(--boot-color-secondary) l c h / 0.18
+        );
+        --boot-card-bg: rgba(24, 30, 43, 0.84);
+        --boot-card-border: rgba(255, 255, 255, 0.08);
+        --boot-status-bg: rgba(15, 23, 42, 0.42);
+        --boot-text: var(--boot-color-base-content);
+        --boot-soft-text: oklch(
+          from var(--boot-color-base-content) l c h / 0.72
+        );
+      }
+
+      :root[data-theme="luxury"] {
+        color-scheme: dark;
+        --boot-color-base-100: oklch(14.076% 0.004 285.822);
+        --boot-color-base-200: oklch(20.219% 0.004 308.229);
+        --boot-color-base-300: oklch(23.219% 0.004 308.229);
+        --boot-color-base-content: oklch(75.687% 0.123 76.89);
+        --boot-color-primary: oklch(100% 0 0);
+        --boot-color-secondary: oklch(27.581% 0.064 261.069);
+        --boot-bg-primary: var(--boot-color-base-200);
+        --boot-bg-secondary: oklch(
+          from var(--boot-color-base-300) calc(l - 0.02) c h
+        );
+        --boot-glow-primary: oklch(from var(--boot-color-primary) l c h / 0.24);
+        --boot-glow-secondary: oklch(
+          from var(--boot-color-secondary) l c h / 0.18
+        );
+        --boot-card-bg: rgba(24, 30, 43, 0.84);
+        --boot-card-border: rgba(255, 255, 255, 0.08);
+        --boot-status-bg: rgba(15, 23, 42, 0.42);
+        --boot-text: var(--boot-color-base-content);
+        --boot-soft-text: oklch(
+          from var(--boot-color-base-content) l c h / 0.72
+        );
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        min-height: 100%;
+        background:
+          radial-gradient(
+            circle at top left,
+            var(--boot-glow-primary),
+            transparent 34%
+          ),
+          radial-gradient(
+            circle at top right,
+            var(--boot-glow-secondary),
+            transparent 28%
+          ),
+          linear-gradient(
+            180deg,
+            var(--boot-bg-primary) 0%,
+            var(--boot-bg-secondary) 100%
+          );
+        color: var(--boot-text);
+      }
+
+      body {
+        min-height: 100vh;
+      }
+
+      #app {
+        min-height: 100vh;
+      }
+
+      .boot-fallback {
+        position: fixed;
+        inset: 0;
+        z-index: 220;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        transition:
+          opacity 180ms ease,
+          visibility 180ms ease;
+      }
+
+      .boot-fallback.is-hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      .boot-fallback__card {
+        width: min(100%, 720px);
+        border-radius: 28px;
+        border: 1px solid var(--boot-card-border);
+        background: var(--boot-card-bg);
+        box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+        backdrop-filter: blur(18px);
+        padding: 28px;
+      }
+
+      .boot-fallback__brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .boot-fallback__logo {
+        width: 56px;
+        height: 56px;
+        border-radius: 20px;
+        display: grid;
+        place-items: center;
+        background: rgba(124, 58, 237, 0.12);
+        color: var(--boot-accent);
+        box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.14);
+        font-size: 22px;
+      }
+
+      .boot-fallback__eyebrow {
+        margin: 0 0 6px;
+        font-size: 11px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--boot-soft-text);
+      }
+
+      .boot-fallback__title {
+        margin: 0;
+        font-size: 32px;
+        line-height: 1.04;
+        letter-spacing: -0.04em;
+      }
+
+      .boot-fallback__subtitle {
+        margin: 0 0 22px;
+        max-width: 36rem;
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--boot-soft-text);
+      }
+
+      .boot-fallback__status {
+        border-radius: 20px;
+        border: 1px solid var(--boot-card-border);
+        background: var(--boot-status-bg);
+        padding: 16px;
+      }
+
+      .boot-fallback__status-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .boot-fallback__pulse {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--boot-accent);
+        box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.32);
+        animation: boot-pulse 1.8s ease-out infinite;
+      }
+
+      .boot-fallback__track {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.22);
+      }
+
+      .boot-fallback__bar {
+        width: 42%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(
+          90deg,
+          var(--boot-accent),
+          var(--boot-accent-2),
+          var(--boot-accent)
+        );
+        animation: boot-progress 1.5s ease-in-out infinite;
+      }
+
+      @keyframes boot-progress {
+        0% {
+          transform: translateX(-140%);
+        }
+        100% {
+          transform: translateX(340%);
+        }
+      }
+
+      @keyframes boot-pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.32);
+        }
+        70% {
+          box-shadow: 0 0 0 16px rgba(124, 58, 237, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-fallback" class="boot-fallback">
+      <div class="boot-fallback__card">
+        <div class="boot-fallback__brand">
+          <div class="boot-fallback__logo">◎</div>
+          <div>
+            <p class="boot-fallback__eyebrow" data-boot-i18n="eyebrow">
+              Private transfer workspace
+            </p>
+            <h1 class="boot-fallback__title" data-boot-i18n="title">
+              Preparing Sendme
+            </h1>
+          </div>
+        </div>
+        <p class="boot-fallback__subtitle" data-boot-i18n="subtitle">
+          Launching a secure peer-to-peer session and restoring the tools you
+          need to share right away.
+        </p>
+        <div class="boot-fallback__status">
+          <div class="boot-fallback__status-row">
+            <span class="boot-fallback__pulse"></span>
+            <span data-boot-i18n="status">Connecting secure services</span>
+          </div>
+          <div class="boot-fallback__track">
+            <div class="boot-fallback__bar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="app"></div>
+    <script>
+      (() => {
+        const locale =
+          window.__SENDME_BOOT_LOCALE__ === "zh-CN" ? "zh-CN" : "en";
+        const copy = {
+          en: {
+            eyebrow: "Private transfer workspace",
+            title: "Preparing Sendme",
+            subtitle:
+              "Launching a secure peer-to-peer session and restoring the tools you need to share right away.",
+            status: "Connecting secure services",
+          },
+          "zh-CN": {
+            eyebrow: "私密传输工作区",
+            title: "正在准备 Sendme",
+            subtitle:
+              "正在启动安全的点对点会话，并恢复你进入传输所需的关键工具。",
+            status: "正在连接安全服务",
+          },
+        }[locale];
+
+        document.querySelectorAll("[data-boot-i18n]").forEach((element) => {
+          const key = element.getAttribute("data-boot-i18n");
+          if (!key || !copy[key]) return;
+          element.textContent = copy[key];
+        });
+      })();
+    </script>
     <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

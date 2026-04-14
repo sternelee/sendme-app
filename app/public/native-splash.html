@@ -40,10 +40,10 @@
           BlinkMacSystemFont,
           "Segoe UI",
           sans-serif;
-        --bg-primary: #f6f7fb;
-        --bg-secondary: #eef1f7;
-        --glow-primary: rgba(127, 86, 217, 0.24);
-        --glow-secondary: rgba(14, 165, 233, 0.18);
+        --app-shell-bg-start: #f7f8fc;
+        --app-shell-bg-end: #eef1f7;
+        --app-shell-glow-primary: rgba(127, 86, 217, 0.18);
+        --app-shell-glow-secondary: rgba(14, 165, 233, 0.14);
         --text-color: #161923;
         --muted-text: rgba(22, 25, 35, 0.74);
         --soft-text: rgba(22, 25, 35, 0.62);
@@ -67,10 +67,10 @@
       :root[data-theme="synthwave"],
       :root[data-theme="sunset"] {
         color-scheme: dark;
-        --bg-primary: #171a24;
-        --bg-secondary: #12151d;
-        --glow-primary: rgba(127, 86, 217, 0.3);
-        --glow-secondary: rgba(14, 165, 233, 0.24);
+        --app-shell-bg-start: #1f2430;
+        --app-shell-bg-end: #232a38;
+        --app-shell-glow-primary: rgba(127, 86, 217, 0.24);
+        --app-shell-glow-secondary: rgba(14, 165, 233, 0.18);
         --text-color: #f5f7fb;
         --muted-text: rgba(245, 247, 251, 0.76);
         --soft-text: rgba(245, 247, 251, 0.64);
@@ -84,11 +84,6 @@
       }
 
       :root[data-theme="sunset"] {
-        --bg-primary: #2a1224;
-        --bg-secondary: #160e19;
-        --glow-primary: rgba(251, 113, 133, 0.28);
-        --glow-secondary: rgba(249, 115, 22, 0.22);
-        --shell-bg: rgba(39, 17, 33, 0.62);
         --accent: #fb7185;
         --accent-secondary: #fb923c;
         --logo-bg: rgba(251, 113, 133, 0.16);
@@ -96,18 +91,10 @@
       }
 
       :root[data-theme="black"] {
-        --bg-primary: #09090b;
-        --bg-secondary: #020617;
-        --glow-primary: rgba(99, 102, 241, 0.22);
-        --glow-secondary: rgba(56, 189, 248, 0.18);
         --shell-bg: rgba(15, 23, 42, 0.46);
       }
 
       :root[data-theme="abyss"] {
-        --bg-primary: #0a1628;
-        --bg-secondary: #08111f;
-        --glow-primary: rgba(56, 189, 248, 0.2);
-        --glow-secondary: rgba(59, 130, 246, 0.2);
         --shell-bg: rgba(7, 18, 35, 0.6);
         --accent: #38bdf8;
         --accent-secondary: #60a5fa;
@@ -116,10 +103,6 @@
       }
 
       :root[data-theme="luxury"] {
-        --bg-primary: #16120a;
-        --bg-secondary: #0f0b05;
-        --glow-primary: rgba(245, 158, 11, 0.22);
-        --glow-secondary: rgba(250, 204, 21, 0.16);
         --shell-bg: rgba(28, 21, 11, 0.62);
         --accent: #f59e0b;
         --accent-secondary: #facc15;
@@ -128,10 +111,6 @@
       }
 
       :root[data-theme="synthwave"] {
-        --bg-primary: #22143a;
-        --bg-secondary: #160d27;
-        --glow-primary: rgba(217, 70, 239, 0.26);
-        --glow-secondary: rgba(34, 211, 238, 0.18);
         --shell-bg: rgba(31, 20, 56, 0.62);
         --accent: #d946ef;
         --accent-secondary: #22d3ee;
@@ -158,30 +137,30 @@
         padding: 24px;
         overflow: hidden;
         position: relative;
-        background-color: var(--bg-primary);
+        background-color: var(--app-shell-bg-start);
         background:
           radial-gradient(
             circle at top left,
-            var(--glow-primary),
+            var(--app-shell-glow-primary),
             transparent 34%
           ),
           radial-gradient(
-            circle at bottom right,
-            var(--glow-secondary),
-            transparent 30%
+            circle at top right,
+            var(--app-shell-glow-secondary),
+            transparent 28%
           ),
           linear-gradient(
             180deg,
-            var(--bg-primary) 0%,
-            var(--bg-secondary) 100%
+            var(--app-shell-bg-start) 0%,
+            var(--app-shell-bg-end) 100%
           );
         color: var(--text-color);
       }
 
       .shell {
-        width: min(100%, 420px);
-        padding: 28px;
-        border-radius: 28px;
+        width: min(100%, 360px);
+        padding: 24px;
+        border-radius: 24px;
         position: relative;
         z-index: 1;
         border: 1px solid var(--shell-border);
@@ -195,8 +174,7 @@
       .brand {
         display: flex;
         align-items: center;
-        gap: 16px;
-        margin-bottom: 16px;
+        gap: 14px;
       }
 
       .logo {
@@ -212,7 +190,7 @@
       }
 
       .eyebrow {
-        margin: 0 0 4px;
+        margin: 0 0 5px;
         font-size: 11px;
         letter-spacing: 0.24em;
         text-transform: uppercase;
@@ -221,22 +199,16 @@
 
       h1 {
         margin: 0;
-        font-size: 30px;
+        font-size: 28px;
         line-height: 1.05;
         letter-spacing: -0.04em;
         color: var(--text-color);
       }
 
-      .subtitle {
-        margin: 0 0 22px;
-        font-size: 14px;
-        line-height: 1.65;
-        color: var(--muted-text);
-      }
-
       .status {
-        padding: 16px;
-        border-radius: 20px;
+        margin-top: 18px;
+        padding: 14px 16px;
+        border-radius: 18px;
         background: var(--status-bg);
         border: 1px solid var(--status-border);
       }
@@ -311,14 +283,10 @@
           <h1 data-i18n="title">Preparing Sendme</h1>
         </div>
       </div>
-      <p class="subtitle" data-i18n="subtitle">
-        Launching a secure peer-to-peer session and getting your transfer
-        workspace ready.
-      </p>
       <section class="status">
         <div class="status-row">
           <span class="dot"></span>
-          <span data-i18n="status">Starting secure workspace</span>
+          <span data-i18n="status">Opening secure workspace</span>
         </div>
         <div class="track">
           <div class="bar"></div>
@@ -331,17 +299,14 @@
           window.__SENDME_SPLASH_LOCALE__ === "zh-CN" ? "zh-CN" : "en";
         const messages = {
           en: {
-            eyebrow: "Private transfer workspace",
-            title: "Preparing Sendme",
-            subtitle:
-              "Launching a secure peer-to-peer session and getting your transfer workspace ready.",
-            status: "Starting secure workspace",
+            eyebrow: "Launching Sendme",
+            title: "Opening secure workspace",
+            status: "Preparing native shell",
           },
           "zh-CN": {
-            eyebrow: "私密传输工作区",
-            title: "正在准备 Sendme",
-            subtitle: "正在启动安全的点对点会话，并准备你的传输工作区。",
-            status: "正在启动安全工作区",
+            eyebrow: "正在启动 Sendme",
+            title: "正在打开安全工作区",
+            status: "正在准备原生窗口",
           },
         };
 

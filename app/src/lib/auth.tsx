@@ -10,6 +10,7 @@ import {
   createContext,
   useContext,
   createSignal,
+  onCleanup,
   onMount,
   JSX,
 } from "solid-js";
@@ -36,6 +37,7 @@ const AuthContext = createContext<AuthContextValue>();
 
 const CLERK_PUBLISHABLE_KEY =
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_placeholder";
+const AUTH_STARTUP_TIMEOUT_MS = 2200;
 
 /**
  * Auth Provider for Tauri Desktop App
@@ -47,6 +49,12 @@ export function AuthProvider(props: { children: JSX.Element }) {
   const [clerkInstance, setClerkInstance] = createSignal<Clerk | null>(null);
 
   onMount(async () => {
+    const fallbackTimer = window.setTimeout(() => {
+      setIsLoaded(true);
+    }, AUTH_STARTUP_TIMEOUT_MS);
+
+    onCleanup(() => window.clearTimeout(fallbackTimer));
+
     try {
       // Initialize clerk using tauri-plugin-clerk
       // initClerk returns a Promise<Clerk> that resolves when clerk is ready
@@ -85,6 +93,8 @@ export function AuthProvider(props: { children: JSX.Element }) {
     } catch (error) {
       console.error("Failed to initialize Clerk:", error);
       setIsLoaded(true);
+    } finally {
+      window.clearTimeout(fallbackTimer);
     }
   });
 
@@ -120,7 +130,9 @@ export function AuthProvider(props: { children: JSX.Element }) {
   const getToken = async (): Promise<string | null> => {
     try {
       // Use tauri-plugin-clerk to get the JWT token
-      const token = await invoke<string | null>("plugin:clerk|get_client_authorization_header");
+      const token = await invoke<string | null>(
+        "plugin:clerk|get_client_authorization_header",
+      );
       return token;
     } catch (error) {
       console.error("Failed to get token:", error);
