@@ -1734,6 +1734,7 @@ fn app_ready(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn close_splashscreen(app: &AppHandle) {
     if let Some(splashscreen) = app.get_webview_window("splashscreen") {
         let _ = splashscreen.close();
@@ -1744,6 +1745,9 @@ fn close_splashscreen(app: &AppHandle) {
         let _ = main_window.set_focus();
     }
 }
+
+#[cfg(not(desktop))]
+fn close_splashscreen(_app: &AppHandle) {}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
