@@ -1,7 +1,10 @@
 //! Receiver implementation for nearby transfer
 
 use anyhow::{Context, Result};
-use iroh::{endpoint::{Incoming, presets::N0}, Endpoint};
+use iroh::{
+    endpoint::{presets::N0, Incoming},
+    Endpoint,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;

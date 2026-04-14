@@ -59,12 +59,7 @@ pub(crate) struct ClerkProxyResponse {
 fn should_skip_header(name: &str) -> bool {
     matches!(
         name,
-        "origin"
-            | "authorization"
-            | "x-no-origin"
-            | "x-tauri-fetch"
-            | "x-mobile"
-            | "credentials"
+        "origin" | "authorization" | "x-no-origin" | "x-tauri-fetch" | "x-mobile" | "credentials"
     )
 }
 
@@ -132,8 +127,7 @@ pub(crate) async fn clerk_proxy<R: Runtime>(
 
     // Read as text first, then try JSON parse — Clerk responses may not always be valid JSON
     let resp_text = resp.text().await.map_err(|e| e.to_string())?;
-    let body: Value = serde_json::from_str(&resp_text)
-        .unwrap_or_else(|_| Value::String(resp_text));
+    let body: Value = serde_json::from_str(&resp_text).unwrap_or_else(|_| Value::String(resp_text));
 
     Ok(ClerkProxyResponse {
         status,

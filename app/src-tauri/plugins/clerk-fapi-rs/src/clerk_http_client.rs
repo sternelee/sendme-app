@@ -59,7 +59,9 @@ impl ClerkHttpClient {
         // When running in non standard browser we need to tell Clerk
         // API that with the _is_native query parameter
         if self.client_kind == ClientKind::NonBrowser {
-            req.url_mut().query_pairs_mut().append_pair("_is_native", "1");
+            req.url_mut()
+                .query_pairs_mut()
+                .append_pair("_is_native", "1");
         }
 
         let token_id = {

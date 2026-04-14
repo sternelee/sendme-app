@@ -1,7 +1,10 @@
 //! Sender implementation for nearby transfer
 
 use anyhow::{Context, Result};
-use iroh::{endpoint::{Connection, presets::N0}, Endpoint, EndpointAddr};
+use iroh::{
+    endpoint::{presets::N0, Connection},
+    Endpoint, EndpointAddr,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 

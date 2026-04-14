@@ -7,7 +7,12 @@ use std::{
 };
 
 use iroh::{endpoint::presets::N0, Endpoint};
-use iroh_blobs::{protocol::ALPN, provider::events::{ConnectMode, EventMask, EventSender, ProviderMessage, RequestMode}, store::fs::FsStore, BlobFormat, BlobsProtocol};
+use iroh_blobs::{
+    protocol::ALPN,
+    provider::events::{ConnectMode, EventMask, EventSender, ProviderMessage, RequestMode},
+    store::fs::FsStore,
+    BlobFormat, BlobsProtocol,
+};
 
 use n0_future::StreamExt;
 use tokio::select;

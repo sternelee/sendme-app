@@ -59,6 +59,9 @@ pub const SERVICE_TYPE: &str = "_sendme._udp";
 const TXT_VERSION: &str = "1";
 const ENDPOINT_CHUNK_LEN: usize = 200;
 
+type DevicesChangedCallback = Arc<dyn Fn(Vec<NearbyDevice>) + Send + Sync>;
+
+#[derive(Clone, PartialEq)]
 struct ServiceEntry {
     name: String,
     device_type: DeviceType,
@@ -90,6 +93,16 @@ impl NearbyDiscovery {
         name: &str,
         device_type: DeviceType,
         endpoint_addr: &EndpointAddr,
+    ) -> Result<()> {
+        self.start_with_callback(name, device_type, endpoint_addr, None)
+    }
+
+    pub fn start_with_callback(
+        &mut self,
+        name: &str,
+        device_type: DeviceType,
+        endpoint_addr: &EndpointAddr,
+        on_devices_changed: Option<DevicesChangedCallback>,
     ) -> Result<()> {
         if self.daemon.is_some() {
             return Ok(());
@@ -164,14 +177,23 @@ impl NearbyDiscovery {
                                     }
                                 }
                                 if let Ok(mut services) = services.lock() {
+                                    let changed = services.get(&id) != Some(&entry);
                                     services.insert(id, entry);
+                                    if changed {
+                                        emit_devices_changed(
+                                            &services,
+                                            on_devices_changed.as_ref(),
+                                        );
+                                    }
                                 }
                             }
                         }
                         ServiceEvent::ServiceRemoved(_, fullname) => {
                             tracing::debug!("mDNS ServiceRemoved: {}", fullname);
                             if let Ok(mut services) = services.lock() {
-                                services.remove(&fullname);
+                                if services.remove(&fullname).is_some() {
+                                    emit_devices_changed(&services, on_devices_changed.as_ref());
+                                }
                             }
                         }
                         ServiceEvent::SearchStopped(_) => {
@@ -192,15 +214,7 @@ impl NearbyDiscovery {
             Ok(s) => s,
             Err(e) => e.into_inner(),
         };
-        services
-            .iter()
-            .map(|(id, entry)| NearbyDevice {
-                id: id.clone(),
-                name: entry.name.clone(),
-                device_type: entry.device_type.clone(),
-                addresses: entry.addresses.clone(),
-            })
-            .collect()
+        snapshot_devices(&services)
     }
 
     pub fn get_endpoint_addr(&self, id: &str) -> Option<EndpointAddr> {
@@ -210,6 +224,27 @@ impl NearbyDiscovery {
         };
         services.get(id).map(|entry| entry.endpoint_addr.clone())
     }
+}
+
+fn emit_devices_changed(
+    services: &HashMap<String, ServiceEntry>,
+    on_devices_changed: Option<&DevicesChangedCallback>,
+) {
+    if let Some(callback) = on_devices_changed {
+        callback(snapshot_devices(services));
+    }
+}
+
+fn snapshot_devices(services: &HashMap<String, ServiceEntry>) -> Vec<NearbyDevice> {
+    services
+        .iter()
+        .map(|(id, entry)| NearbyDevice {
+            id: id.clone(),
+            name: entry.name.clone(),
+            device_type: entry.device_type.clone(),
+            addresses: entry.addresses.clone(),
+        })
+        .collect()
 }
 
 fn create_service_entry(info: &ServiceInfo) -> Option<ServiceEntry> {

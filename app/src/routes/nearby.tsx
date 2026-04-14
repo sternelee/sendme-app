@@ -20,6 +20,7 @@ import { toast } from "solid-sonner";
 import { i18n } from "~/lib/i18n";
 
 const t = i18n.t;
+const RECONCILE_INTERVAL_MS = 20_000;
 
 export default function NearbyPage() {
   const store = useGlobalStore();
@@ -27,16 +28,33 @@ export default function NearbyPage() {
   const [nearbyProfile, setNearbyProfile] = createSignal<NearbyProfile | null>(
     null,
   );
+  let refreshInFlight = false;
 
   const nearbyState = () => store.nearbySend.state();
 
-  async function refreshDevices() {
-    setIsScanning(true);
-    store.nearbySend.setDiscoveryState("scanning");
+  async function refreshDevices(options?: {
+    showSpinner?: boolean;
+    restartDiscovery?: boolean;
+  }) {
+    if (refreshInFlight) return;
+
+    refreshInFlight = true;
+    if (options?.showSpinner) {
+      setIsScanning(true);
+      store.nearbySend.setDiscoveryState("scanning");
+    }
+
     try {
-      await start_nearby_discovery();
-      setNearbyProfile(await get_nearby_profile());
-      store.nearbySend.setNearbyDevices(await get_nearby_devices());
+      if (options?.restartDiscovery) {
+        await start_nearby_discovery();
+      }
+
+      const [profile, devices] = await Promise.all([
+        get_nearby_profile(),
+        get_nearby_devices(),
+      ]);
+      setNearbyProfile(profile);
+      store.nearbySend.setNearbyDevices(devices);
       store.nearbySend.setDiscoveryState("idle");
       store.nearbySend.setError(null);
     } catch (error) {
@@ -44,13 +62,25 @@ export default function NearbyPage() {
       store.nearbySend.setDiscoveryState("error");
       store.nearbySend.setError(message);
     } finally {
-      setIsScanning(false);
+      refreshInFlight = false;
+      if (options?.showSpinner) {
+        setIsScanning(false);
+      }
     }
   }
 
   onMount(async () => {
-    await refreshDevices();
-    const interval = setInterval(refreshDevices, 2000);
+    await refreshDevices({ showSpinner: true, restartDiscovery: true });
+
+    const interval = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void refreshDevices();
+    }, RECONCILE_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshDevices();
+    };
 
     const unlistenSendState = await listen<NearbyTransferState>(
       "nearby_send_state",
@@ -93,9 +123,23 @@ export default function NearbyPage() {
       },
     );
 
+    const unlistenDevices = await listen<NearbyDevice[]>(
+      "nearby_devices_updated",
+      (event) => {
+        store.nearbySend.setNearbyDevices(event.payload);
+        store.nearbySend.setDiscoveryState("idle");
+        store.nearbySend.setError(null);
+        setIsScanning(false);
+      },
+    );
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     onCleanup(() => {
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       unlistenSendState();
+      unlistenDevices();
     });
   });
 
@@ -170,7 +214,9 @@ export default function NearbyPage() {
         isScanning={isScanning()}
         selectedDeviceId={nearbyState().selectedDevice?.id ?? null}
         onDeviceSelect={handleDeviceSelect}
-        onRefresh={refreshDevices}
+        onRefresh={() =>
+          void refreshDevices({ showSpinner: true, restartDiscovery: true })
+        }
         error={nearbyState().error}
       />
 

@@ -887,8 +887,16 @@ async fn ensure_nearby_runtime(app: &AppHandle, nearby: NearbyState) -> Result<(
 
         let mut discovery = sendme_lib::NearbyDiscovery::new()
             .map_err(|e| format!("Failed to create nearby discovery: {e}"))?;
+        let app_handle = app.clone();
         discovery
-            .start(&device_name, device_type.clone(), &endpoint_addr)
+            .start_with_callback(
+                &device_name,
+                device_type.clone(),
+                &endpoint_addr,
+                Some(Arc::new(move |devices| {
+                    emit_nearby_devices_updated(&app_handle, devices);
+                })),
+            )
             .map_err(|e| format!("Failed to start nearby discovery: {e}"))?;
         guard.discovery = Some(discovery);
     }
@@ -1347,6 +1355,10 @@ fn emit_nearby_send_state(app: &AppHandle, payload: NearbyTransferStatePayload) 
 
 fn emit_nearby_receive_state(app: &AppHandle, payload: NearbyTransferStatePayload) {
     let _ = app.emit("nearby_receive_state", payload);
+}
+
+fn emit_nearby_devices_updated(app: &AppHandle, devices: Vec<sendme_lib::NearbyDevice>) {
+    let _ = app.emit("nearby_devices_updated", devices);
 }
 
 #[cfg(target_os = "android")]
