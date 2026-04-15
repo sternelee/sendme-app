@@ -5,9 +5,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager};
 #[cfg(desktop)]
 use tauri::WebviewWindowBuilder;
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, RwLock};
@@ -1751,6 +1751,32 @@ fn close_splashscreen(app: &AppHandle) {
 #[cfg(not(desktop))]
 fn close_splashscreen(_app: &AppHandle) {}
 
+#[cfg(all(target_os = "ios", feature = "ios-web-inspector"))]
+fn enable_ios_web_inspector(app: &AppHandle) -> Result<(), String> {
+    use objc2::runtime::AnyObject;
+
+    let main_window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Failed to find main webview window".to_string())?;
+
+    main_window
+        .with_webview(|webview| unsafe {
+            let view: &AnyObject = &*webview.inner().cast();
+            let selector = objc2::sel!(setInspectable:);
+            let can_enable_inspector: bool = objc2::msg_send![view, respondsToSelector: selector];
+
+            if can_enable_inspector {
+                let _: () = objc2::msg_send![view, setInspectable: true];
+                tracing::info!("Enabled iOS Safari web inspector");
+            } else {
+                tracing::warn!("WKWebView inspection is unavailable on this iOS version");
+            }
+        })
+        .map_err(|e| format!("Failed to enable iOS web inspector: {e}"))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging for Android
@@ -1837,6 +1863,9 @@ pub fn run() {
             app.manage(transfers.clone());
             // Store nearby runtime in app state
             app.manage(nearby.clone());
+
+            #[cfg(all(target_os = "ios", feature = "ios-web-inspector"))]
+            enable_ios_web_inspector(app.handle())?;
 
             #[cfg(desktop)]
             {

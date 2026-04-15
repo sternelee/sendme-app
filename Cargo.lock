@@ -181,6 +181,7 @@ dependencies = [
  "jni",
  "log",
  "ndk-context",
+ "objc2",
  "sendme-lib",
  "serde",
  "serde_json",

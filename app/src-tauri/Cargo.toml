@@ -10,6 +10,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = []
 custom-protocol = ["tauri/custom-protocol"]
+ios-web-inspector = []
 
 [dependencies]
 sendme-lib = { path = "../../lib" }
@@ -50,6 +51,7 @@ urlencoding = "2"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 tauri-plugin-fs-ios = "0.4"
+objc2 = "0.6"
 
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"

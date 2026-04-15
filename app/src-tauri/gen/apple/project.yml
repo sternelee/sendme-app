@@ -137,6 +137,10 @@ targets:
               ;;
           esac
 
+          if [ "${SENDME_IOS_INSPECTOR:-}" = "1" ]; then
+            FEATURE_FLAGS="${FEATURE_FLAGS} --features ios-web-inspector"
+          fi
+
           cd "${WORKSPACE_ROOT}"
           cargo build -p app --manifest-path "${APP_ROOT}/src-tauri/Cargo.toml" --target "${TARGET_TRIPLE}" ${PROFILE_FLAG} ${FEATURE_FLAGS}
 

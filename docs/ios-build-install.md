@@ -76,7 +76,19 @@ pnpm install
 export CLERK_PUBLISHABLE_KEY='pk_test_...'
 ```
 
-### 3. Generate the Xcode project
+### 3. Optional: enable Safari inspection on iOS
+
+If you want the installed iPhone app to appear in macOS Safari's **Develop** menu, export this before building:
+
+```bash
+export SENDME_IOS_INSPECTOR=1
+```
+
+This keeps the normal release packaging flow, but adds an iOS-only Rust feature that marks the app's `WKWebView` as inspectable.
+
+Leave it unset for a normal non-debuggable install.
+
+### 4. Generate the Xcode project
 
 Run this whenever `app/src-tauri/gen/apple/project.yml` changes, and it is harmless to run before a normal iOS build:
 
@@ -85,7 +97,7 @@ cd src-tauri/gen/apple
 xcodegen generate
 ```
 
-### 4. Build the iOS app
+### 5. Build the iOS app
 
 ```bash
 xcodebuild -project app.xcodeproj \
@@ -108,7 +120,7 @@ The built app will be at:
 app/src-tauri/gen/apple/build-ios/Build/Products/release-iphoneos/Sendme.app
 ```
 
-### 5. Find the connected iPhone
+### 6. Find the connected iPhone
 
 ```bash
 xcrun devicectl list devices
@@ -116,7 +128,7 @@ xcrun devicectl list devices
 
 Copy the device **Identifier** and use it as `<device-id>` below.
 
-### 6. Install to the iPhone
+### 7. Install to the iPhone
 
 ```bash
 xcrun devicectl device install app \
@@ -131,7 +143,7 @@ App installed:
 • bundleID: io.sendme.app
 ```
 
-### 7. Launch the app
+### 8. Launch the app
 
 First unlock the iPhone, then either tap the app manually or launch it from the Mac:
 
@@ -149,6 +161,7 @@ xcrun devicectl device process launch \
 cd app
 pnpm install
 export CLERK_PUBLISHABLE_KEY='pk_test_...'
+export SENDME_IOS_INSPECTOR=1
 
 cd src-tauri/gen/apple
 xcodegen generate
@@ -204,6 +217,15 @@ Check:
 2. That `app_iOS.entitlements` is still empty
 3. That the build ended with `BUILD SUCCEEDED`
 
+### The app still does not appear in Safari Develop
+
+Check:
+
+1. The build was made with `SENDME_IOS_INSPECTOR=1`
+2. The iPhone has **Settings** → **Safari** → **Advanced** → **Web Inspector** enabled
+3. macOS Safari has **Develop** menu enabled
+4. The device is connected, unlocked, and trusted
+
 ### Why not `pnpm run tauri ios build`?
 
 In this repository, that path is currently less reliable for release installs because:
@@ -228,4 +250,3 @@ xcrun devicectl device install app ...
 | List devices | `xcrun devicectl list devices` |
 | Install app | `xcrun devicectl device install app --device <device-id> app/src-tauri/gen/apple/build-ios/Build/Products/release-iphoneos/Sendme.app` |
 | Launch app | `xcrun devicectl device process launch --console --terminate-existing --device <device-id> io.sendme.app` |
-
