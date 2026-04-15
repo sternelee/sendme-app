@@ -28,7 +28,7 @@ impl<R: Runtime> MediaPicker<R> {
         &self,
     ) -> Result<Vec<MediaFile>, tauri::plugin::mobile::PluginInvokeError> {
         self.0
-            .run_mobile_plugin_async("pickMedia", serde_json::Value::Null)
+            .run_mobile_plugin_async("pickMedia", serde_json::json!({}))
             .await
     }
 }
