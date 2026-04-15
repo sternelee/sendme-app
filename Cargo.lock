@@ -181,6 +181,7 @@ dependencies = [
  "jni",
  "log",
  "ndk-context",
+ "objc2",
  "sendme-lib",
  "serde",
  "serde_json",
@@ -195,6 +196,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-fs-ios",
  "tauri-plugin-http",
+ "tauri-plugin-media-picker",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-os",
@@ -7323,6 +7325,16 @@ dependencies = [
  "tokio",
  "url",
  "urlpattern",
+]
+
+[[package]]
+name = "tauri-plugin-media-picker"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

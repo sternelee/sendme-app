@@ -1,4 +1,9 @@
 fn main() {
+    println!("cargo:rerun-if-changed=../dist");
+    println!("cargo:rerun-if-changed=../index.html");
+    println!("cargo:rerun-if-changed=tauri.conf.json");
+    println!("cargo:rerun-if-changed=tauri.ios.conf.json");
+
     tauri_build::build();
 
     // On Android, copy our custom Kotlin files and ProGuard rules to the generated project

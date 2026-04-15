@@ -1,8 +1,8 @@
 name: app
 options:
-  bundleIdPrefix: com.sendme.dev
+  bundleIdPrefix: io.sendme.app
   deploymentTarget:
-    iOS: "26"
+    iOS: "15.1"
 fileGroups: [../../src]
 configs:
   debug: debug
@@ -11,7 +11,7 @@ settingGroups:
   app:
     base:
       PRODUCT_NAME: Sendme
-      PRODUCT_BUNDLE_IDENTIFIER: com.sendme.dev
+      PRODUCT_BUNDLE_IDENTIFIER: io.sendme.app
 targetTemplates:
   app:
     type: application
@@ -64,7 +64,12 @@ targets:
         ARCHS: [arm64]
         VALID_ARCHS: arm64
         SWIFT_VERSION: 6.0
-        IPHONEOS_DEPLOYMENT_TARGET: 26
+        IPHONEOS_DEPLOYMENT_TARGET: 15.1
+        DEVELOPMENT_TEAM: UJ8NW4N779
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_COMPILATION_MODE: wholemodule
+        SWIFTC_PARAMETERS: -use-static-resource-dir
+        OTHER_LDFLAGS: $(inherited) -Wl,-undefined,dynamic_lookup
         LIBRARY_SEARCH_PATHS[arch=x86_64]: $(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)
         LIBRARY_SEARCH_PATHS[arch=arm64]: $(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: true
@@ -83,7 +88,65 @@ targets:
       - sdk: WebKit.framework
     preBuildScripts:
       - name: Build Rust Code
-        script: "exit 0"
+        script: |
+          set -euo pipefail
+          APP_ROOT="${SRCROOT}/../../.."
+          WORKSPACE_ROOT="${APP_ROOT}/.."
+          IOS_ASSETS_DIR="${SRCROOT}/assets"
+
+          cd "${APP_ROOT}"
+          pnpm run build
+
+          rm -rf "${IOS_ASSETS_DIR}"
+          mkdir -p "${IOS_ASSETS_DIR}"
+          rsync -a --delete "${APP_ROOT}/dist/" "${IOS_ASSETS_DIR}/"
+
+          case "${PLATFORM_NAME:?}" in
+            iphoneos)
+              TARGET_TRIPLE="aarch64-apple-ios"
+              TARGET_ARCH_DIR="arm64"
+              ;;
+            iphonesimulator)
+              case "${ARCHS:?}" in
+                x86_64)
+                  TARGET_TRIPLE="x86_64-apple-ios"
+                  TARGET_ARCH_DIR="x86_64"
+                  ;;
+                *)
+                  TARGET_TRIPLE="aarch64-apple-ios-sim"
+                  TARGET_ARCH_DIR="arm64"
+                  ;;
+              esac
+              ;;
+            *)
+              echo "Unsupported PLATFORM_NAME: ${PLATFORM_NAME:?}" >&2
+              exit 1
+              ;;
+          esac
+
+          case "${CONFIGURATION:?}" in
+            release|Release)
+              PROFILE_FLAG="--release"
+              PROFILE_DIR="release"
+              FEATURE_FLAGS="--features custom-protocol"
+              ;;
+            *)
+              PROFILE_FLAG=""
+              PROFILE_DIR="debug"
+              FEATURE_FLAGS=""
+              ;;
+          esac
+
+          if [ "${SENDME_IOS_INSPECTOR:-}" = "1" ]; then
+            FEATURE_FLAGS="${FEATURE_FLAGS} --features ios-web-inspector"
+          fi
+
+          cd "${WORKSPACE_ROOT}"
+          cargo build -p app --manifest-path "${APP_ROOT}/src-tauri/Cargo.toml" --target "${TARGET_TRIPLE}" ${PROFILE_FLAG} ${FEATURE_FLAGS}
+
+          mkdir -p "${SRCROOT}/Externals/${TARGET_ARCH_DIR}/${CONFIGURATION}"
+          cp "${WORKSPACE_ROOT}/target/${TARGET_TRIPLE}/${PROFILE_DIR}/libsendme_app.a" \
+            "${SRCROOT}/Externals/${TARGET_ARCH_DIR}/${CONFIGURATION}/libapp.a"
         basedOnDependencyAnalysis: false
         outputFiles:
           - $(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a

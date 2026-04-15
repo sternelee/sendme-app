@@ -57,8 +57,14 @@ pnpm run tauri dev
 pnpm run tauri build
 
 # Build for Mobile
-pnpm run tauri ios build
 pnpm run tauri android build
+
+# Build/install for iOS (preferred in this repo)
+export CLERK_PUBLISHABLE_KEY='pk_test_...'
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
+xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
 ```
 
 #### Browser App (SolidStart + WASM)

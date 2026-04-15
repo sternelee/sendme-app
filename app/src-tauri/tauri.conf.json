@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2.0.0",
   "productName": "Sendme",
   "version": "0.31.0",
-  "identifier": "com.sendme.dev",
+  "identifier": "io.sendme.app",
   "build": {
     "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1420",
@@ -31,6 +31,9 @@
     "createUpdaterArtifacts": true,
     "active": true,
     "targets": "all",
+    "iOS": {
+      "developmentTeam": "UJ8NW4N779"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

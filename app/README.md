@@ -119,8 +119,34 @@ Output:
 
 ```bash
 cd app
-pnpm run tauri ios build
+pnpm install
+export CLERK_PUBLISHABLE_KEY='pk_test_...'
+
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj \
+  -scheme app_iOS \
+  -sdk iphoneos \
+  -configuration release \
+  -derivedDataPath build-ios \
+  build
+
+xcrun devicectl device install app \
+  --device <device-id> \
+  "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
+
+xcrun devicectl device process launch \
+  --console \
+  --terminate-existing \
+  --device <device-id> \
+  io.sendme.app
 ```
+
+Notes:
+
+- Unlock the iPhone before launching with `devicectl`.
+- Prefer this direct `xcodebuild` flow over `pnpm run tauri ios build` for this repo.
+- The generated Xcode prebuild script handles frontend bundling and Rust static library compilation automatically.
 
 # Development
 

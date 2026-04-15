@@ -49,7 +49,10 @@ pnpm run tauri build
 pnpm run format
 
 CLERK_PUBLISHABLE_KEY='pk_test_...' pnpm run tauri android build
-CLERK_PUBLISHABLE_KEY='pk_test_...' pnpm run tauri ios build
+export CLERK_PUBLISHABLE_KEY='pk_test_...'
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
 ```
 
 ### Browser app (`browser/`)
@@ -152,3 +155,148 @@ If you change the WASM API or Rust browser logic, rebuild the generated artifact
 - Android file picking is URI-based, not normal-path-based. The Tauri backend copies `content://` URIs into temp files before sending and writes received files back through the Android FS plugin.
 - Do not add `browser-lib` to the root Cargo workspace.
 - The two Solid frontends serve different runtimes: `app/` is the Tauri UI, `browser/` is the Cloudflare web app. Similar-looking UI code in one does not imply shared state or shared build configuration with the other.
+- For Tauri commands, convert Rust errors to `String` for the frontend (for example, `map_err(|e| format!("Failed to send: {}", e))?`).
+
+### Async Patterns
+
+```rust
+// Progress channels
+tokio::sync::mpsc::channel::<ProgressEvent>(32)
+
+// Abort signals
+tokio::sync::oneshot::channel::<()>();
+
+// Shared state - use tokio RwLock, NOT std::sync::RwLock
+tokio::sync::RwLock<HashMap<String, State>>
+
+// CRITICAL: Keep routers alive in async contexts
+std::future::pending::<()>().await
+
+// Select with cancellation
+tokio::select! {
+    _ = cancel_rx.recv() => return,
+    result = async_operation() => result?,
+}
+```
+
+### TypeScript/SolidJS
+
+```typescript
+// External packages first, then local imports
+import { invoke } from "@tauri-apps/api/core";
+import { createSignal } from "solid-js";
+import { send_file, type SendFileRequest } from "~/lib/commands";
+
+// Explicit types for signals
+const [devices, setDevices] = createSignal<NearbyDevice[]>([]);
+
+// Path aliases use ~/* for src/
+```
+
+## Important Implementation Details
+
+### Router Keep-Alive (CRITICAL)
+
+**The sender's router must stay alive to serve incoming connections:**
+
+```rust
+tokio::spawn(async move {
+    let _router = router;
+    std::future::pending::<()>().await;  // Runs forever
+});
+```
+
+If the router is dropped, no new connections can be established. Never replace with a sleep loop.
+
+### Android Temp Directory (CRITICAL)
+
+Android apps run in a sandbox. Always use `args.common.temp_dir`:
+
+```rust
+// CORRECT: Use temp_dir from config
+let base_dir = args.common.temp_dir.as_ref().cloned()
+    .unwrap_or_else(|| std::env::current_dir()?);
+
+// In Tauri backend
+let temp_dir = app.path().temp_dir()?;
+let args = ReceiveArgs {
+    common: CommonConfig {
+        temp_dir: Some(temp_dir),  // CRITICAL for Android
+        ..
+    },
+    ..
+};
+```
+
+### Recursion Limit
+
+If you encounter "recursion limit reached" compilation errors, add to `app/src-tauri/src/lib.rs`:
+
+```rust
+#![recursion_limit = "256"]
+```
+
+### Progress Channels
+
+- Use `tokio::sync::mpsc::channel(32)` for progress event streaming
+- Frontend uses `listen("progress", callback)` to receive events
+
+### Abort Handling
+
+- Each transfer has `Option<tokio::sync::oneshot::Sender<()>>` for abort
+- Cancel sends `()` through channel, task listens via `abort_rx.await`
+
+## Common Pitfalls
+
+1. **Router keep-alive**: Never remove `std::future::pending()` - critical for send functionality
+2. **Browser WASM**: Never add `browser-lib` to workspace members (conflicts with native builds)
+3. **Tauri errors**: Convert Rust errors to String with descriptive messages for frontend
+4. **Path validation**: Always validate user paths (see `canonicalized_path_to_string`)
+5. **Tokio RwLock**: Use `tokio::sync::RwLock` for shared async state, not `std::sync::RwLock`
+6. **Android temp directories**: Use `args.common.temp_dir` instead of `std::env::current_dir()`
+7. **Android JNI**: Always use `push_local_frame()`/`pop_local_frame()` in loops
+8. **WASM builds on macOS**: Use `export CC=/opt/homebrew/opt/llvm/bin/clang` (llvm.org Clang, NOT Apple Clang)
+
+## Mobile Development
+
+### Clerk Authentication (Required)
+
+Android/iOS apps cannot access runtime environment variables. The Clerk publishable key must be embedded at compile time:
+
+```bash
+# Build with Clerk publishable key
+CLERK_PUBLISHABLE_KEY='pk_test_YOUR_KEY_HERE' pnpm run tauri android build
+cd app
+export CLERK_PUBLISHABLE_KEY='pk_test_YOUR_KEY_HERE'
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
+xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
+```
+
+- Test key (`pk_test_...`) for development
+- Production key (`pk_live_...`) for release builds
+- Prefer direct `xcodebuild` over `pnpm run tauri ios build` in this repo; the latter can fail during archive/export by reintroducing unsupported entitlements for personal-team signing.
+
+### Platform-Specific File Picking
+
+- **Android**: Uses `tauri_plugin_android_fs` for file/directory picking
+- **iOS**: Uses `tauri_plugin_fs_ios` + Documents directory (no directory picking support)
+- **Desktop**: Uses `tauri_plugin_dialog`
+
+## Environment Variables
+
+- **`IROH_SECRET`**: Hex-encoded 32-byte secret key (optional, generates random if not set)
+- **`IROH_FORCE_STAGING_RELAYS`**: Set to `1` to use staging relays (CI tests)
+- **`RUST_LOG`**: Tracing level (debug, info, warn, error)
+- **`RUSTFLAGS=-Dwarnings`**: Treat all warnings as errors (CI)
+- **`CLERK_PUBLISHABLE_KEY`**: Clerk key for mobile builds (compile-time)
+
+## MSRV
+
+Minimum Supported Rust Version: **1.81**
+
+## Additional Documentation
+
+- **`ANDROID_DEBUG_GUIDE.md`**: Step-by-step Android debugging workflow
+- **`ANDROID_FIX_SUMMARY.md`**: Details on Android temp directory fixes

@@ -1,140 +1,252 @@
 # iOS Build and Install Guide
 
-This document records the process for building the Tauri iOS app and installing it on a physical iPhone via USB.
+This document records the **current working** process for building the Tauri iOS app and installing it on a physical iPhone over USB.
+
+## Recommended Flow
+
+For this repository, the reliable iOS release path is:
+
+1. Build with `xcodegen` + `xcodebuild`
+2. Install the generated `.app` with `xcrun devicectl`
+3. Optionally launch it with `xcrun devicectl`
+
+Do **not** treat `pnpm run tauri ios build` as the primary release-install flow here. In this repo it is less reliable because the archive/export step can reintroduce unsupported entitlements for personal-team signing.
 
 ## Prerequisites
 
 - Xcode 16+
-- Apple Developer account with valid provisioning profile
-- iPhone connected via USB with trust established
+- Apple Developer account or personal development team
+- iPhone connected via USB, trusted by the Mac
+- `pnpm` installed
+- `xcodegen` available
+- A valid Clerk publishable key exported before mobile builds
 
-## Build Process (Recommended)
+## Important Repo-Specific Details
 
-Due to a known issue with Xcode 16 sandbox permissions, use the following workflow:
+### 1. Use the generated Xcode project
 
-### 1. Build with Cargo (bypasses Xcode script sandbox)
+Build from:
+
+```bash
+app/src-tauri/gen/apple/app.xcodeproj
+```
+
+The Xcode prebuild script already does the repo-specific work:
+
+- runs `pnpm run build`
+- syncs `app/dist/` into `app/src-tauri/gen/apple/assets/`
+- builds the Rust static library for the correct iOS target
+- enables `custom-protocol` for release builds so the app uses bundled assets instead of `http://localhost:1420/`
+
+### 2. Keep iOS entitlements empty for personal-team signing
+
+This file must stay empty for the current signing setup:
+
+```bash
+app/src-tauri/gen/apple/app_iOS/app_iOS.entitlements
+```
+
+Current expected content:
+
+```xml
+<dict>
+</dict>
+```
+
+### 3. Current bundle identifier
+
+The app installed on device is:
+
+```text
+io.sendme.app
+```
+
+## Build and Install
+
+### 1. Install JS dependencies
 
 ```bash
 cd app
 pnpm install
-pnpm tauri build --target aarch64-apple-ios
 ```
 
-This creates a release build at:
+### 2. Export the Clerk key
 
-```
-app/src-tauri/gen/apple/build/app_iOS.xcarchive/Products/Applications/Sendme.app
+```bash
+export CLERK_PUBLISHABLE_KEY='pk_test_...'
 ```
 
-### 2. Find Connected iPhone
+### 3. Optional: enable Safari inspection on iOS
+
+If you want the installed iPhone app to appear in macOS Safari's **Develop** menu, export this before building:
+
+```bash
+export SENDME_IOS_INSPECTOR=1
+```
+
+This keeps the normal release packaging flow, but adds an iOS-only Rust feature that marks the app's `WKWebView` as inspectable.
+
+Leave it unset for a normal non-debuggable install.
+
+### 4. Generate the Xcode project
+
+Run this whenever `app/src-tauri/gen/apple/project.yml` changes, and it is harmless to run before a normal iOS build:
+
+```bash
+cd src-tauri/gen/apple
+xcodegen generate
+```
+
+### 5. Build the iOS app
+
+```bash
+xcodebuild -project app.xcodeproj \
+  -scheme app_iOS \
+  -sdk iphoneos \
+  -configuration release \
+  -derivedDataPath build-ios \
+  build
+```
+
+Successful output ends with:
+
+```text
+** BUILD SUCCEEDED **
+```
+
+The built app will be at:
+
+```bash
+app/src-tauri/gen/apple/build-ios/Build/Products/release-iphoneos/Sendme.app
+```
+
+### 6. Find the connected iPhone
 
 ```bash
 xcrun devicectl list devices
 ```
 
-Output shows device info:
+Copy the device **Identifier** and use it as `<device-id>` below.
 
-```
-Name               Hostname                             Identifier                             State
-----------------   ----------------------------------   ------------------------------------   ---------
-Sterne的iPhone se   SternedeiPhone-se.coredevice.local   03B551C1-4405-5372-891F-F72A02716CF7   connected
-```
-
-Copy the **Identifier** (UUID) for the next step.
-
-### 3. Uninstall Old Version (Optional)
-
-```bash
-xcrun devicectl device uninstall app \
-  --device 03B551C1-4405-5372-891F-F72A02716CF7 \
-  com.sendme.dev
-```
-
-### 4. Install App to iPhone
+### 7. Install to the iPhone
 
 ```bash
 xcrun devicectl device install app \
-  --device 03B551C1-4405-5372-891F-F72A02716CF7 \
-  app/src-tauri/gen/apple/build/app_iOS.xcarchive/Products/Applications/Sendme.app
+  --device <device-id> \
+  app/src-tauri/gen/apple/build-ios/Build/Products/release-iphoneos/Sendme.app
 ```
 
-Output on success:
+Expected success output includes:
 
-```
+```text
 App installed:
-• bundleID: com.sendme.dev
-• installationURL: file:///private/var/containers/Bundle/Application/.../Sendme.app/
+• bundleID: io.sendme.app
 ```
 
-### 5. Launch the App
+### 8. Launch the app
 
-1. **Manual**: Unlock iPhone and tap the Sendme app icon
-2. **Or use Xcode**: Open `app/src-tauri/gen/apple/app.xcodeproj` in Xcode and run
+First unlock the iPhone, then either tap the app manually or launch it from the Mac:
+
+```bash
+xcrun devicectl device process launch \
+  --console \
+  --terminate-existing \
+  --device <device-id> \
+  io.sendme.app
+```
+
+## Rebuild After Code Changes
+
+```bash
+cd app
+pnpm install
+export CLERK_PUBLISHABLE_KEY='pk_test_...'
+export SENDME_IOS_INSPECTOR=1
+
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj \
+  -scheme app_iOS \
+  -sdk iphoneos \
+  -configuration release \
+  -derivedDataPath build-ios \
+  build
+
+xcrun devicectl device install app \
+  --device <device-id> \
+  "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
+```
 
 ## Troubleshooting
 
-### Xcode Script Sandbox Error
+### "No provider was found" warning
 
-When running `pnpm tauri ios build` or `pnpm tauri ios run`, you may encounter:
-
-```
-failed to determine package fingerprint for build script
-Caused by: Operation not permitted (os error 1)
+```text
+Failed to load provisioning paramter list due to error:
+Error Domain=com.apple.dt.CoreDeviceError Code=1002 "No provider was found."
 ```
 
-This is a **known issue** with Xcode 16 + Tauri 2.x where the Xcode sandbox prevents cargo from reading project files.
+This warning has been non-fatal in practice. Install/build can still succeed.
 
-**Solution**: Use `pnpm tauri build --target aarch64-apple-ios` instead, which bypasses the Xcode script phase.
+### App launch denied because the phone is locked
 
-### "No provider was found" Warning
+If `devicectl` launch fails with a locked-device error, unlock the iPhone and run the command again.
 
+Typical failure looks like:
+
+```text
+Unable to launch io.sendme.app because the device was not, or could not be, unlocked
 ```
-Failed to load provisioning paramter list due to error: Error Domain=com.apple.dt.CoreDeviceError Code=1002 "No provider was found."
-```
 
-This is a **non-fatal warning** from Xcode 16. The install still succeeds.
+### App opens but shows `http://localhost:1420/`
 
-### Trust Issue on iPhone
+That means the build did not go through the correct production flow. Use the Xcode flow in this document, not a stale or alternate iOS packaging path.
 
-If the app won't open after installation:
+Release builds in this repo must come from the Xcode prebuild script in `app/src-tauri/gen/apple/project.yml`, which:
 
-1. Go to **Settings** → **General** → **VPN与设备管理** (VPN & Device Management)
-2. Find your developer app entry (may show as email address)
-3. Tap it and select **信任** (Trust)
+- rebuilds the frontend
+- syncs `dist/` into the bundle
+- compiles Rust with `--features custom-protocol`
 
-### Rebuild After Code Changes
+### App installs but does not open
+
+Check:
+
+1. Developer trust on the iPhone:
+   - **Settings** → **General** → **VPN与设备管理**
+2. That `app_iOS.entitlements` is still empty
+3. That the build ended with `BUILD SUCCEEDED`
+
+### The app still does not appear in Safari Develop
+
+Check:
+
+1. The build was made with `SENDME_IOS_INSPECTOR=1`
+2. The iPhone has **Settings** → **Safari** → **Advanced** → **Web Inspector** enabled
+3. macOS Safari has **Develop** menu enabled
+4. The device is connected, unlocked, and trusted
+
+### Why not `pnpm run tauri ios build`?
+
+In this repository, that path is currently less reliable for release installs because:
+
+- archive/export can restore unsupported entitlements
+- it is easier to end up with a build that does not match the repo's custom iOS prebuild logic
+
+For now, prefer:
 
 ```bash
-# 1. Rebuild
-cd app
-pnpm tauri build --target aarch64-apple-ios
-
-# 2. Uninstall old version
-xcrun devicectl device uninstall app --device 03B551C1-4405-5372-891F-F72A02716CF7 com.sendme.dev
-
-# 3. Install new version
-xcrun devicectl device install app --device 03B551C1-4405-5372-891F-F72A02716CF7 app/src-tauri/gen/apple/build/app_iOS.xcarchive/Products/Applications/Sendme.app
+xcodegen generate
+xcodebuild ...
+xcrun devicectl device install app ...
 ```
 
 ## Quick Reference
 
-| Action        | Command                                                                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Build iOS     | `cd app && pnpm tauri build --target aarch64-apple-ios`                                                                               |
-| List devices  | `xcrun devicectl list devices`                                                                                                        |
-| Uninstall app | `xcrun devicectl device uninstall app --device <UUID> com.sendme.dev`                                                                 |
-| Install app   | `xcrun devicectl device install app --device <UUID> app/src-tauri/gen/apple/build/app_iOS.xcarchive/Products/Applications/Sendme.app` |
-
-## Alternative: Using Xcode Directly
-
-1. Open the Xcode project:
-
-   ```bash
-   open app/src-tauri/gen/apple/app.xcodeproj
-   ```
-
-2. Select your device from the device dropdown
-
-3. Click the **Run** button (or press Cmd+R)
-
-This method may also encounter the sandbox issue depending on your Xcode configuration.
+| Action | Command |
+| --- | --- |
+| Generate project | `cd app/src-tauri/gen/apple && xcodegen generate` |
+| Build iOS app | `xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build` |
+| List devices | `xcrun devicectl list devices` |
+| Install app | `xcrun devicectl device install app --device <device-id> app/src-tauri/gen/apple/build-ios/Build/Products/release-iphoneos/Sendme.app` |
+| Launch app | `xcrun devicectl device process launch --console --terminate-existing --device <device-id> io.sendme.app` |

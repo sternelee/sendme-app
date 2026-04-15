@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Sendme</title>
+    <script>
+      (() => {
+        try {
+          const locale = localStorage.getItem("sendme.locale") || "en";
+          const storedTheme = localStorage.getItem("theme") || "system";
+          const resolvedTheme =
+            storedTheme === "system"
+              ? window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : storedTheme;
+
+          document.documentElement.dataset.theme = resolvedTheme;
+          document.documentElement.lang = locale === "zh-CN" ? "zh-CN" : "en";
+          window.__SENDME_SPLASH_LOCALE__ = locale;
+        } catch (_) {
+          document.documentElement.dataset.theme = "dark";
+          document.documentElement.lang = "en";
+          window.__SENDME_SPLASH_LOCALE__ = "en";
+        }
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        --app-shell-bg-start: #f7f8fc;
+        --app-shell-bg-end: #eef1f7;
+        --app-shell-glow-primary: rgba(127, 86, 217, 0.18);
+        --app-shell-glow-secondary: rgba(14, 165, 233, 0.14);
+        --text-color: #161923;
+        --muted-text: rgba(22, 25, 35, 0.74);
+        --soft-text: rgba(22, 25, 35, 0.62);
+        --shell-bg: rgba(255, 255, 255, 0.6);
+        --shell-solid-bg: #ffffff;
+        --shell-border: rgba(255, 255, 255, 0.16);
+        --shell-shadow: rgba(15, 23, 42, 0.12);
+        --status-bg: rgba(255, 255, 255, 0.42);
+        --status-border: rgba(255, 255, 255, 0.12);
+        --track-bg: rgba(148, 163, 184, 0.22);
+        --logo-bg: rgba(124, 58, 237, 0.14);
+        --logo-ring: rgba(124, 58, 237, 0.12);
+        --accent: #7c3aed;
+        --accent-secondary: #38bdf8;
+      }
+
+      :root[data-theme="dark"],
+      :root[data-theme="black"],
+      :root[data-theme="abyss"],
+      :root[data-theme="luxury"],
+      :root[data-theme="synthwave"],
+      :root[data-theme="sunset"] {
+        color-scheme: dark;
+        --app-shell-bg-start: #1f2430;
+        --app-shell-bg-end: #232a38;
+        --app-shell-glow-primary: rgba(127, 86, 217, 0.24);
+        --app-shell-glow-secondary: rgba(14, 165, 233, 0.18);
+        --text-color: #f5f7fb;
+        --muted-text: rgba(245, 247, 251, 0.76);
+        --soft-text: rgba(245, 247, 251, 0.64);
+        --shell-bg: rgba(17, 24, 39, 0.48);
+        --shell-solid-bg: #1b2231;
+        --shell-border: rgba(255, 255, 255, 0.08);
+        --shell-shadow: rgba(0, 0, 0, 0.28);
+        --status-bg: rgba(15, 23, 42, 0.3);
+        --status-border: rgba(255, 255, 255, 0.06);
+        --track-bg: rgba(148, 163, 184, 0.2);
+      }
+
+      :root[data-theme="sunset"] {
+        --accent: #fb7185;
+        --accent-secondary: #fb923c;
+        --logo-bg: rgba(251, 113, 133, 0.16);
+        --logo-ring: rgba(251, 113, 133, 0.14);
+      }
+
+      :root[data-theme="black"] {
+        --shell-bg: rgba(15, 23, 42, 0.46);
+      }
+
+      :root[data-theme="abyss"] {
+        --shell-bg: rgba(7, 18, 35, 0.6);
+        --accent: #38bdf8;
+        --accent-secondary: #60a5fa;
+        --logo-bg: rgba(56, 189, 248, 0.14);
+        --logo-ring: rgba(56, 189, 248, 0.12);
+      }
+
+      :root[data-theme="luxury"] {
+        --shell-bg: rgba(28, 21, 11, 0.62);
+        --accent: #f59e0b;
+        --accent-secondary: #facc15;
+        --logo-bg: rgba(245, 158, 11, 0.14);
+        --logo-ring: rgba(245, 158, 11, 0.12);
+      }
+
+      :root[data-theme="synthwave"] {
+        --shell-bg: rgba(31, 20, 56, 0.62);
+        --accent: #d946ef;
+        --accent-secondary: #22d3ee;
+        --logo-bg: rgba(217, 70, 239, 0.16);
+        --logo-ring: rgba(217, 70, 239, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        overflow: hidden;
+        position: relative;
+        background-color: var(--app-shell-bg-start);
+        background:
+          radial-gradient(
+            circle at top left,
+            var(--app-shell-glow-primary),
+            transparent 34%
+          ),
+          radial-gradient(
+            circle at top right,
+            var(--app-shell-glow-secondary),
+            transparent 28%
+          ),
+          linear-gradient(
+            180deg,
+            var(--app-shell-bg-start) 0%,
+            var(--app-shell-bg-end) 100%
+          );
+        color: var(--text-color);
+      }
+
+      .shell {
+        width: min(100%, 360px);
+        padding: 24px;
+        border-radius: 24px;
+        position: relative;
+        z-index: 1;
+        border: 1px solid var(--shell-border);
+        background-color: var(--shell-solid-bg);
+        background: var(--shell-bg);
+        backdrop-filter: blur(20px);
+        box-shadow: 0 20px 60px var(--shell-shadow);
+        color: var(--text-color);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .logo {
+        width: 54px;
+        height: 54px;
+        border-radius: 18px;
+        display: grid;
+        place-items: center;
+        background: var(--logo-bg);
+        color: var(--accent);
+        box-shadow: inset 0 0 0 1px var(--logo-ring);
+        font-size: 22px;
+      }
+
+      .eyebrow {
+        margin: 0 0 5px;
+        font-size: 11px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--soft-text);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.05;
+        letter-spacing: -0.04em;
+        color: var(--text-color);
+      }
+
+      .status {
+        margin-top: 18px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: var(--status-bg);
+        border: 1px solid var(--status-border);
+      }
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-color);
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--accent);
+        animation: pulse 1.8s ease-out infinite;
+        box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.32);
+      }
+
+      .track {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--track-bg);
+      }
+
+      .bar {
+        width: 42%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(
+          90deg,
+          var(--accent),
+          var(--accent-secondary),
+          var(--accent)
+        );
+        animation: loading 1.45s ease-in-out infinite;
+      }
+
+      @keyframes loading {
+        from {
+          transform: translateX(-150%);
+        }
+        to {
+          transform: translateX(320%);
+        }
+      }
+
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.32);
+        }
+        70% {
+          box-shadow: 0 0 0 16px rgba(124, 58, 237, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell" aria-label="Sendme startup splash">
+      <div class="brand">
+        <div class="logo">◎</div>
+        <div>
+          <p class="eyebrow" data-i18n="eyebrow">Private transfer workspace</p>
+          <h1 data-i18n="title">Preparing Sendme</h1>
+        </div>
+      </div>
+      <section class="status">
+        <div class="status-row">
+          <span class="dot"></span>
+          <span data-i18n="status">Opening secure workspace</span>
+        </div>
+        <div class="track">
+          <div class="bar"></div>
+        </div>
+      </section>
+    </main>
+    <script>
+      (() => {
+        const locale =
+          window.__SENDME_SPLASH_LOCALE__ === "zh-CN" ? "zh-CN" : "en";
+        const messages = {
+          en: {
+            eyebrow: "Launching Sendme",
+            title: "Opening secure workspace",
+            status: "Preparing native shell",
+          },
+          "zh-CN": {
+            eyebrow: "正在启动 Sendme",
+            title: "正在打开安全工作区",
+            status: "正在准备原生窗口",
+          },
+        };
+
+        const copy = messages[locale];
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+          const key = element.getAttribute("data-i18n");
+          if (!key || !copy[key]) return;
+          element.textContent = copy[key];
+        });
+      })();
+    </script>
+  </body>
+</html>

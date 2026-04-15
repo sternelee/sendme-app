@@ -1,4 +1,8 @@
 {
+  "build": {
+    "beforeBuildCommand": "pnpm run build",
+    "frontendDist": "../dist"
+  },
   "app": {
     "windows": [
       {
