@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm run build && cp -r dist app/src-tauri/gen/apple/dist",
+    "beforeBuildCommand": "pnpm run build; cp -rf dist src-tauri/gen/apple/dist",
     "frontendDist": "../dist"
   },
   "app": {
