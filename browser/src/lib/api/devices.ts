@@ -3,10 +3,10 @@
  * Helper functions for device management operations
  */
 
+import { and, desc, eq, gt, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
-import { devices, type Platform, type Device, type NewDevice } from "~/lib/db/schema";
-import { eq, and, gt, lt, desc } from "drizzle-orm";
+import { devices, type Device, type NewDevice, type Platform } from "~/lib/db/schema";
 
 /**
  * Generate a unique ID using crypto.randomUUID
@@ -19,7 +19,33 @@ function generateId(): string {
 /**
  * Device heartbeat timeout - devices older than this are considered offline
  */
-const ONLINE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+export const ONLINE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+type PresenceLike = {
+  lastSeenAt: Date | string | null;
+  online: boolean;
+};
+
+type Db = ReturnType<typeof drizzle<typeof schema>>;
+
+export function isDeviceOnline(device: PresenceLike, now = Date.now()): boolean {
+  if (!device.online || !device.lastSeenAt) {
+    return false;
+  }
+
+  return now - new Date(device.lastSeenAt).getTime() < ONLINE_TIMEOUT_MS;
+}
+
+export function normalizeDevicePresence<T extends PresenceLike>(device: T, now = Date.now()): T {
+  return {
+    ...device,
+    online: isDeviceOnline(device, now),
+  };
+}
+
+export function normalizeDevicesPresence<T extends PresenceLike>(items: T[], now = Date.now()): T[] {
+  return items.map((item) => normalizeDevicePresence(item, now));
+}
 
 /**
  * Get platform from user agent string
@@ -64,9 +90,8 @@ export function generateDeviceName(platform: Platform, userAgent?: string): stri
   }
 
   if (platform === "android") {
-    // Try to extract device model from Android UA
     const match = ua.match(/android\s[\d.]+;\s([^)]+)\)/);
-    if (match && match[1]) {
+    if (match?.[1]) {
       return match[1].trim();
     }
     return "Android Device";
@@ -75,11 +100,32 @@ export function generateDeviceName(platform: Platform, userAgent?: string): stri
   return `${platform.charAt(0).toUpperCase() + platform.slice(1)} Device`;
 }
 
-/**
- * Get all devices for a user
- */
+export async function getUserDeviceById(
+  db: Db,
+  userId: string,
+  id: string,
+): Promise<Device | undefined> {
+  return db
+    .select()
+    .from(devices)
+    .where(and(eq(devices.userId, userId), eq(devices.id, id)))
+    .get();
+}
+
+export async function getUserDeviceByPersistentId(
+  db: Db,
+  userId: string,
+  persistentDeviceId: string,
+): Promise<Device | undefined> {
+  return db
+    .select()
+    .from(devices)
+    .where(and(eq(devices.userId, userId), eq(devices.deviceId, persistentDeviceId)))
+    .get();
+}
+
 export async function getUserDevices(
-  db: ReturnType<typeof drizzle<typeof schema>>,
+  db: Db,
   userId: string,
 ): Promise<Device[]> {
   const allDevices = await db
@@ -88,29 +134,24 @@ export async function getUserDevices(
     .where(eq(devices.userId, userId))
     .orderBy(desc(devices.lastSeenAt));
 
-  // Update online status based on lastSeenAt
-  const now = Date.now();
-  return allDevices.map((device) => ({
-    ...device,
-    online: device.lastSeenAt
-      ? now - new Date(device.lastSeenAt).getTime() < ONLINE_TIMEOUT_MS
-      : false,
-  }));
+  return normalizeDevicesPresence(allDevices);
 }
 
 /**
  * Get online devices for a user
  */
 export async function getOnlineDevices(
-  db: ReturnType<typeof drizzle<typeof schema>>,
+  db: Db,
   userId: string,
 ): Promise<Device[]> {
   const cutoff = new Date(Date.now() - ONLINE_TIMEOUT_MS);
-  return db
+  const matchingDevices = await db
     .select()
     .from(devices)
-    .where(and(eq(devices.userId, userId), gt(devices.lastSeenAt, cutoff)))
+    .where(and(eq(devices.userId, userId), eq(devices.online, true), gt(devices.lastSeenAt, cutoff)))
     .orderBy(desc(devices.lastSeenAt));
+
+  return normalizeDevicesPresence(matchingDevices);
 }
 
 /**
@@ -118,7 +159,7 @@ export async function getOnlineDevices(
  * Creates a new device record if it doesn't exist, updates if it does
  */
 export async function upsertDevice(
-  db: ReturnType<typeof drizzle<typeof schema>>,
+  db: Db,
   userId: string,
   params: {
     platform: Platform;
@@ -129,7 +170,6 @@ export async function upsertDevice(
     userAgent?: string;
   },
 ): Promise<Device> {
-  // Check if device exists
   const existing = await db
     .select()
     .from(devices)
@@ -145,8 +185,7 @@ export async function upsertDevice(
   const now = new Date();
 
   if (existing) {
-    // Update existing device
-    const updated = await db
+    return db
       .update(devices)
       .set({
         name: params.name,
@@ -160,11 +199,8 @@ export async function upsertDevice(
       .where(eq(devices.id, existing.id))
       .returning()
       .get();
-
-    return updated;
   }
 
-  // Create new device
   const newDevice: NewDevice = {
     id: generateId(),
     userId,
@@ -180,8 +216,7 @@ export async function upsertDevice(
     updatedAt: now,
   };
 
-  const inserted = await db.insert(devices).values(newDevice).returning().get();
-  return inserted;
+  return db.insert(devices).values(newDevice).returning().get();
 }
 
 /**
@@ -189,7 +224,7 @@ export async function upsertDevice(
  * Returns true if device was found and updated
  */
 export async function updateDeviceHeartbeat(
-  db: ReturnType<typeof drizzle<typeof schema>>,
+  db: Db,
   deviceId: string,
   ipAddress?: string,
 ): Promise<boolean> {
@@ -209,17 +244,56 @@ export async function updateDeviceHeartbeat(
   return !!result;
 }
 
+export async function updateDeviceHeartbeatByPersistentId(
+  db: Db,
+  userId: string,
+  persistentDeviceId: string,
+  ipAddress?: string,
+): Promise<boolean> {
+  const now = new Date();
+  const result = await db
+    .update(devices)
+    .set({
+      online: true,
+      lastSeenAt: now,
+      updatedAt: now,
+      ...(ipAddress && { ipAddress }),
+    })
+    .where(and(eq(devices.userId, userId), eq(devices.deviceId, persistentDeviceId)))
+    .returning()
+    .get();
+
+  return !!result;
+}
+
 /**
  * Mark device as offline
  */
 export async function markDeviceOffline(
-  db: ReturnType<typeof drizzle<typeof schema>>,
+  db: Db,
   deviceId: string,
 ): Promise<boolean> {
+  const now = new Date();
   const result = await db
     .update(devices)
-    .set({ online: false })
+    .set({ online: false, updatedAt: now })
     .where(eq(devices.id, deviceId))
+    .returning()
+    .get();
+
+  return !!result;
+}
+
+export async function markDeviceOfflineByPersistentId(
+  db: Db,
+  userId: string,
+  persistentDeviceId: string,
+): Promise<boolean> {
+  const now = new Date();
+  const result = await db
+    .update(devices)
+    .set({ online: false, updatedAt: now })
+    .where(and(eq(devices.userId, userId), eq(devices.deviceId, persistentDeviceId)))
     .returning()
     .get();
 
@@ -230,7 +304,7 @@ export async function markDeviceOffline(
  * Delete a device
  */
 export async function deleteDevice(
-  db: ReturnType<typeof drizzle<typeof schema>>,
+  db: Db,
   deviceId: string,
   userId: string,
 ): Promise<boolean> {
@@ -248,7 +322,7 @@ export async function deleteDevice(
  * Returns the number of devices deleted
  */
 export async function cleanupOldDevices(
-  db: ReturnType<typeof drizzle<typeof schema>>,
+  db: Db,
   olderThanDays: number = 30,
 ): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
@@ -266,8 +340,11 @@ export async function cleanupOldDevices(
  * Mark all devices for a user as offline (e.g., on logout)
  */
 export async function markAllUserDevicesOffline(
-  db: ReturnType<typeof drizzle<typeof schema>>,
+  db: Db,
   userId: string,
 ): Promise<void> {
-  await db.update(devices).set({ online: false }).where(eq(devices.userId, userId));
+  await db
+    .update(devices)
+    .set({ online: false, updatedAt: new Date() })
+    .where(eq(devices.userId, userId));
 }

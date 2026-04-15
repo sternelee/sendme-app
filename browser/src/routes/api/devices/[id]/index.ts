@@ -1,19 +1,13 @@
 /**
  * Device Detail API Routes
- * DELETE /api/devices/[id] - Remove a device
- *
- * Allows users to remove a device from their account.
- * Useful for revoking access to old devices.
+ * DELETE /api/devices/[id] - Remove a device.
  */
 
 import { drizzle } from "drizzle-orm/d1";
-import * as schema from "~/lib/db/schema";
 import { deleteDevice as deleteDeviceFromDb } from "~/lib/api/devices";
 import { authenticateRequest, type Env } from "~/lib/auth";
+import * as schema from "~/lib/db/schema";
 
-/**
- * Cloudflare context interface
- */
 interface CloudflareContext {
   env: Env;
   cf?: IncomingRequestCfProperties;
@@ -31,12 +25,22 @@ interface RequestEvent {
   };
 }
 
-/**
- * DELETE /api/devices/[id] - Remove a device
- *
- * This will remove the device from the user's account.
- * The device will no longer be able to access the user's data.
- */
+async function broadcastPresence(env: Env, userId: string): Promise<void> {
+  try {
+    const doId = env.USER_DO.idFromName(userId);
+    const stub = env.USER_DO.get(doId);
+    await stub.fetch(
+      new Request("https://do/broadcast/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      }),
+    );
+  } catch (broadcastErr) {
+    console.warn("[Device API] DO broadcast failed:", broadcastErr);
+  }
+}
+
 export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
@@ -46,36 +50,35 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
     if (!userId) {
       return new Response(
         JSON.stringify({ error: "Unauthorized", status }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
+        { status: 401, headers: { "Content-Type": "application/json" } },
       );
     }
 
     const deviceId = requestEvent.params.id;
-
     const db = drizzle(env.DB!, { schema });
 
-    // Verify the device belongs to the user before deleting
     const device = await db.query.devices.findFirst({
-      where: (devices, { eq, and }) =>
+      where: (devices, { and, eq }) =>
         and(eq(devices.id, deviceId), eq(devices.userId, userId)),
     });
 
     if (!device) {
       return new Response(
         JSON.stringify({ error: "Device not found" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
+        { status: 404, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    // Delete the device
     const success = await deleteDeviceFromDb(db, deviceId, userId);
 
     if (!success) {
       return new Response(
         JSON.stringify({ error: "Failed to delete device" }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
+
+    await broadcastPresence(env, userId);
 
     return new Response(
       JSON.stringify({
@@ -83,7 +86,7 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
         message: "Device removed successfully",
         deviceId,
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("[Device API] DELETE error:", error);
@@ -92,7 +95,7 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
         error: "Failed to delete device",
         message: error instanceof Error ? error.message : String(error),
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

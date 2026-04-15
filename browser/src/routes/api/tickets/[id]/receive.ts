@@ -1,14 +1,13 @@
 /**
  * POST /api/tickets/:id/receive
  * Marks a ticket as received (status = "received").
- * Called by the client after it has successfully downloaded the file via the ticket.
  */
 
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
+import { authenticateRequest, type Env } from "~/lib/auth";
 import * as schema from "~/lib/db/schema";
 import { tickets } from "~/lib/db/schema";
-import { eq, and } from "drizzle-orm";
-import { authenticateRequest, type Env } from "~/lib/auth";
 
 interface CloudflareContext {
   env: Env;
@@ -46,12 +45,11 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     }
 
     const db = drizzle(env.DB!, { schema });
-
-    // Update ticket status — only if it belongs to this user and is still pending
+    const now = new Date();
     const updated = await db
       .update(tickets)
-      .set({ status: "received", updatedAt: new Date() })
-      .where(and(eq(tickets.id, ticketId), eq(tickets.userId, userId)))
+      .set({ status: "received", updatedAt: now, receivedAt: now })
+      .where(and(eq(tickets.id, ticketId), eq(tickets.userId, userId), eq(tickets.status, "pending")))
       .returning()
       .get();
 
@@ -62,7 +60,6 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       );
     }
 
-    // Broadcast updated ticket list to all WS sessions
     try {
       const doId = env.USER_DO.idFromName(userId);
       const stub = env.USER_DO.get(doId);

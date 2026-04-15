@@ -90,7 +90,7 @@ export default function FriendsTab(props: FriendsTabProps) {
   // Separate incoming (I received) vs outgoing (I sent)
   const incomingRequests = createMemo(() =>
     pendingFriends().filter(
-      (f) => f.friendUserId === clerkUserId()
+      (f) => f.friend.id === clerkUserId()
     )
   );
   const outgoingRequests = createMemo(() =>
@@ -167,7 +167,7 @@ export default function FriendsTab(props: FriendsTabProps) {
   async function handleDeclineRequest(friendship: EnrichedFriend) {
     try {
       const token = await getToken();
-      const response = await fetch(`/api/friends/${friendship.friendUserId}`, {
+      const response = await fetch(`/api/friends/${friendship.friend.id}`, {
         method: "DELETE",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -232,7 +232,7 @@ export default function FriendsTab(props: FriendsTabProps) {
   async function handleRemoveFriend(friend: EnrichedFriend) {
     try {
       const token = await getToken();
-      const response = await fetch(`/api/friends/${friend.friendUserId}`, {
+      const response = await fetch(`/api/friends/${friend.friend.id}`, {
         method: "DELETE",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -461,7 +461,7 @@ export default function FriendsTab(props: FriendsTabProps) {
           <div class="space-y-3">
             <For each={pendingFriends()}>
               {(friend) => {
-                const isIncoming = friend.friendUserId === clerkUserId();
+                const isIncoming = friend.friend.id === clerkUserId();
 
                 return (
                   <div class="card bg-base-200 shadow-sm">

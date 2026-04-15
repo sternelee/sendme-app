@@ -7,16 +7,13 @@
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
 import {
-  getUserDevices,
-  upsertDevice,
   detectPlatform,
   generateDeviceName,
+  getUserDevices,
+  upsertDevice,
 } from "~/lib/api/devices";
 import { authenticateRequest, type Env } from "~/lib/auth";
 
-/**
- * Cloudflare context interface
- */
 interface CloudflareContext {
   env: Env;
   cf?: IncomingRequestCfProperties;
@@ -31,18 +28,28 @@ interface RequestEvent {
   };
 }
 
-/**
- * Request body for POST /api/devices
- */
 interface PostDeviceBody {
   deviceId?: string;
   name?: string;
   hostname?: string;
 }
 
-/**
- * GET /api/devices - List all devices for the authenticated user
- */
+async function broadcastPresence(env: Env, userId: string): Promise<void> {
+  try {
+    const doId = env.USER_DO.idFromName(userId);
+    const stub = env.USER_DO.get(doId);
+    await stub.fetch(
+      new Request("https://do/broadcast/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      }),
+    );
+  } catch (broadcastErr) {
+    console.warn("[Devices API] DO broadcast failed:", broadcastErr);
+  }
+}
+
 export async function GET(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
@@ -52,7 +59,7 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
     if (!userId) {
       return new Response(
         JSON.stringify({ error: "Unauthorized", status }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
+        { status: 401, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -70,23 +77,11 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
         error: "Failed to fetch devices",
         message: error instanceof Error ? error.message : String(error),
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }
 
-/**
- * POST /api/devices - Register or update current device
- *
- * Body:
- * {
- *   "deviceId": string,        // Unique device identifier (e.g., fingerprint)
- *   "name"?: string,           // Optional custom name
- *   "hostname"?: string,       // Optional hostname/device model
- * }
- *
- * If name is not provided, it will be auto-generated from platform and user agent.
- */
 export async function POST(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
@@ -97,7 +92,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     if (!userId) {
       return new Response(
         JSON.stringify({ error: "Unauthorized", status }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
+        { status: 401, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -108,23 +103,14 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       // Empty body is okay
     }
 
-    // Get device info from request
     const userAgent = requestEvent.request.headers.get("user-agent") || undefined;
-    const ipAddress = cf?.colo || requestEvent.request.headers.get("cf-connecting-ip") || undefined;
-
-    // Detect platform
+    const ipAddress =
+      cf?.colo || requestEvent.request.headers.get("cf-connecting-ip") || undefined;
     const platform = detectPlatform(userAgent || "");
-
-    // Generate device ID if not provided (should come from client for persistence)
     const deviceId = body.deviceId || crypto.randomUUID();
-
-    // Use provided name or generate one
-    const deviceName =
-      body.name ||
-      generateDeviceName(platform, userAgent);
+    const deviceName = body.name || generateDeviceName(platform, userAgent);
 
     const db = drizzle(env.DB!, { schema });
-
     const device = await upsertDevice(db, userId, {
       platform,
       deviceId,
@@ -134,20 +120,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       userAgent,
     });
 
-    // Broadcast updated device list to all this user's WS sessions via DO
-    try {
-      const doId = env.USER_DO.idFromName(userId);
-      const stub = env.USER_DO.get(doId);
-      await stub.fetch(
-        new Request("https://do/broadcast/devices", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId }),
-        }),
-      );
-    } catch (broadcastErr) {
-      console.warn("[Devices API] DO broadcast failed:", broadcastErr);
-    }
+    await broadcastPresence(env, userId);
 
     return new Response(JSON.stringify(device), {
       status: 200,
@@ -160,7 +133,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         error: "Failed to register device",
         message: error instanceof Error ? error.message : String(error),
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

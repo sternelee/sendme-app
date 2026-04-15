@@ -4,7 +4,11 @@
  */
 
 import { fetch } from "@tauri-apps/plugin-http";
-import { invoke } from "@tauri-apps/api/core";
+import {
+  getAuthorizationHeaders,
+  getCloudApiBaseUrl,
+  getPersistentDeviceId,
+} from "~/lib/cloud-api";
 
 export interface FriendDevice {
   id: string;
@@ -31,20 +35,11 @@ export interface Friend {
   friendDevices: FriendDevice[];
 }
 
-const API_BASE = "/api";
+const API_BASE = getCloudApiBaseUrl();
 
 class FriendsService {
-  /**
-   * Get auth token for API requests using tauri-plugin-clerk
-   */
   private async getAuthHeader(): Promise<HeadersInit> {
-    try {
-      const token = await invoke<string | null>("plugin:clerk|get_client_authorization_header");
-      return token ? { Authorization: `Bearer ${token}` } : {};
-    } catch (error) {
-      console.error("[FriendsService] Failed to get token:", error);
-      return {};
-    }
+    return getAuthorizationHeaders();
   }
 
   /**
@@ -146,10 +141,11 @@ class FriendsService {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Device-Id": getPersistentDeviceId(),
           ...headers,
         },
         body: JSON.stringify({
-          friend_user_id: friendUserId,
+          friendUserId,
           ticket,
           filename,
         }),
@@ -179,10 +175,11 @@ class FriendsService {
   }>> {
     try {
       const headers = await this.getAuthHeader();
-      const response = await fetch(`${API_BASE}/tickets`, {
+      const response = await fetch(`${API_BASE}/tickets?deviceId=${encodeURIComponent(getPersistentDeviceId())}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
+          "X-Device-Id": getPersistentDeviceId(),
           ...headers,
         },
       });
@@ -216,6 +213,7 @@ class FriendsService {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Device-Id": getPersistentDeviceId(),
           ...headers,
         },
       });

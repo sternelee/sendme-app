@@ -3,6 +3,8 @@
  * Backend utilities for authenticating requests in Cloudflare Workers
  */
 
+import { verifyToken } from "@clerk/backend";
+
 export interface Env {
   CLERK_SECRET_KEY?: string;
   CLERK_PUBLISHABLE_KEY?: string;
@@ -11,51 +13,50 @@ export interface Env {
   USER_DO: DurableObjectNamespace;
 }
 
-/**
- * Decode a JWT token without verification
- * Returns the payload if valid
- */
-function decodeJwt(token: string): { sub: string } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-
-    const payload = parts[1];
-    // Base64 decode with proper padding
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    const decoded = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
-    const parsed = JSON.parse(decoded);
-    return parsed;
-  } catch {
+function getBearerToken(request: Request): string | null {
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader) {
     return null;
   }
+
+  const [scheme, token] = authHeader.split(" ");
+  if (scheme?.toLowerCase() !== "bearer" || !token) {
+    return null;
+  }
+
+  return token;
 }
 
 /**
- * Authenticate a request using Clerk JWT
- * Returns the userId if authenticated, null otherwise
+ * Authenticate a request using a verified Clerk JWT.
+ * Returns the userId if authenticated, null otherwise.
  */
 export async function authenticateRequest(
   request: Request,
-  env: Env
+  env: Env,
 ): Promise<{ userId: string | null; status: string }> {
   try {
-    // Get the authorization header
-    const authHeader = request.headers.get("authorization");
-    const sessionToken = authHeader?.replace("Bearer ", "") || "";
+    const sessionToken = getBearerToken(request);
 
     if (!sessionToken) {
       return { userId: null, status: "no-token" };
     }
 
-    // Decode the JWT token
-    const decoded = decodeJwt(sessionToken);
+    if (!env.CLERK_SECRET_KEY && !env.CLERK_JWT_KEY) {
+      console.error("[Clerk Auth] Missing CLERK_SECRET_KEY or CLERK_JWT_KEY");
+      return { userId: null, status: "missing-clerk-config" };
+    }
 
-    if (!decoded || !decoded.sub) {
+    const payload = await verifyToken(sessionToken, {
+      secretKey: env.CLERK_SECRET_KEY,
+      jwtKey: env.CLERK_JWT_KEY,
+    });
+
+    if (!payload.sub) {
       return { userId: null, status: "invalid-token" };
     }
 
-    return { userId: decoded.sub, status: "authenticated" };
+    return { userId: payload.sub, status: "authenticated" };
   } catch (error) {
     console.error("[Clerk Auth] Error:", error);
     return { userId: null, status: "invalid-token" };

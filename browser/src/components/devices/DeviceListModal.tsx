@@ -22,59 +22,50 @@ import { useWebSocket, getDeviceId } from "~/lib/composables/useWebSocket";
 import type { Device } from "~/lib/composables/useWebSocket";
 
 /**
- * Props for DeviceListModal
+ * Props
  */
 interface DeviceListModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSendToDevice?: (device: Device) => void;
-  showSendButton?: boolean;
   ticket?: string;
+  showSendButton?: boolean;
+  onSendToDevice?: (device: Device) => void;
 }
 
-/**
- * Get platform icon
- */
 function getPlatformIcon(platform: string) {
   switch (platform) {
     case "android":
     case "ios":
       return TbOutlineDeviceMobile;
+    case "web":
     case "windows":
     case "mac":
     case "linux":
       return TbOutlineDeviceDesktop;
-    case "web":
-      return TbOutlineDeviceSpeaker;
-    default:
+    case "ipad":
       return TbOutlineDeviceIpad;
+    default:
+      return TbOutlineDeviceSpeaker;
   }
 }
 
-/**
- * Format last seen time
- */
 function formatLastSeen(lastSeenAt: Date | string): string {
   const now = Date.now();
   const lastSeen = new Date(lastSeenAt).getTime();
   const diff = now - lastSeen;
 
-  if (diff < 60000) return "Just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return `${Math.floor(diff / 86400000)}d ago`;
+  if (diff < 60_000) return "Just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-/**
- * DeviceListModal Component
- */
 export default function DeviceListModal(props: DeviceListModalProps) {
   const { devices: wsDevices, isConnected } = useWebSocket();
   const { getToken } = useAuth();
   const [error, setError] = createSignal<string | null>(null);
-  const currentDeviceId = getDeviceId();
+  const currentPersistentDeviceId = getDeviceId();
 
-  // When the modal opens, register current device so it shows up in the list
   createEffect(() => {
     if (props.isOpen) {
       getToken().then((token) => {
@@ -84,7 +75,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ deviceId: currentDeviceId }),
+          body: JSON.stringify({ deviceId: currentPersistentDeviceId }),
         });
       }).catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Failed to register device");
@@ -95,7 +86,6 @@ export default function DeviceListModal(props: DeviceListModalProps) {
   const devices = wsDevices;
   const isLoading = () => !isConnected();
 
-  // Delete device — after deletion the DO will broadcast an updated list
   const deleteDevice = async (deviceId: string) => {
     try {
       const token = await getToken();
@@ -111,13 +101,9 @@ export default function DeviceListModal(props: DeviceListModalProps) {
     }
   };
 
-  // Send ticket to device
   const sendToDevice = async (device: Device) => {
-    if (props.ticket) {
-      console.log("Sending ticket to device:", device);
-      if (props.onSendToDevice) {
-        props.onSendToDevice(device);
-      }
+    if (props.ticket && props.onSendToDevice) {
+      props.onSendToDevice(device);
     }
   };
 
@@ -131,10 +117,8 @@ export default function DeviceListModal(props: DeviceListModalProps) {
           class="fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={props.onClose}
         >
-          {/* Backdrop */}
           <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
-          {/* Modal */}
           <Motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -143,7 +127,6 @@ export default function DeviceListModal(props: DeviceListModalProps) {
             class="relative glass rounded-3xl p-6 max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div class="flex items-center justify-between mb-6">
               <div>
                 <h2 class="text-xl font-semibold">Your Devices</h2>
@@ -155,7 +138,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                 <Motion.button
                   hover={{ scale: 1.05 }}
                   press={{ scale: 0.95 }}
-                  onClick={() => { /* data arrives via WS push */ }}
+                  onClick={() => {}}
                   disabled={isLoading()}
                   class="p-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
                   title="Refresh"
@@ -173,14 +156,12 @@ export default function DeviceListModal(props: DeviceListModalProps) {
               </div>
             </div>
 
-            {/* Error message */}
             <Show when={error()}>
               <div class="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
                 {error()}
               </div>
             </Show>
 
-            {/* Devices list */}
             <div class="flex-1 overflow-y-auto -mx-2 px-2">
               <Show
                 when={devices().length > 0}
@@ -195,7 +176,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                   <For each={devices()}>
                     {(device) => {
                       const PlatformIcon = getPlatformIcon(device.platform);
-                      const isCurrentDevice = device.deviceId === currentDeviceId;
+                      const isCurrentDevice = device.deviceId === currentPersistentDeviceId;
 
                       return (
                         <Motion.div
@@ -207,7 +188,6 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                             }`}
                         >
                           <div class="flex items-start gap-3">
-                            {/* Platform icon */}
                             <div class={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${device.online
                               ? "bg-green-500/10 text-green-400"
                               : "bg-white/10 text-white/50"
@@ -215,7 +195,6 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                               <PlatformIcon size={20} />
                             </div>
 
-                            {/* Device info */}
                             <div class="flex-1 min-w-0">
                               <div class="flex items-center gap-2">
                                 <h3 class="font-medium text-white truncate">
@@ -249,7 +228,6 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                               </Show>
                             </div>
 
-                            {/* Actions */}
                             <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <Show when={props.showSendButton && props.ticket && device.online && !isCurrentDevice}>
                                 <Motion.button
@@ -283,7 +261,6 @@ export default function DeviceListModal(props: DeviceListModalProps) {
               </Show>
             </div>
 
-            {/* Footer note */}
             <Show when={props.ticket}>
               <div class="mt-4 pt-4 border-t border-white/10 text-xs text-white/40 text-center">
                 Click the send button to transfer your ticket to another device

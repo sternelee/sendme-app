@@ -103,6 +103,26 @@ function createWebSocketStore() {
     }
 
     const deviceId = getDeviceId();
+
+    try {
+      const registerResponse = await fetch("/api/devices", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ deviceId }),
+      });
+
+      if (!registerResponse.ok) {
+        throw new Error("Failed to register current device");
+      }
+    } catch (error) {
+      console.error("[useWebSocket] Device registration failed:", error);
+      scheduleReconnect();
+      return;
+    }
+
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     // Browsers can't set custom headers on WebSocket connections,
     // so the Clerk JWT is passed as a query parameter.

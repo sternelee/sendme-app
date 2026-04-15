@@ -2,7 +2,7 @@ import { createSignal, createMemo, onMount, onCleanup, Show, For } from "solid-j
 import { toast } from "solid-sonner";
 import { useAuth } from "~/lib/auth";
 import { useFriends, type Friend } from "~/lib/friends";
-import { usePresenceWS } from "~/lib/ws-client";
+import { usePresenceWS, type WebSocketFriend } from "~/lib/ws-client";
 import { i18n } from "~/lib/i18n";
 import {
   Users,
@@ -61,56 +61,40 @@ export default function FriendsPage() {
     }
   }
 
-  // Initial load and auto-refresh
-  let refreshInterval: ReturnType<typeof setInterval> | null = null;
+  function normalizeWsFriend(friend: WebSocketFriend): Friend {
+    return {
+      ...friend,
+      createdAt: new Date(friend.createdAt),
+      updatedAt: new Date(friend.updatedAt),
+      acceptedAt: friend.acceptedAt ? new Date(friend.acceptedAt) : null,
+      friendDevices: friend.friendDevices.map((device) => ({
+        ...device,
+        lastSeenAt: new Date(device.lastSeenAt),
+      })),
+    };
+  }
+
+  let unsubscribeFriends: (() => void) | null = null;
+  let unsubscribeErrors: (() => void) | null = null;
 
   onMount(async () => {
     await loadFriends();
 
+    unsubscribeFriends = wsClient.onFriends((nextFriends) => {
+      setFriends(nextFriends.map(normalizeWsFriend));
+    });
+
+    unsubscribeErrors = wsClient.onError((message) => {
+      console.error("[FriendsPage] WS error:", message);
+    });
+
     wsClient.connect().catch((e) => console.error("[FriendsPage] WS connect failed:", e));
-
-    wsClient.onFriendOnline((userId, devices) => {
-      setFriends((prev) =>
-        prev.map((f) =>
-          f.friendUserId === userId
-            ? { ...f, friendDevices: devices.map((d) => ({ id: d.device_id, name: d.name, platform: "unknown", online: d.online, lastSeenAt: new Date(d.last_seen) })) }
-            : f
-        )
-      );
-    });
-
-    wsClient.onFriendOffline((userId) => {
-      setFriends((prev) =>
-        prev.map((f) =>
-          f.friendUserId === userId
-            ? { ...f, friendDevices: [] }
-            : f
-        )
-      );
-    });
-
-    refreshInterval = setInterval(async () => {
-      if (isLoggedIn() && !isRefreshing()) {
-        setIsRefreshing(true);
-        try {
-          const [accepted, pending] = await Promise.all([
-            friendsService.getFriends("accepted"),
-            friendsService.getFriends("pending"),
-          ]);
-          setFriends([...accepted, ...pending]);
-        } catch (e) {
-          // Silently fail on background refresh
-        } finally {
-          setIsRefreshing(false);
-        }
-      }
-    }, 30000);
   });
 
   onCleanup(() => {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-    }
+    unsubscribeFriends?.();
+    unsubscribeErrors?.();
+    wsClient.disconnect();
   });
 
   function getPlatformIcon(platform: string) {

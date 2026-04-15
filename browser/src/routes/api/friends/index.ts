@@ -5,8 +5,9 @@
 
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
-import { friends, users, devices } from "~/lib/db/schema";
+import { friends, users } from "~/lib/db/schema";
 import { eq, and, or, desc } from "drizzle-orm";
+import { getOnlineDevices } from "~/lib/api/devices";
 import { authenticateRequest, type Env } from "~/lib/auth";
 
 /**
@@ -94,11 +95,10 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
       });
     }
 
-    // Enrich with user info and device info
     const enrichedFriends: FriendWithUser[] = [];
     for (const friendship of userFriends) {
-      const friendUserId = friendship.userId === userId 
-        ? friendship.friendUserId 
+      const friendUserId = friendship.userId === userId
+        ? friendship.friendUserId
         : friendship.userId;
 
       const friendUser = await db.query.users.findFirst({
@@ -108,16 +108,15 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
 
       if (!friendUser) continue;
 
-      // Get friend's online devices
-      const friendDevicesList = await db.query.devices.findMany({
-        where: and(
-          eq(devices.userId, friendUserId),
-          eq(devices.online, true),
-        ),
-        columns: { id: true, name: true, platform: true, online: true, lastSeenAt: true },
-        orderBy: [desc(devices.lastSeenAt)],
-        limit: 10,
-      });
+      const friendDevicesList = (await getOnlineDevices(db, friendUserId))
+        .slice(0, 10)
+        .map((device) => ({
+          id: device.id,
+          name: device.name,
+          platform: device.platform,
+          online: device.online,
+          lastSeenAt: device.lastSeenAt,
+        }));
 
       enrichedFriends.push({
         ...friendship,
@@ -175,7 +174,6 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
 
     const db = drizzle(env.DB!, { schema });
 
-    // Find the target user
     let targetUser;
     if (body.userId) {
       targetUser = await db.query.users.findFirst({
@@ -201,7 +199,6 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       );
     }
 
-    // Check if friendship already exists (in either direction)
     const existingFriendship = await db.query.friends.findFirst({
       where: or(
         and(eq(friends.userId, userId), eq(friends.friendUserId, targetUser.id)),
@@ -217,7 +214,6 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         );
       }
 
-      // If the other user sent us a pending request, accept it
       if (existingFriendship.userId === targetUser.id && existingFriendship.status === "pending") {
         const now = new Date();
         const updated = await db
@@ -227,7 +223,6 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
           .returning()
           .get();
 
-        // Broadcast friend update to both users
         await broadcastFriendUpdate(env, userId);
         await broadcastFriendUpdate(env, targetUser.id);
 
@@ -243,7 +238,6 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       );
     }
 
-    // Create new pending friend request
     const now = new Date();
     const newFriendship = await db
       .insert(friends)
@@ -258,7 +252,6 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       .returning()
       .get();
 
-    // Broadcast pending request to target user
     await broadcastFriendUpdate(env, targetUser.id);
 
     return new Response(JSON.stringify({ ...newFriendship, action: "request_sent" }), {
@@ -305,7 +298,6 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
 
     const db = drizzle(env.DB!, { schema });
 
-    // Delete friendship (in either direction)
     const result = await db
       .delete(friends)
       .where(
@@ -315,7 +307,6 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
         ),
       );
 
-    // Drizzle D1 returns { changes } in meta, not rowsAffected
     if ((result as any).changes === 0) {
       return new Response(
         JSON.stringify({ error: "Friendship not found" }),
@@ -323,7 +314,6 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
       );
     }
 
-    // Broadcast update to both users
     await broadcastFriendUpdate(env, userId);
     await broadcastFriendUpdate(env, friendUserId);
 

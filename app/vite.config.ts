@@ -36,7 +36,7 @@ export default defineConfig(async () => ({
     },
     proxy: {
       "/api": {
-        target: "https://sendme-browser.sternelee.workers.dev",
+        target: process.env.VITE_BROWSER_API_ORIGIN || "https://sendme-browser.sternelee.workers.dev",
         changeOrigin: true,
         secure: true,
       },

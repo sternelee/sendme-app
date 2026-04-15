@@ -1,179 +1,244 @@
-import { invoke } from "@tauri-apps/api/core";
 import { get_hostname } from "~/bindings";
+import {
+  extractBearerToken,
+  getAuthorizationHeaderValue,
+  getCloudApiUrl,
+  getCloudWebSocketUrl,
+  getPersistentDeviceId,
+} from "~/lib/cloud-api";
+
+export interface WebSocketFriendDevice {
+  id: string;
+  name: string;
+  platform: string;
+  online: boolean;
+  lastSeenAt: string | Date;
+}
+
+export interface WebSocketFriend {
+  id: string;
+  userId: string;
+  friendUserId: string;
+  status: "pending" | "accepted";
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  acceptedAt: string | Date | null;
+  friend: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  };
+  friendDevices: WebSocketFriendDevice[];
+}
 
 type ServerMessage =
-  | { type: "presence_update"; user_id: string; devices: DeviceEntry[] }
-  | { type: "friend_online"; user_id: string; devices: DeviceEntry[] }
-  | { type: "friend_offline"; user_id: string }
+  | { type: "friends"; data: WebSocketFriend[] }
+  | { type: "devices"; data: unknown[] }
+  | { type: "tickets"; data: unknown[] }
   | { type: "pong" }
-  | { type: "error"; message: string };
-
-export interface DeviceEntry {
-  device_id: string;
-  name: string;
-  online: boolean;
-  last_seen: number;
-}
+  | { type: "error"; data: string };
 
 type UnsubscribeFn = () => void;
 
-const WS_URL = "wss://sendme-presence.workers.dev/ws";
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const RECONNECT_DELAY_MS = 5_000;
 
 class WSClient {
   private ws: WebSocket | null = null;
   private reconnectTimer: number | null = null;
-  private pingTimer: number | null = null;
-  private token: string | null = null;
+  private heartbeatTimer: number | null = null;
   private _connected = false;
+  private shouldReconnect = true;
+  private connectPromise: Promise<void> | null = null;
+  private deviceName: string | null = null;
 
-  private friendOnlineHandlers: Set<(userId: string, devices: DeviceEntry[]) => void> = new Set();
-  private friendOfflineHandlers: Set<(userId: string) => void> = new Set();
-  private errorHandlers: Set<(err: string) => void> = new Set();
-
-  private _deviceId: string | null = null;
-  private _deviceName: string | null = null;
+  private friendsHandlers = new Set<(friends: WebSocketFriend[]) => void>();
+  private errorHandlers = new Set<(err: string) => void>();
 
   isConnected() {
     return this._connected;
   }
 
   get deviceId() {
-    return this._deviceId;
+    return getPersistentDeviceId();
   }
 
   async connect(): Promise<void> {
-    const [hostname, profile] = await Promise.all([
-      get_hostname(),
-      invoke<{ name: string; deviceType: string }>("get_nearby_profile"),
-    ]);
-
-    this._deviceId = hostname;
-    this._deviceName = profile.name;
-
-    const token = await invoke<string | null>("plugin:clerk|get_client_authorization_header");
-    if (!token) {
-      console.error("[WSClient] No auth token available");
+    if (this._connected) {
       return;
     }
-    this.token = token;
 
-    return this.establishConnection();
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    this.shouldReconnect = true;
+    this.connectPromise = this.openConnection();
+
+    try {
+      await this.connectPromise;
+    } finally {
+      this.connectPromise = null;
+    }
   }
 
-  private async establishConnection(): Promise<void> {
-    if (!this.token) return;
+  private async openConnection(): Promise<void> {
+    await this.ensureDeviceRegistered();
 
-    return new Promise((resolve, reject) => {
+    const authorization = await getAuthorizationHeaderValue();
+    const token = extractBearerToken(authorization);
+    if (!token) {
+      throw new Error("No auth token available");
+    }
+
+    const wsUrl = new URL(getCloudWebSocketUrl());
+    wsUrl.searchParams.set("deviceId", getPersistentDeviceId());
+    wsUrl.searchParams.set("token", token);
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+
       try {
-        this.ws = new WebSocket(`${WS_URL}?token=${this.token}`);
-
-        this.ws.onopen = () => {
-          this._connected = true;
-          this.startPing();
-          this.sendRegister();
-          resolve();
-        };
-
-        this.ws.onclose = () => {
-          this._connected = false;
-          this.stopPing();
-          this.scheduleReconnect();
-        };
-
-        this.ws.onerror = () => {
-          this._connected = false;
-          reject(new Error("WebSocket connection failed"));
-        };
-
-        this.ws.onmessage = (event) => {
-          this.handleMessage(event.data);
-        };
-      } catch (err) {
-        reject(err);
+        this.ws = new WebSocket(wsUrl.toString());
+      } catch (error) {
+        reject(error);
+        return;
       }
+
+      this.ws.onopen = () => {
+        settled = true;
+        this._connected = true;
+        this.startHeartbeat();
+        resolve();
+      };
+
+      this.ws.onclose = () => {
+        const wasConnected = this._connected;
+        this._connected = false;
+        this.stopHeartbeat();
+        this.ws = null;
+
+        if (!settled) {
+          settled = true;
+          reject(new Error("WebSocket connection closed"));
+          return;
+        }
+
+        if (wasConnected && this.shouldReconnect) {
+          this.scheduleReconnect();
+        }
+      };
+
+      this.ws.onerror = () => {
+        if (!settled) {
+          settled = true;
+          reject(new Error("WebSocket connection failed"));
+        }
+      };
+
+      this.ws.onmessage = (event) => {
+        this.handleMessage(event.data);
+      };
     });
+  }
+
+  private async ensureDeviceRegistered(): Promise<void> {
+    const [hostname, authorization] = await Promise.all([
+      get_hostname().catch(() => "Sendme"),
+      getAuthorizationHeaderValue(),
+    ]);
+
+    this.deviceName = hostname || "Sendme";
+
+    const response = await fetch(getCloudApiUrl("/api/devices"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(authorization ? { Authorization: authorization } : {}),
+      },
+      body: JSON.stringify({
+        deviceId: getPersistentDeviceId(),
+        name: this.deviceName,
+        hostname: this.deviceName,
+      }),
+    });
+
+    if (!response.ok) {
+      const message = await response.text().catch(() => "Failed to register device");
+      throw new Error(message || "Failed to register device");
+    }
   }
 
   private handleMessage(data: string) {
     try {
-      const msg: ServerMessage = JSON.parse(data);
+      const msg = JSON.parse(data) as ServerMessage;
 
-      if (msg.type === "friend_online") {
-        this.friendOnlineHandlers.forEach((h) => h(msg.user_id, msg.devices));
-      }
-
-      if (msg.type === "friend_offline") {
-        this.friendOfflineHandlers.forEach((h) => h(msg.user_id));
+      if (msg.type === "friends") {
+        this.friendsHandlers.forEach((handler) => handler(msg.data));
+        return;
       }
 
       if (msg.type === "error") {
-        this.errorHandlers.forEach((h) => h(msg.message));
+        this.errorHandlers.forEach((handler) => handler(msg.data));
       }
     } catch {
       console.error("[WSClient] Failed to parse message:", data);
     }
   }
 
-  private sendRegister() {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    if (!this._deviceId || !this._deviceName) return;
-
-    this.ws.send(
-      JSON.stringify({
-        type: "register",
-        device_id: this._deviceId,
-        device_name: this._deviceName,
-      })
-    );
-  }
-
-  private startPing() {
-    this.pingTimer = window.setInterval(() => {
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatTimer = window.setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: "ping" }));
+        this.ws.send(JSON.stringify({ type: "heartbeat" }));
       }
-    }, 30000);
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
-  private stopPing() {
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
   }
 
   private scheduleReconnect() {
-    if (this.reconnectTimer) return;
+    if (this.reconnectTimer || !this.shouldReconnect) {
+      return;
+    }
+
     this.reconnectTimer = window.setTimeout(async () => {
       this.reconnectTimer = null;
       try {
-        await this.establishConnection();
-      } catch {
+        await this.connect();
+      } catch (error) {
+        console.error("[WSClient] Reconnect failed:", error);
+        this.scheduleReconnect();
       }
-    }, 5000);
+    }, RECONNECT_DELAY_MS);
   }
 
   disconnect() {
-    this.stopPing();
+    this.shouldReconnect = false;
+    this.stopHeartbeat();
+
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
+
     this._connected = false;
   }
 
-  onFriendOnline(handler: (userId: string, devices: DeviceEntry[]) => void): UnsubscribeFn {
-    this.friendOnlineHandlers.add(handler);
-    return () => this.friendOnlineHandlers.delete(handler);
-  }
-
-  onFriendOffline(handler: (userId: string) => void): UnsubscribeFn {
-    this.friendOfflineHandlers.add(handler);
-    return () => this.friendOfflineHandlers.delete(handler);
+  onFriends(handler: (friends: WebSocketFriend[]) => void): UnsubscribeFn {
+    this.friendsHandlers.add(handler);
+    return () => this.friendsHandlers.delete(handler);
   }
 
   onError(handler: (err: string) => void): UnsubscribeFn {

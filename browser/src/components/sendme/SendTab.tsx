@@ -1,6 +1,7 @@
 import { Show, For, onCleanup, createSignal } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
+import { useAuth as useClerkAuth } from "clerk-solidjs";
 import { useAuth } from "../../lib/contexts/user-clerk";
 import { i18n } from "../../lib/i18n";
 import { useGlobalStore } from "../../lib/store";
@@ -43,6 +44,7 @@ function isPreviewable(file: File): boolean {
 
 export default function SendTab() {
   const auth = useAuth();
+  const { getToken } = useClerkAuth();
   const globalStore = useGlobalStore();
   const { friends } = useWebSocket();
   const [isFriendModalOpen, setIsFriendModalOpen] = createSignal(false);
@@ -55,7 +57,6 @@ export default function SendTab() {
   const isDragging = () => globalStore.send.state().isDragging;
   const isDeviceModalOpen = () => globalStore.send.state().isDeviceModalOpen;
 
-  // Filter accepted friends with online devices
   const onlineFriends = () =>
     friends().filter(
       (f) =>
@@ -80,61 +81,53 @@ export default function SendTab() {
     if (!currentFile && currentFiles.length === 0) return;
 
     globalStore.send.setIsSending(true);
+
     try {
-      let result: string;
-      if (isFolder() && currentFiles.length > 0) {
-        result = await sendFiles(currentFiles);
+      if (currentFiles.length > 0) {
+        const result = await sendFiles(currentFiles);
+        globalStore.send.setTicket(result.ticket);
       } else if (currentFile) {
-        result = await sendFile(currentFile);
-      } else {
-        throw new Error("No file or folder selected");
+        const result = await sendFile(currentFile);
+        globalStore.send.setTicket(result.ticket);
       }
-      globalStore.send.setTicket(result);
-      toast.success(t("send.targetLocked"));
+      toast.success(t("send.sendSuccess"));
     } catch (error) {
-      console.error("Send failed:", error);
-      toast.error(t("send.failed") + ": " + (error as Error).message);
+      console.error("Failed to send file:", error);
+      toast.error(t("send.sendError"));
     } finally {
       globalStore.send.setIsSending(false);
     }
   }
 
   function handleFileSelect(event: Event) {
-    const target = event.target as HTMLInputElement;
-    if (target.files && target.files[0]) {
-      globalStore.send.setFile(target.files[0]);
-      globalStore.send.setIsFolder(false);
+    const input = event.currentTarget as HTMLInputElement;
+    const selectedFile = input.files?.[0];
+    if (selectedFile) {
+      globalStore.send.setFile(selectedFile);
       globalStore.send.setFiles([]);
-      globalStore.send.setTicket("");
+      globalStore.send.setIsFolder(false);
     }
   }
 
   function handleFolderSelect(event: Event) {
-    const target = event.target as HTMLInputElement;
-    if (target.files && target.files.length > 0) {
-      const fileList = Array.from(target.files);
-      globalStore.send.setFiles(fileList);
-      globalStore.send.setIsFolder(true);
+    const input = event.currentTarget as HTMLInputElement;
+    const selectedFiles = Array.from(input.files || []);
+    if (selectedFiles.length > 0) {
+      globalStore.send.setFiles(selectedFiles);
       globalStore.send.setFile(null);
-      globalStore.send.setTicket("");
+      globalStore.send.setIsFolder(true);
     }
   }
 
   function handleDrop(event: DragEvent) {
     event.preventDefault();
     globalStore.send.setIsDragging(false);
-    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
-      const droppedFiles = Array.from(event.dataTransfer.files);
-      if (droppedFiles.length === 1 && !droppedFiles[0].webkitRelativePath) {
-        globalStore.send.setFile(droppedFiles[0]);
-        globalStore.send.setIsFolder(false);
-        globalStore.send.setFiles([]);
-      } else {
-        globalStore.send.setFiles(droppedFiles);
-        globalStore.send.setIsFolder(true);
-        globalStore.send.setFile(null);
-      }
-      globalStore.send.setTicket("");
+
+    const droppedFiles = Array.from(event.dataTransfer?.files || []);
+    if (droppedFiles.length > 0) {
+      globalStore.send.setFile(droppedFiles[0]);
+      globalStore.send.setFiles([]);
+      globalStore.send.setIsFolder(false);
     }
   }
 
@@ -171,14 +164,17 @@ export default function SendTab() {
 
   async function handleSendToDevice(device: Device) {
     try {
+      const token = await getToken();
       const currentFile = file();
       const currentFiles = files();
       const response = await fetch("/api/tickets", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}`, "X-Device-Id": getDeviceId() } : { "X-Device-Id": getDeviceId() }),
+        },
         body: JSON.stringify({
-          deviceId: device.deviceId,
-          fromDeviceId: getDeviceId(),
+          deviceId: device.id,
           ticket: ticket(),
           filename: isFolder()
             ? currentFiles[0]?.webkitRelativePath?.split("/")[0] || "Folder"
@@ -189,7 +185,10 @@ export default function SendTab() {
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to send ticket");
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error || "Failed to send ticket");
+      }
       toast.success(`Ticket sent to ${device.name}!`);
       globalStore.send.setIsDeviceModalOpen(false);
     } catch (error) {
@@ -200,14 +199,17 @@ export default function SendTab() {
 
   async function handleSendToFriend(friend: EnrichedFriend) {
     try {
+      const token = await getToken();
       const currentFile = file();
       const currentFiles = files();
       const response = await fetch("/api/tickets", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}`, "X-Device-Id": getDeviceId() } : { "X-Device-Id": getDeviceId() }),
+        },
         body: JSON.stringify({
-          friendUserId: friend.friendUserId,
-          fromDeviceId: getDeviceId(),
+          friendUserId: friend.friend.id,
           ticket: ticket(),
           filename: isFolder()
             ? currentFiles[0]?.webkitRelativePath?.split("/")[0] || "Folder"
@@ -267,178 +269,128 @@ export default function SendTab() {
               class="hidden"
               onChange={handleFolderSelect}
             />
-            <div class="flex flex-col items-center gap-4">
-              <div class="w-16 h-16 rounded-2xl bg-base-300 flex items-center justify-center">
-                <TbOutlineUpload size={32} class="opacity-50" />
-              </div>
-              <div class="flex gap-3">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    fileInputRef?.click();
-                  }}
-                  class="btn btn-primary"
-                >
-                  {t("send.chooseFile")}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    folderInputRef?.click();
-                  }}
-                  class="btn btn-outline"
-                >
-                  {t("send.chooseFolder")}
-                </button>
-              </div>
-              <p class="text-base-content/40 text-sm">{t("send.dragDrop")}</p>
+            <TbOutlineUpload size={48} class="mx-auto mb-4 text-base-content/40" />
+            <p class="text-lg font-medium mb-2">{t("send.dropFile")}</p>
+            <p class="text-sm text-base-content/60 mb-4">{t("send.orClick")}</p>
+            <div class="flex justify-center gap-2">
+              <button class="btn btn-primary btn-sm">{t("send.selectFile")}</button>
+              <button
+                class="btn btn-outline btn-sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  folderInputRef?.click();
+                }}
+              >
+                <TbOutlineFolder size={16} />
+                {t("send.selectFolder")}
+              </button>
             </div>
           </div>
         }
       >
-        <div class="border-2 border-dashed rounded-3xl p-6 bg-base-300/50">
-          <Show when={file()}>
-            <div class="flex flex-col items-center">
-              <div class="relative">
-                <Show when={isPreviewable(file()!)}>
-                  <div class="w-32 h-32 rounded-2xl overflow-hidden bg-base-300 mb-4">
-                    <img
-                      src={getPreviewUrl(file()!)}
-                      alt={file()!.name}
-                      class="w-full h-full object-cover"
-                    />
-                  </div>
-                </Show>
-                <Show when={!isPreviewable(file()!)}>
-                  <div class="w-32 h-32 rounded-2xl bg-success/20 text-success flex items-center justify-center mb-4">
-                    <TbOutlineFile size={48} />
-                  </div>
-                </Show>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    resetFile();
-                  }}
-                  class="btn btn-circle btn-sm btn-outline absolute -top-2 -right-2"
-                >
-                  <TbOutlineX size={14} />
-                </button>
-              </div>
-              <p class="font-semibold truncate max-w-xs">{file()!.name}</p>
-              <p class="text-xs text-base-content/50 mt-1">
-                {formatFileSize(file()!.size)}
-              </p>
-            </div>
-          </Show>
-
-          <Show when={files().length > 0 && !file()}>
-            <div class="space-y-4">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-success/20 text-success flex items-center justify-center">
-                    <TbOutlineFolder size={20} />
-                  </div>
-                  <div>
-                    <p class="font-semibold">
-                      {files().length} {t("send.filesSelected")}
-                    </p>
-                    <p class="text-xs text-base-content/50">
-                      {formatFileSize(
-                        files().reduce((acc, f) => acc + f.size, 0),
-                      )}{" "}
-                      {t("send.totalSize")}
-                    </p>
-                  </div>
-                </div>
-                <button onClick={resetFile} class="btn btn-ghost btn-sm">
-                  <TbOutlineX size={18} />
-                </button>
-              </div>
-              <div class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
-                <For each={files().slice(0, 8)}>
-                  {(f) => (
-                    <div class="flex items-center gap-2 p-2 rounded-lg bg-base-300/50">
-                      <Show when={isPreviewable(f)}>
-                        <div class="w-10 h-10 rounded-lg overflow-hidden bg-base-300 flex-shrink-0">
-                          <img
-                            src={getPreviewUrl(f)}
-                            alt={f.name}
-                            class="w-full h-full object-cover"
-                          />
-                        </div>
+        <div class="card bg-base-200 shadow-xl">
+          <div class="card-body p-6">
+            <div class="flex items-start gap-4">
+              <div class="flex-shrink-0">
+                <Show
+                  when={!isFolder() && file() && isPreviewable(file()!)}
+                  fallback={
+                    <div class="w-20 h-20 rounded-2xl bg-base-300 flex items-center justify-center">
+                      <Show
+                        when={isFolder()}
+                        fallback={<TbOutlineFile size={32} class="text-base-content/50" />}
+                      >
+                        <TbOutlineFolder size={32} class="text-base-content/50" />
                       </Show>
-                      <Show when={!isPreviewable(f)}>
-                        <div class="w-10 h-10 rounded-lg bg-base-300 flex items-center justify-center text-base-content/40">
-                          <TbOutlineFile size={18} />
-                        </div>
-                      </Show>
-                      <div class="min-w-0 flex-1">
-                        <p class="text-xs truncate font-medium">{f.name}</p>
-                        <p class="text-[10px] text-base-content/40">
-                          {formatFileSize(f.size)}
-                        </p>
-                      </div>
                     </div>
-                  )}
-                </For>
+                  }
+                >
+                  <img
+                    src={getPreviewUrl(file()!)}
+                    alt={file()!.name}
+                    class="w-20 h-20 rounded-2xl object-cover"
+                  />
+                </Show>
               </div>
-              <Show when={files().length > 8}>
-                <p class="text-xs text-base-content/50 text-center">
-                  + {files().length - 8} {t("send.moreFiles")}
-                </p>
-              </Show>
+
+              <div class="flex-1 min-w-0">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <h3 class="font-semibold truncate">
+                      {isFolder()
+                        ? files()[0]?.webkitRelativePath?.split("/")[0] || t("send.folder")
+                        : file()?.name}
+                    </h3>
+                    <p class="text-sm text-base-content/60 mt-1">
+                      {isFolder()
+                        ? `${files().length} files • ${formatFileSize(files().reduce((acc, f) => acc + f.size, 0))}`
+                        : file() && formatFileSize(file()!.size)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={resetFile}
+                    class="btn btn-ghost btn-sm btn-circle flex-shrink-0"
+                  >
+                    <TbOutlineX size={18} />
+                  </button>
+                </div>
+
+                <Show when={!ticket()}>
+                  <div class="mt-4 flex gap-2">
+                    <button
+                      onClick={handleSend}
+                      disabled={isSending()}
+                      class={`btn btn-primary ${isSending() ? "loading" : ""}`}
+                    >
+                      <TbOutlineSparkles size={18} />
+                      {isSending() ? t("send.sending") : t("send.generateTicket")}
+                    </button>
+                  </div>
+                </Show>
+              </div>
             </div>
-          </Show>
-        </div>
-      </Show>
 
-      {/* Send Button */}
-      <Show when={hasSelection() && !ticket()}>
-        <button
-          onClick={handleSend}
-          disabled={isSending()}
-          class={`btn btn-primary btn-block btn-lg ${isSending() ? "loading" : ""}`}
-        >
-          <Show when={!isSending()}>
-            <TbOutlineSparkles size={20} /> {t("send.generateTicket")}
-          </Show>
-        </button>
-      </Show>
+            <Show when={ticket()}>
+              <div class="mt-6 pt-6 border-t border-base-300">
+                <div class="flex items-center justify-between mb-3">
+                  <h4 class="font-medium">{t("send.ticketReady")}</h4>
+                  <button onClick={copyTicket} class="btn btn-ghost btn-sm">
+                    <TbOutlineCopy size={16} />
+                    {t("common.copy")}
+                  </button>
+                </div>
+                <div class="mockup-code text-xs break-all mb-4">
+                  <pre class="whitespace-pre-wrap"><code>{ticket()}</code></pre>
+                </div>
 
-      {/* Ticket Result */}
-      <Show when={ticket()}>
-        <div class="alert alert-success">
-          <TbOutlineCheck size={18} />
-          <div class="flex-1">
-            <p class="font-bold">{t("send.targetLocked")}</p>
-            <p class="text-xs opacity-60 break-all font-mono mt-1">
-              {ticket()}
-            </p>
+                <div class="flex flex-wrap gap-2">
+                  <Show when={auth.isSignedIn()}>
+                    <button
+                      onClick={() => globalStore.send.setIsDeviceModalOpen(true)}
+                      class="btn btn-outline btn-sm"
+                    >
+                      <TbOutlineDevices size={16} />
+                      {t("send.sendToMyDevices")}
+                    </button>
+                  </Show>
+
+                  <Show when={auth.isSignedIn() && onlineFriends().length > 0}>
+                    <button
+                      onClick={() => setIsFriendModalOpen(true)}
+                      class="btn btn-outline btn-sm"
+                    >
+                      <TbOutlineUsers size={16} />
+                      {t("send.sendToFriend")}
+                    </button>
+                  </Show>
+                </div>
+              </div>
+            </Show>
           </div>
         </div>
-        <div class="flex gap-2">
-          <button onClick={copyTicket} class="btn btn-outline flex-1">
-            <TbOutlineCopy size={16} /> {t("send.copy")}
-          </button>
-          <Show when={auth.isSignedIn()}>
-            <button
-              onClick={() => globalStore.send.setIsDeviceModalOpen(true)}
-              class="btn btn-outline flex-1"
-            >
-              <TbOutlineDevices size={16} /> {t("send.sendToDevice")}
-            </button>
-          </Show>
-          <Show when={auth.isSignedIn() && onlineFriends().length > 0}>
-            <button
-              onClick={() => setIsFriendModalOpen(true)}
-              class="btn btn-outline flex-1"
-            >
-              <TbOutlineUsers size={16} /> {t("friends.sendFile")}
-            </button>
-          </Show>
-        </div>
       </Show>
 
+      {/* Device List Modal */}
       <DeviceListModal
         isOpen={isDeviceModalOpen()}
         onClose={() => globalStore.send.setIsDeviceModalOpen(false)}
@@ -447,101 +399,40 @@ export default function SendTab() {
         onSendToDevice={handleSendToDevice}
       />
 
-      {/* Friend Picker Modal */}
+      {/* Friend Modal */}
       <Show when={isFriendModalOpen()}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            class="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setIsFriendModalOpen(false)}
-          />
-          <div class="relative glass rounded-3xl p-6 max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
-            {/* Header */}
-            <div class="flex items-center justify-between mb-6">
-              <div>
-                <h2 class="text-xl font-semibold">{t("friends.sendFile")}</h2>
-                <p class="text-sm text-base-content/50 mt-1">
-                  {onlineFriends().length} friend{onlineFriends().length !== 1 ? "s" : ""} online
-                </p>
-              </div>
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div class="bg-base-100 rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-xl font-semibold">{t("send.chooseFriend")}</h3>
               <button
                 onClick={() => setIsFriendModalOpen(false)}
-                class="p-2 rounded-xl bg-base-200 hover:bg-base-300 transition-colors"
+                class="btn btn-ghost btn-sm btn-circle"
               >
                 <TbOutlineX size={18} />
               </button>
             </div>
 
-            {/* Friends List */}
-            <div class="flex-1 overflow-y-auto -mx-2 px-2">
-              <Show
-                when={onlineFriends().length > 0}
-                fallback={
-                  <div class="text-center py-12 text-base-content/50">
-                    <TbOutlineUsers size={48} class="mx-auto mb-3 opacity-50" />
-                    <p class="text-sm">{t("friends.noFriends")}</p>
-                  </div>
-                }
-              >
-                <div class="space-y-2">
-                  <For each={onlineFriends()}>
-                    {(friend) => (
-                      <button
-                        onClick={() => handleSendToFriend(friend)}
-                        class="w-full group relative p-4 rounded-xl border bg-base-200 border-base-300 hover:border-primary/50 hover:bg-primary/5 transition-all text-left"
-                      >
-                        <div class="flex items-center gap-3">
-                          {/* Avatar */}
-                          <div class="avatar placeholder">
-                            <div class="bg-primary text-primary-content rounded-full w-12 h-12">
-                              <Show
-                                when={friend.friend.image}
-                                fallback={
-                                  <span class="text-lg">
-                                    {friend.friend.name.charAt(0).toUpperCase()}
-                                  </span>
-                                }
-                              >
-                                <img
-                                  src={friend.friend.image!}
-                                  alt={friend.friend.name}
-                                />
-                              </Show>
-                            </div>
-                          </div>
-
-                          {/* Info */}
-                          <div class="flex-1 min-w-0">
-                            <h3 class="font-medium truncate">
-                              {friend.friend.name}
-                            </h3>
-                            <p class="text-xs text-base-content/60 truncate">
-                              {friend.friend.email}
-                            </p>
-                            <Show when={friend.friendDevices.length > 0}>
-                              <div class="flex items-center gap-1 mt-1 text-xs text-base-content/40">
-                                <For each={friend.friendDevices.slice(0, 3)}>
-                                  {(device) => (
-                                    <span class="text-[10px] capitalize">
-                                      {device.platform}
-                                    </span>
-                                  )}
-                                </For>
-                              </div>
-                            </Show>
-                          </div>
-
-                          {/* Send button */}
-                          <div class="flex-shrink-0">
-                            <div class="btn btn-primary btn-sm">
-                              <TbOutlineSend size={14} />
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </Show>
+            <div class="space-y-2">
+              <For each={onlineFriends()}>
+                {(friend) => (
+                  <button
+                    onClick={() => handleSendToFriend(friend)}
+                    class="w-full p-4 rounded-xl bg-base-200 hover:bg-base-300 transition-colors text-left"
+                  >
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <p class="font-medium">{friend.friend.name}</p>
+                        <p class="text-sm text-base-content/60">{friend.friend.email}</p>
+                      </div>
+                      <div class="flex items-center gap-1 text-success text-sm">
+                        <div class="w-2 h-2 rounded-full bg-success" />
+                        {friend.friendDevices.length} device{friend.friendDevices.length !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                  </button>
+                )}
+              </For>
             </div>
           </div>
         </div>
