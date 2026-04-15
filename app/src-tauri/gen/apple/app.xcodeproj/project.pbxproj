@@ -19,7 +19,6 @@
 		C6BD59C055C986EA4A77FDA2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AF1DE57E7D9CF13BB2E0E038 /* Assets.xcassets */; };
 		C869023DDFE275D42F3FBF29 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 39EEC6A55698228E08917A52 /* libapp.a */; };
 		E68F6CFDAED6503ABB4044A5 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE1209BFDECB28E00189B168 /* Metal.framework */; };
-		E82AC4AE7AB13AE2D9708255 /* dist in Resources */ = {isa = PBXBuildFile; fileRef = FBFAE4B6C44C1F7141F8ED4A /* dist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,7 +45,6 @@
 		F1114037344C4CD1ED0EA50F /* menubar.rs */ = {isa = PBXFileReference; path = menubar.rs; sourceTree = "<group>"; };
 		F3673D372C5ABDD1AD6E7067 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		FBC720DFA1D01F55B0A32344 /* app_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = app_iOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		FBFAE4B6C44C1F7141F8ED4A /* dist */ = {isa = PBXFileReference; lastKnownFileType = folder; path = dist; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -128,7 +126,6 @@
 			children = (
 				3842AE2A64FB9933D0400EA4 /* assets */,
 				AF1DE57E7D9CF13BB2E0E038 /* Assets.xcassets */,
-				FBFAE4B6C44C1F7141F8ED4A /* dist */,
 				02B7F8347F94B067E6B27396 /* LaunchScreen.storyboard */,
 				2867E55E70187711EE923EBD /* app_iOS */,
 				78CBE3E5873199C0066F12DF /* Sources */,
@@ -220,7 +217,6 @@
 				C6BD59C055C986EA4A77FDA2 /* Assets.xcassets in Resources */,
 				3036F7131E55779ABF15BD58 /* LaunchScreen.storyboard in Resources */,
 				5C516481BCA83A182C2BCC94 /* assets in Resources */,
-				E82AC4AE7AB13AE2D9708255 /* dist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -246,7 +242,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "exit 0";
+			shellScript = "set -euo pipefail\nAPP_ROOT=\"${SRCROOT}/../../..\"\nWORKSPACE_ROOT=\"${APP_ROOT}/..\"\nIOS_ASSETS_DIR=\"${SRCROOT}/assets\"\n\ncd \"${APP_ROOT}\"\npnpm run build\n\nrm -rf \"${IOS_ASSETS_DIR}\"\nmkdir -p \"${IOS_ASSETS_DIR}\"\nrsync -a --delete \"${APP_ROOT}/dist/\" \"${IOS_ASSETS_DIR}/\"\n\ncase \"${PLATFORM_NAME:?}\" in\n  iphoneos)\n    TARGET_TRIPLE=\"aarch64-apple-ios\"\n    TARGET_ARCH_DIR=\"arm64\"\n    ;;\n  iphonesimulator)\n    case \"${ARCHS:?}\" in\n      x86_64)\n        TARGET_TRIPLE=\"x86_64-apple-ios\"\n        TARGET_ARCH_DIR=\"x86_64\"\n        ;;\n      *)\n        TARGET_TRIPLE=\"aarch64-apple-ios-sim\"\n        TARGET_ARCH_DIR=\"arm64\"\n        ;;\n    esac\n    ;;\n  *)\n    echo \"Unsupported PLATFORM_NAME: ${PLATFORM_NAME:?}\" >&2\n    exit 1\n    ;;\nesac\n\ncase \"${CONFIGURATION:?}\" in\n  release|Release)\n    PROFILE_FLAG=\"--release\"\n    PROFILE_DIR=\"release\"\n    FEATURE_FLAGS=\"--features custom-protocol\"\n    ;;\n  *)\n    PROFILE_FLAG=\"\"\n    PROFILE_DIR=\"debug\"\n    FEATURE_FLAGS=\"\"\n    ;;\nesac\n\ncd \"${WORKSPACE_ROOT}\"\ncargo build -p app --manifest-path \"${APP_ROOT}/src-tauri/Cargo.toml\" --target \"${TARGET_TRIPLE}\" ${PROFILE_FLAG} ${FEATURE_FLAGS}\n\nmkdir -p \"${SRCROOT}/Externals/${TARGET_ARCH_DIR}/${CONFIGURATION}\"\ncp \"${WORKSPACE_ROOT}/target/${TARGET_TRIPLE}/${PROFILE_DIR}/libsendme_app.a\" \\\n  \"${SRCROOT}/Externals/${TARGET_ARCH_DIR}/${CONFIGURATION}/libapp.a\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -290,7 +286,7 @@
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				OTHER_LDFLAGS = "$(inherited) -Wl,-undefined,dynamic_lookup";
 				PRODUCT_BUNDLE_IDENTIFIER = io.sendme.app;
-				PRODUCT_NAME = "Sendme";
+				PRODUCT_NAME = Sendme;
 				SDKROOT = iphoneos;
 				SWIFTC_PARAMETERS = "-use-static-resource-dir";
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -385,7 +381,7 @@
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				OTHER_LDFLAGS = "$(inherited) -Wl,-undefined,dynamic_lookup";
 				PRODUCT_BUNDLE_IDENTIFIER = io.sendme.app;
-				PRODUCT_NAME = "Sendme";
+				PRODUCT_NAME = Sendme;
 				SDKROOT = iphoneos;
 				SWIFTC_PARAMETERS = "-use-static-resource-dir";
 				SWIFT_COMPILATION_MODE = wholemodule;

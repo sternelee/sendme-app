@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm run build; cp -rf dist src-tauri/gen/apple/dist",
+    "beforeBuildCommand": "pnpm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -31,6 +31,9 @@
     "createUpdaterArtifacts": true,
     "active": true,
     "targets": "all",
+    "iOS": {
+      "developmentTeam": "UJ8NW4N779"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

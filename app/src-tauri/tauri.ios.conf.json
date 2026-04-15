@@ -1,6 +1,6 @@
 {
   "build": {
-    "beforeBuildCommand": "pnpm run build; cp -rf dist src-tauri/gen/apple/dist",
+    "beforeBuildCommand": "pnpm run build",
     "frontendDist": "../dist"
   },
   "app": {

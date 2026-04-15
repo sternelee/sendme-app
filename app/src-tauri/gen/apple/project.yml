@@ -34,9 +34,6 @@ targets:
       - path: assets
         buildPhase: resources
         type: folder
-      - path: dist
-        buildPhase: resources
-        type: folder
       - path: LaunchScreen.storyboard
     info:
       path: app_iOS/Info.plist
@@ -91,7 +88,61 @@ targets:
       - sdk: WebKit.framework
     preBuildScripts:
       - name: Build Rust Code
-        script: "exit 0"
+        script: |
+          set -euo pipefail
+          APP_ROOT="${SRCROOT}/../../.."
+          WORKSPACE_ROOT="${APP_ROOT}/.."
+          IOS_ASSETS_DIR="${SRCROOT}/assets"
+
+          cd "${APP_ROOT}"
+          pnpm run build
+
+          rm -rf "${IOS_ASSETS_DIR}"
+          mkdir -p "${IOS_ASSETS_DIR}"
+          rsync -a --delete "${APP_ROOT}/dist/" "${IOS_ASSETS_DIR}/"
+
+          case "${PLATFORM_NAME:?}" in
+            iphoneos)
+              TARGET_TRIPLE="aarch64-apple-ios"
+              TARGET_ARCH_DIR="arm64"
+              ;;
+            iphonesimulator)
+              case "${ARCHS:?}" in
+                x86_64)
+                  TARGET_TRIPLE="x86_64-apple-ios"
+                  TARGET_ARCH_DIR="x86_64"
+                  ;;
+                *)
+                  TARGET_TRIPLE="aarch64-apple-ios-sim"
+                  TARGET_ARCH_DIR="arm64"
+                  ;;
+              esac
+              ;;
+            *)
+              echo "Unsupported PLATFORM_NAME: ${PLATFORM_NAME:?}" >&2
+              exit 1
+              ;;
+          esac
+
+          case "${CONFIGURATION:?}" in
+            release|Release)
+              PROFILE_FLAG="--release"
+              PROFILE_DIR="release"
+              FEATURE_FLAGS="--features custom-protocol"
+              ;;
+            *)
+              PROFILE_FLAG=""
+              PROFILE_DIR="debug"
+              FEATURE_FLAGS=""
+              ;;
+          esac
+
+          cd "${WORKSPACE_ROOT}"
+          cargo build -p app --manifest-path "${APP_ROOT}/src-tauri/Cargo.toml" --target "${TARGET_TRIPLE}" ${PROFILE_FLAG} ${FEATURE_FLAGS}
+
+          mkdir -p "${SRCROOT}/Externals/${TARGET_ARCH_DIR}/${CONFIGURATION}"
+          cp "${WORKSPACE_ROOT}/target/${TARGET_TRIPLE}/${PROFILE_DIR}/libsendme_app.a" \
+            "${SRCROOT}/Externals/${TARGET_ARCH_DIR}/${CONFIGURATION}/libapp.a"
         basedOnDependencyAnalysis: false
         outputFiles:
           - $(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a

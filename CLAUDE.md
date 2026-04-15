@@ -68,7 +68,10 @@ pnpm run format                    # Prettier formatting
 
 # Mobile builds (requires Clerk key)
 CLERK_PUBLISHABLE_KEY='pk_test_...' pnpm run tauri android build
-CLERK_PUBLISHABLE_KEY='pk_test_...' pnpm run tauri ios build
+export CLERK_PUBLISHABLE_KEY='pk_test_...'
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
 ```
 
 ### Browser WASM Build
@@ -306,11 +309,17 @@ Android/iOS apps cannot access runtime environment variables. The Clerk publisha
 ```bash
 # Build with Clerk publishable key
 CLERK_PUBLISHABLE_KEY='pk_test_YOUR_KEY_HERE' pnpm run tauri android build
-CLERK_PUBLISHABLE_KEY='pk_test_YOUR_KEY_HERE' pnpm run tauri ios build
+cd app
+export CLERK_PUBLISHABLE_KEY='pk_test_YOUR_KEY_HERE'
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
+xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
 ```
 
 - Test key (`pk_test_...`) for development
 - Production key (`pk_live_...`) for release builds
+- Prefer direct `xcodebuild` over `pnpm run tauri ios build` in this repo; the latter can fail during archive/export by reintroducing unsupported entitlements for personal-team signing.
 
 ### Platform-Specific File Picking
 

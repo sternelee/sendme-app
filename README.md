@@ -97,8 +97,22 @@ pnpm run tauri build
 #### iOS
 ```bash
 cd app
-pnpm run tauri ios build
+export CLERK_PUBLISHABLE_KEY='pk_test_...'
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj \
+  -scheme app_iOS \
+  -sdk iphoneos \
+  -configuration release \
+  -derivedDataPath build-ios \
+  build
+
+xcrun devicectl device install app \
+  --device <device-id> \
+  "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
 ```
+
+Use direct `xcodebuild` for iOS release builds in this repo. The generated Xcode prebuild script already rebuilds the frontend, syncs `dist/` into the iOS bundle, and compiles the Rust static library with `custom-protocol` enabled. `pnpm run tauri ios build` is currently less reliable here because the archive/export path may reintroduce unsupported entitlements on personal-team signing profiles.
 
 #### Android
 ```bash
@@ -343,6 +357,37 @@ pnpm run tauri dev             # Development mode with hot reload
 pnpm run build                 # Build frontend only
 pnpm run tauri build           # Build complete desktop app
 ```
+
+#### Tauri iOS App
+```bash
+cd app
+pnpm install
+export CLERK_PUBLISHABLE_KEY='pk_test_...'
+
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj \
+  -scheme app_iOS \
+  -sdk iphoneos \
+  -configuration release \
+  -derivedDataPath build-ios \
+  build
+
+xcrun devicectl device install app \
+  --device <device-id> \
+  "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
+
+xcrun devicectl device process launch \
+  --console \
+  --terminate-existing \
+  --device <device-id> \
+  io.sendme.app
+```
+
+Notes:
+- Unlock the iPhone before launching with `devicectl`.
+- `app/src-tauri/gen/apple/app_iOS/app_iOS.entitlements` must remain empty for personal-team signing.
+- Prefer this flow over `pnpm run tauri ios build` for now.
 
 #### WASM Browser
 ```bash

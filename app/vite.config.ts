@@ -12,6 +12,10 @@ export default defineConfig(async () => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
+  build: {
+    target: ["es2020", "safari15", "ios15"],
+    cssTarget: "safari15",
+  },
 
   resolve: {
     alias: {

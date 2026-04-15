@@ -75,8 +75,14 @@ pnpm run format                    # Prettier formatting
 
 # Mobile builds
 pnpm run tauri android build
-pnpm run tauri ios build
+export CLERK_PUBLISHABLE_KEY='pk_test_...'
+cd src-tauri/gen/apple
+xcodegen generate
+xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
+xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
 ```
+
+For iOS in this repo, prefer direct `xcodebuild` + `devicectl` over `pnpm run tauri ios build`. The generated Xcode prebuild script already rebuilds the frontend, syncs `dist/` into `gen/apple/assets`, and compiles the Rust library with `custom-protocol` enabled.
 
 ### Browser WASM Build (Separate - NOT in workspace)
 
@@ -212,6 +218,7 @@ const handleProgress = (event: ProgressEvent) => {
 7. **Android temp directories**: Use `args.common.temp_dir` instead of `std::env::current_dir()`
 8. **Recursion limit**: If compilation fails, add `#![recursion_limit = "256"]` to `app/src-tauri/src/lib.rs`
 9. **Android JNI**: Always use `push_local_frame()`/`pop_local_frame()` in loops
+10. **iOS signing**: `app/src-tauri/gen/apple/app_iOS/app_iOS.entitlements` must stay empty for personal-team signing, and the reliable install path is `xcodebuild` + `devicectl`
 
 ## Architecture Overview
 
