@@ -59,6 +59,7 @@ import {
   User,
   LogOut,
   Radio,
+  ChevronDown,
 } from "lucide-solid";
 
 import { Toaster, toast } from "solid-sonner";
@@ -117,6 +118,7 @@ export default function MainPage() {
   const globalStore = useGlobalStore();
 
   const [isMobile, setIsMobile] = createSignal(false);
+  const [showQrCode, setShowQrCode] = createSignal(false);
   const [isSmallWindow, setIsSmallWindow] = createSignal(false);
   const [isInitializing, setIsInitializing] = createSignal(true);
   const [, setTheme] = createSignal<Theme>("system");
@@ -250,6 +252,7 @@ export default function MainPage() {
           width: 280,
         }),
       );
+      setShowQrCode(!isMobile());
       await loadTransfers();
     } catch (e) {
       toast.error(t("send.failed") + `: ${e}`);
@@ -357,6 +360,7 @@ export default function MainPage() {
         width: 280,
       }),
     );
+    setShowQrCode(!isMobile());
     globalStore.send.setShowReshareModal(true);
   }
 
@@ -872,7 +876,7 @@ export default function MainPage() {
                         <Show when={sendTicket()}>
                           <div class="border-primary/20 bg-primary/10 rounded-3xl border p-4 md:p-5">
                             <div class="flex flex-col gap-5 lg:flex-row lg:items-center">
-                              <Show when={sendTicketQrCode()}>
+                              <Show when={sendTicketQrCode() && showQrCode()}>
                                 <div class="flex justify-center lg:justify-start">
                                   <div class="rounded-[28px] bg-white p-3 shadow-sm">
                                     <img
@@ -903,6 +907,19 @@ export default function MainPage() {
                                     {sendTicket()}
                                   </code>
                                 </div>
+
+                                <Show when={isMobile() && sendTicketQrCode()}>
+                                  <button
+                                    onClick={() => setShowQrCode((v) => !v)}
+                                    class="btn btn-ghost btn-sm w-full rounded-2xl gap-1 text-xs"
+                                  >
+                                    <ChevronDown
+                                      size={14}
+                                      class={`transition-transform ${showQrCode() ? "rotate-180" : ""}`}
+                                    />
+                                    {showQrCode() ? t("send.hideQrCode") : t("send.showQrCode")}
+                                  </button>
+                                </Show>
 
                                 <div class="flex flex-col gap-2 sm:flex-row">
                                   <button
@@ -1366,7 +1383,7 @@ export default function MainPage() {
                   <X size={18} />
                 </button>
               </div>
-              <Show when={globalStore.send.state().ticketQrCode}>
+              <Show when={globalStore.send.state().ticketQrCode && showQrCode()}>
                 <div class="flex justify-center">
                   <div class="rounded-xl bg-white p-2">
                     <img
@@ -1376,6 +1393,18 @@ export default function MainPage() {
                     />
                   </div>
                 </div>
+              </Show>
+              <Show when={isMobile() && globalStore.send.state().ticketQrCode}>
+                <button
+                  onClick={() => setShowQrCode((v) => !v)}
+                  class="btn btn-ghost btn-sm w-full rounded-xl gap-1 text-xs"
+                >
+                  <ChevronDown
+                    size={14}
+                    class={`transition-transform ${showQrCode() ? "rotate-180" : ""}`}
+                  />
+                  {showQrCode() ? t("send.hideQrCode") : t("send.showQrCode")}
+                </button>
               </Show>
               <div class="bg-base-300 overflow-hidden rounded-lg p-2">
                 <code class="text-primary font-mono text-xs break-all">

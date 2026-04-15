@@ -114,7 +114,9 @@
       "failed": "Failed to share",
       "ticketTypeLabel": "Ticket format",
       "readyToShare": "Ready to share",
-      "readyHint": "Keep this screen open until the receiver joins, or copy the ticket and send it through any chat app."
+      "readyHint": "Keep this screen open until the receiver joins, or copy the ticket and send it through any chat app.",
+      "showQrCode": "Show QR Code",
+      "hideQrCode": "Hide QR Code"
     },
     "receive": {
       "title": "Receive Files",
@@ -362,7 +364,9 @@
       "failed": "分享失败",
       "ticketTypeLabel": "票据格式",
       "readyToShare": "可以分享了",
-      "readyHint": "在接收方加入前请保持此页面开启，或复制票据并通过任意聊天工具发送。"
+      "readyHint": "在接收方加入前请保持此页面开启，或复制票据并通过任意聊天工具发送。",
+      "showQrCode": "显示二维码",
+      "hideQrCode": "收起二维码"
     },
     "receive": {
       "title": "接收文件",
