@@ -87,7 +87,8 @@
 				007E478DB8BC37A788C4730F /* app_iOS.entitlements */,
 				81E326B61ED92E1D1EECF952 /* Info.plist */,
 			);
-			path = app_iOS;
+			name = app_iOS;
+			path = ../app_iOS;
 			sourceTree = "<group>";
 		};
 		329C38BE5E8B40354375D0D0 /* bindings */ = {
@@ -103,7 +104,8 @@
 			children = (
 				FB1C68C0357A1866B3D27465 /* app */,
 			);
-			path = Sources;
+			name = Sources;
+			path = ../Sources;
 			sourceTree = "<group>";
 		};
 		855775165ACE55D883F89EB3 /* src */ = {
@@ -118,7 +120,7 @@
 				F1114037344C4CD1ED0EA50F /* menubar.rs */,
 			);
 			name = src;
-			path = ../../src;
+			path = ../../../src;
 			sourceTree = "<group>";
 		};
 		87648061424F20D5D4871E9E = {
@@ -184,10 +186,6 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
-					E86255CB8A1836C0BF0C0E14 = {
-						DevelopmentTeam = UJ8NW4N779;
-						ProvisioningStyle = Automatic;
-					};
 				};
 			};
 			buildConfigurationList = B302E784349268C93E6F0A36 /* Build configuration list for PBXProject "app" */;
@@ -268,8 +266,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = app_iOS/app_iOS.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = UJ8NW4N779;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -277,19 +273,16 @@
 					"\".\"",
 				);
 				INFOPLIST_FILE = app_iOS/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 26;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
-				OTHER_LDFLAGS = "$(inherited) -Wl,-undefined,dynamic_lookup";
-				PRODUCT_BUNDLE_IDENTIFIER = io.sendme.app;
-				PRODUCT_NAME = "Sendme";
+				PRODUCT_BUNDLE_IDENTIFIER = io.sendme;
+				PRODUCT_NAME = Sendme;
 				SDKROOT = iphoneos;
-				SWIFTC_PARAMETERS = "-use-static-resource-dir";
-				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_EMBED_BITCODE = NO;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -342,7 +335,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -363,8 +356,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = app_iOS/app_iOS.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = UJ8NW4N779;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -372,19 +363,16 @@
 					"\".\"",
 				);
 				INFOPLIST_FILE = app_iOS/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 26;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
-				OTHER_LDFLAGS = "$(inherited) -Wl,-undefined,dynamic_lookup";
-				PRODUCT_BUNDLE_IDENTIFIER = io.sendme.app;
-				PRODUCT_NAME = "Sendme";
+				PRODUCT_BUNDLE_IDENTIFIER = io.sendme;
+				PRODUCT_NAME = Sendme;
 				SDKROOT = iphoneos;
-				SWIFTC_PARAMETERS = "-use-static-resource-dir";
-				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_EMBED_BITCODE = NO;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -443,7 +431,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

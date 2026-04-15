@@ -1,8 +1,8 @@
 name: app
 options:
-  bundleIdPrefix: com.sendme.dev
+  bundleIdPrefix: io.sendme.app
   deploymentTarget:
-    iOS: "26"
+    iOS: "15.1"
 fileGroups: [../../src]
 configs:
   debug: debug
@@ -11,7 +11,7 @@ settingGroups:
   app:
     base:
       PRODUCT_NAME: Sendme
-      PRODUCT_BUNDLE_IDENTIFIER: com.sendme.dev
+      PRODUCT_BUNDLE_IDENTIFIER: io.sendme.app
 targetTemplates:
   app:
     type: application
@@ -64,7 +64,12 @@ targets:
         ARCHS: [arm64]
         VALID_ARCHS: arm64
         SWIFT_VERSION: 6.0
-        IPHONEOS_DEPLOYMENT_TARGET: 26
+        IPHONEOS_DEPLOYMENT_TARGET: 15.1
+        DEVELOPMENT_TEAM: UJ8NW4N779
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_COMPILATION_MODE: wholemodule
+        SWIFTC_PARAMETERS: -use-static-resource-dir
+        OTHER_LDFLAGS: $(inherited) -Wl,-undefined,dynamic_lookup
         LIBRARY_SEARCH_PATHS[arch=x86_64]: $(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)
         LIBRARY_SEARCH_PATHS[arch=arm64]: $(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: true
