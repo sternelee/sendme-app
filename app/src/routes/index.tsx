@@ -18,6 +18,7 @@ import {
   get_transfers,
   clear_transfers,
   open_received_file,
+  pick_file,
   pick_directory,
   start_nearby_discovery,
   stop_nearby_discovery,
@@ -199,11 +200,20 @@ export default function MainPage() {
 
   async function selectFile() {
     try {
-      const selected = await open({ multiple: false, directory: false });
-      if (selected && typeof selected === "string") {
-        globalStore.send.setPath(selected);
-        globalStore.send.setTicket("");
-        globalStore.send.setIsTextMode(false);
+      if (isMobile()) {
+        const selected = await pick_file({ allowMultiple: false });
+        if (selected.length > 0) {
+          globalStore.send.setPath(selected[0].path);
+          globalStore.send.setTicket("");
+          globalStore.send.setIsTextMode(false);
+        }
+      } else {
+        const selected = await open({ multiple: false, directory: false });
+        if (selected && typeof selected === "string") {
+          globalStore.send.setPath(selected);
+          globalStore.send.setTicket("");
+          globalStore.send.setIsTextMode(false);
+        }
       }
     } catch (e) {}
   }

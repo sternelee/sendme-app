@@ -3,11 +3,19 @@ import Tauri
 import UIKit
 import WebKit
 
+struct MediaFileResult: Codable {
+    let uri: String
+    let name: String
+    let size: Int
+    let mimeType: String
+}
+
+@available(iOS 14.0, *)
 class MediaPickerPlugin: Plugin {
-    // nonisolated(unsafe) is safe here: currentInvoke is set on the
-    // Tauri invoke thread and read only inside the @MainActor delegate
-    // callback, with no concurrent mutation possible.
-    nonisolated(unsafe) var currentInvoke: Invoke?
+    // All access to currentInvoke is confined to the main thread:
+    // - set inside DispatchQueue.main.async in pickMedia
+    // - read/cleared in picker(_:didFinishPicking:) which runs on main thread
+    var currentInvoke: Invoke?
     var webView: WKWebView?
 
     @objc override public func load(webview: WKWebView) {
@@ -16,10 +24,11 @@ class MediaPickerPlugin: Plugin {
     }
 
     @objc public func pickMedia(_ invoke: Invoke) {
-        currentInvoke = invoke
-
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+
+            // currentInvoke is set here on the main thread — no data race
+            self.currentInvoke = invoke
 
             var config = PHPickerConfiguration(photoLibrary: .shared())
             config.filter = PHPickerFilter.any(of: [.images, .videos])
@@ -39,7 +48,9 @@ class MediaPickerPlugin: Plugin {
     }
 }
 
+@available(iOS 14.0, *)
 extension MediaPickerPlugin: PHPickerViewControllerDelegate {
+    // Called on the main thread by PHPickerViewController
     public func picker(
         _ picker: PHPickerViewController,
         didFinishPicking results: [PHPickerResult]
@@ -47,7 +58,7 @@ extension MediaPickerPlugin: PHPickerViewControllerDelegate {
         picker.dismiss(animated: true)
 
         guard !results.isEmpty else {
-            currentInvoke?.resolve([JSObject]())
+            currentInvoke?.resolve([] as [MediaFileResult])
             currentInvoke = nil
             return
         }
@@ -55,7 +66,7 @@ extension MediaPickerPlugin: PHPickerViewControllerDelegate {
         let invoke = currentInvoke
         currentInvoke = nil
 
-        var mediaFiles: [JSObject] = []
+        var mediaFiles: [MediaFileResult] = []
         let lock = NSLock()
         let group = DispatchGroup()
 
@@ -84,14 +95,15 @@ extension MediaPickerPlugin: PHPickerViewControllerDelegate {
                     let attrs = try FileManager.default.attributesOfItem(atPath: destURL.path)
                     let size = attrs[.size] as? Int ?? 0
 
-                    var obj = JSObject()
-                    obj["uri"] = destURL.absoluteString
-                    obj["name"] = url.lastPathComponent
-                    obj["size"] = size
-                    obj["mimeType"] = mimeType(for: typeIdentifier)
+                    let file = MediaFileResult(
+                        uri: destURL.absoluteString,
+                        name: url.lastPathComponent,
+                        size: size,
+                        mimeType: MediaPickerPlugin.mimeType(for: typeIdentifier)
+                    )
 
                     lock.lock()
-                    mediaFiles.append(obj)
+                    mediaFiles.append(file)
                     lock.unlock()
                 } catch {
                     // Skip files that fail to copy; log to console
@@ -105,7 +117,7 @@ extension MediaPickerPlugin: PHPickerViewControllerDelegate {
         }
     }
 
-    private func mimeType(for typeIdentifier: String) -> String {
+    private static func mimeType(for typeIdentifier: String) -> String {
         switch typeIdentifier {
         case "public.jpeg":                  return "image/jpeg"
         case "public.png":                   return "image/png"
@@ -129,5 +141,9 @@ extension MediaPickerPlugin: PHPickerViewControllerDelegate {
 
 @_cdecl("init_plugin_media_picker")
 func initPlugin() -> Plugin {
-    return MediaPickerPlugin()
+    if #available(iOS 14.0, *) {
+        return MediaPickerPlugin()
+    } else {
+        fatalError("MediaPickerPlugin requires iOS 14.0+")
+    }
 }

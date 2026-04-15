@@ -5,6 +5,8 @@
     <key>NSCameraUsageDescription</key>
     <string>Read QR codes</string>
 
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Sendme needs access to your photo library to select photos and videos to send</string>
     <!-- Network access permissions for P2P functionality -->
     <key>NSLocalNetworkUsageDescription</key>
     <string>Sendme needs local network access to establish P2P connections and share terminal sessions</string>

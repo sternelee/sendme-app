@@ -181,10 +181,23 @@ async fn handle_content_uri(
 
         Ok((temp_file_path, sanitized))
     } else {
-        // Regular file path (desktop or iOS), just return it as PathBuf
-        log_info!("Regular file path detected: {}", path);
+        // Regular file path or file:// URL (desktop or iOS).
+        // On iOS, tauri-plugin-dialog returns file:// URLs (e.g. "file:///private/var/...").
+        // PathBuf::from("file:///...") produces a relative path, causing ENOENT.
+        // Parse file:// URLs properly to extract the real filesystem path.
+        let path_buf = if path.starts_with("file://") {
+            log_info!("Detected file:// URL (iOS), converting to filesystem path");
+            let file_path = FilePath::from_str(path)
+                .map_err(|e| format!("Failed to parse file URL: {:?}", e))?;
+            file_path
+                .into_path()
+                .map_err(|e| format!("Failed to convert file:// URL to path: {}", e))?
+        } else {
+            log_info!("Regular file path detected: {}", path);
+            std::path::PathBuf::from(path)
+        };
         let display_name = if filename.is_empty() {
-            std::path::Path::new(path)
+            path_buf
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(path)
@@ -192,7 +205,7 @@ async fn handle_content_uri(
         } else {
             filename.to_string()
         };
-        Ok((std::path::PathBuf::from(path), display_name))
+        Ok((path_buf, display_name))
     }
 }
 
@@ -1560,17 +1573,15 @@ async fn prepare_nearby_source(
             };
             ((resolved, effective_name), true)
         } else {
-            let source_path = PathBuf::from(&item.path);
+            // handle_content_uri also resolves file:// URLs (iOS document picker),
+            // so delegate to it rather than using PathBuf::from directly.
+            let (source_path, display_name) =
+                handle_content_uri(app, &item.path, requested_name).await?;
             let effective_name = item
                 .filename
                 .clone()
-                .or_else(|| {
-                    source_path
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .map(ToString::to_string)
-                })
-                .unwrap_or_else(|| "item".to_string());
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or(display_name);
             ((source_path, effective_name), false)
         };
         let (source_path, file_name) = source;
@@ -1825,7 +1836,9 @@ pub fn run() {
 
     #[cfg(target_os = "ios")]
     {
-        builder = builder.plugin(tauri_plugin_fs_ios::init());
+        builder = builder
+            .plugin(tauri_plugin_fs_ios::init())
+            .plugin(tauri_plugin_media_picker::init());
     }
 
     #[cfg(mobile)]
@@ -3370,10 +3383,11 @@ async fn pick_directory(
     }
 }
 
-/// Pick a file using the iOS dialog plugin
+/// Pick a file using the iOS photo/media picker (PHPickerViewController).
 ///
-/// On iOS, file picking is done via the system document picker.
-/// Files are automatically saved to the app's Documents directory.
+/// Presents the system photo library picker. The user can select one or more
+/// photos or videos. Selected files are copied to a temporary directory and
+/// their `file://` URIs are returned.
 #[tauri::command]
 #[cfg(target_os = "ios")]
 async fn pick_file(
@@ -3381,23 +3395,43 @@ async fn pick_file(
     _allowed_types: Option<Vec<String>>,
     _allow_multiple: Option<bool>,
 ) -> Result<Vec<PickerFileInfo>, String> {
-    log_info!("📁 iOS file picker - files will be saved to Documents directory");
+    use tauri_plugin_media_picker::MediaPickerExt;
 
-    // On iOS, we can't pick files from outside the app's sandbox
-    // Instead, we return information about the Documents directory
-    // where received files are automatically saved
-    let docs_path = ios_documents_dir(&app)?;
+    log_info!("📁 iOS media picker opening...");
 
-    log_info!("📂 Documents directory: {}", docs_path);
+    let media_files = app
+        .media_picker()
+        .pick_media()
+        .await
+        .map_err(|e| format!("Media picker failed: {}", e))?;
 
-    // Return a placeholder file info indicating files should be accessed via Documents
-    Ok(vec![PickerFileInfo {
-        uri: format!("file://{}", docs_path),
-        path: docs_path.clone(),
-        name: "Documents Directory".to_string(),
-        size: 0,
-        mime_type: "application/directory".to_string(),
-    }])
+    if media_files.is_empty() {
+        log_info!("📁 Media picker cancelled or no files selected");
+        return Ok(vec![]);
+    }
+
+    log_info!("✅ Selected {} media files", media_files.len());
+
+    let results = media_files
+        .into_iter()
+        .map(|f| {
+            // Convert file:// URI to filesystem path for the path field
+            let path = f
+                .uri
+                .strip_prefix("file://")
+                .unwrap_or(&f.uri)
+                .to_string();
+            PickerFileInfo {
+                uri: f.uri,
+                path,
+                name: f.name,
+                size: f.size as i64,
+                mime_type: f.mime_type,
+            }
+        })
+        .collect();
+
+    Ok(results)
 }
 
 /// Pick a directory using the iOS - NOT SUPPORTED
