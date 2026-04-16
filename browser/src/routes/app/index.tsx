@@ -4,6 +4,7 @@ import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
 import TextTab from "../../components/sendme/TextTab";
 import FriendsTab from "../../components/sendme/FriendsTab";
+import HistoryTab from "../../components/sendme/HistoryTab";
 import { ThemeSwitcher } from "../../lib/ThemeSwitcher";
 import { LanguageSwitcher } from "../../lib/LanguageSwitcher";
 import { i18n } from "../../lib/i18n";
@@ -146,16 +147,7 @@ export default function AppPage() {
                     <TextTab />
                   </Show>
                   <Show when={activeTab() === "history"}>
-                    <div class="text-center py-12">
-                      <TbOutlineHistory
-                        size={48}
-                        class="mx-auto mb-4 opacity-40"
-                      />
-                      <p class="text-base-content/60">{t("history.empty")}</p>
-                      <p class="text-sm text-base-content/40 mt-1">
-                        {t("history.emptyDesc")}
-                      </p>
-                    </div>
+                    <HistoryTab />
                   </Show>
                   <Show when={activeTab() === "settings"}>
                     <div class="space-y-4">

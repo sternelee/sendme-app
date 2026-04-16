@@ -9,6 +9,7 @@
 
 import { createSignal, createEffect, onCleanup, batch } from "solid-js";
 import { useAuth } from "clerk-solidjs";
+import toast from "solid-toast";
 import type { Device, Ticket, Friend } from "~/lib/db/schema";
 
 export type { Device, Ticket, Friend };
@@ -49,13 +50,18 @@ type ServerMessageDeviceUpdate = {
 };
 type ServerMessagePong = { type: "pong" };
 type ServerMessageError = { type: "error"; data: string };
+type ServerMessageTransferReceived = {
+  type: "transfer_received";
+  data: { ticketId: string; filename: string | null; fileSize: number | null };
+};
 type ServerMessage =
   | ServerMessageDevices
   | ServerMessageTickets
   | ServerMessageFriends
   | ServerMessageDeviceUpdate
   | ServerMessagePong
-  | ServerMessageError;
+  | ServerMessageError
+  | ServerMessageTransferReceived;
 
 const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
 const RECONNECT_BASE_MS = 1_000;
@@ -89,15 +95,21 @@ function createWebSocketStore() {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempts = 0;
   let destroyed = false;
+  let connecting = false;
 
   const auth = useAuth();
 
   const connect = async () => {
     if (destroyed) return;
+    // Guard against concurrent connect() calls (e.g. from multiple component effects)
+    if (connecting) return;
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+    connecting = true;
 
     const token = await auth.getToken();
     if (!token) {
       // Not signed in yet — retry after a short delay
+      connecting = false;
       scheduleReconnect();
       return;
     }
@@ -119,6 +131,7 @@ function createWebSocketStore() {
       }
     } catch (error) {
       console.error("[useWebSocket] Device registration failed:", error);
+      connecting = false;
       scheduleReconnect();
       return;
     }
@@ -130,12 +143,15 @@ function createWebSocketStore() {
 
     try {
       ws = new WebSocket(urlWithToken);
+      // connecting flag is cleared once the socket opens or fails
     } catch {
+      connecting = false;
       scheduleReconnect();
       return;
     }
 
     ws.onopen = () => {
+      connecting = false;
       reconnectAttempts = 0;
       setIsConnected(true);
       startHeartbeat();
@@ -151,6 +167,7 @@ function createWebSocketStore() {
     };
 
     ws.onclose = () => {
+      connecting = false;
       setIsConnected(false);
       stopHeartbeat();
       if (!destroyed) scheduleReconnect();
@@ -183,6 +200,15 @@ function createWebSocketStore() {
       case "error":
         console.error("[useWebSocket] Server error:", msg.data);
         break;
+      case "transfer_received": {
+        const { filename, fileSize } = msg.data;
+        const label = filename ?? "file";
+        const sizeStr = fileSize != null
+          ? ` (${fileSize < 1024 * 1024 ? (fileSize / 1024).toFixed(1) + " KB" : (fileSize / (1024 * 1024)).toFixed(1) + " MB"})`
+          : "";
+        toast.success(`${label}${sizeStr} was downloaded by the recipient.`);
+        break;
+      }
     }
   };
 

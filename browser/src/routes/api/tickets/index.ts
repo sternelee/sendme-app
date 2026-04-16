@@ -3,7 +3,7 @@
  * Handles sending and receiving tickets between devices.
  */
 
-import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   getUserDeviceById,
@@ -192,6 +192,59 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
   }
 }
 
+export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
+  try {
+    const env = requestEvent.nativeEvent.context.cloudflare.env;
+    const { userId, status } = await authenticateRequest(requestEvent.request, env);
+
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized", status }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    const body = (await requestEvent.request.json()) as { ticket?: string };
+
+    if (!body.ticket) {
+      return new Response(
+        JSON.stringify({ error: "Missing required field: ticket" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    const db = drizzle(env.DB!, { schema });
+
+    // Delete all DB records where the sender (fromUserId) or recipient (userId)
+    // matches the current user and the ticket string matches.
+    await db
+      .delete(schema.tickets)
+      .where(
+        and(
+          eq(tickets.ticket, body.ticket),
+          or(
+            eq(tickets.userId, userId),
+            eq(tickets.fromUserId, userId),
+          ),
+        ),
+      );
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("[Tickets API] DELETE error:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to delete ticket",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
+}
+
 export async function GET(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
@@ -228,6 +281,7 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
           ? and(
               eq(tickets.userId, userId),
               eq(tickets.status, "pending"),
+              gt(tickets.expiresAt, new Date()),
               or(
                 eq(tickets.toDeviceId, currentDevice.id),
                 and(isNull(tickets.toDeviceId), isNotNull(tickets.toUserId)),
@@ -236,6 +290,7 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
           : and(
               eq(tickets.userId, userId),
               eq(tickets.status, "pending"),
+              gt(tickets.expiresAt, new Date()),
               isNull(tickets.toDeviceId),
               isNotNull(tickets.toUserId),
             ),

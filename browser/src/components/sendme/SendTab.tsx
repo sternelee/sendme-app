@@ -1,11 +1,16 @@
-import { Show, For, onCleanup, createSignal } from "solid-js";
+import { Show, For, onCleanup, createSignal, createEffect } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
 import { useAuth as useClerkAuth } from "clerk-solidjs";
 import { useAuth } from "../../lib/contexts/user-clerk";
 import { i18n } from "../../lib/i18n";
 import { useGlobalStore } from "../../lib/store";
-import { useWebSocket, type EnrichedFriend, getDeviceId } from "../../lib/composables/useWebSocket";
+import QRCode from "../QRCode";
+import {
+  useWebSocket,
+  type EnrichedFriend,
+  getDeviceId,
+} from "../../lib/composables/useWebSocket";
 import {
   TbOutlineUpload,
   TbOutlineCheck,
@@ -19,6 +24,7 @@ import {
   TbOutlineVideo,
   TbOutlineUsers,
   TbOutlineSend,
+  TbOutlineQrcode,
 } from "solid-icons/tb";
 import DeviceListModal from "../devices/DeviceListModal";
 import type { Device } from "../../lib/composables/useWebSocket";
@@ -48,6 +54,7 @@ export default function SendTab() {
   const globalStore = useGlobalStore();
   const { friends } = useWebSocket();
   const [isFriendModalOpen, setIsFriendModalOpen] = createSignal(false);
+  const [showQr, setShowQr] = createSignal(false);
 
   const file = () => globalStore.send.state().file;
   const files = () => globalStore.send.state().files;
@@ -59,10 +66,23 @@ export default function SendTab() {
 
   const onlineFriends = () =>
     friends().filter(
-      (f) =>
-        f.status === "accepted" &&
-        f.friendDevices.some((d) => d.online)
+      (f) => f.status === "accepted" && f.friendDevices.some((d) => d.online),
     );
+
+  // Warn user before closing the tab while a ticket is active (the WASM iroh
+  // node must stay alive for the recipient to connect).
+  createEffect(() => {
+    if (!ticket()) return;
+
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Modern browsers show a generic message; setting returnValue is required.
+      e.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handler);
+    onCleanup(() => window.removeEventListener("beforeunload", handler));
+  });
 
   let fileInputRef: HTMLInputElement | undefined;
   let folderInputRef: HTMLInputElement | undefined;
@@ -84,11 +104,25 @@ export default function SendTab() {
 
     try {
       if (currentFiles.length > 0) {
-        const result = await sendFiles(currentFiles);
-        globalStore.send.setTicket(result.ticket);
+        const ticket = await sendFiles(currentFiles);
+        globalStore.send.setTicket(ticket);
+        const folderName =
+          currentFiles[0]?.webkitRelativePath?.split("/")[0] || "Folder";
+        globalStore.history.addEntry({
+          filename: folderName,
+          ticket,
+          fileSize: currentFiles.reduce((acc, f) => acc + f.size, 0),
+          isFolder: true,
+        });
       } else if (currentFile) {
-        const result = await sendFile(currentFile);
-        globalStore.send.setTicket(result.ticket);
+        const ticket = await sendFile(currentFile);
+        globalStore.send.setTicket(ticket);
+        globalStore.history.addEntry({
+          filename: currentFile.name,
+          ticket,
+          fileSize: currentFile.size,
+          isFolder: false,
+        });
       }
       toast.success(t("send.sendSuccess"));
     } catch (error) {
@@ -154,6 +188,7 @@ export default function SendTab() {
     globalStore.send.setFiles([]);
     globalStore.send.setIsFolder(false);
     globalStore.send.setTicket("");
+    setShowQr(false);
   }
 
   function formatFileSize(bytes: number): string {
@@ -171,7 +206,9 @@ export default function SendTab() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}`, "X-Device-Id": getDeviceId() } : { "X-Device-Id": getDeviceId() }),
+          ...(token
+            ? { Authorization: `Bearer ${token}`, "X-Device-Id": getDeviceId() }
+            : { "X-Device-Id": getDeviceId() }),
         },
         body: JSON.stringify({
           deviceId: device.id,
@@ -186,7 +223,7 @@ export default function SendTab() {
       });
 
       if (!response.ok) {
-        const data = await response.json() as { error?: string };
+        const data = (await response.json()) as { error?: string };
         throw new Error(data.error || "Failed to send ticket");
       }
       toast.success(`Ticket sent to ${device.name}!`);
@@ -206,7 +243,9 @@ export default function SendTab() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}`, "X-Device-Id": getDeviceId() } : { "X-Device-Id": getDeviceId() }),
+          ...(token
+            ? { Authorization: `Bearer ${token}`, "X-Device-Id": getDeviceId() }
+            : { "X-Device-Id": getDeviceId() }),
         },
         body: JSON.stringify({
           friendUserId: friend.friend.id,
@@ -221,7 +260,7 @@ export default function SendTab() {
       });
 
       if (!response.ok) {
-        const data = await response.json() as { error?: string };
+        const data = (await response.json()) as { error?: string };
         throw new Error(data.error || "Failed to send ticket to friend");
       }
 
@@ -269,11 +308,17 @@ export default function SendTab() {
               class="hidden"
               onChange={handleFolderSelect}
             />
-            <TbOutlineUpload size={48} class="mx-auto mb-4 text-base-content/40" />
+            <TbOutlineUpload
+              size={48}
+              class="mx-auto mb-4 text-base-content/40"
+            />
             <p class="text-lg font-medium mb-2">{t("send.dropFile")}</p>
             <p class="text-sm text-base-content/60 mb-4">{t("send.orClick")}</p>
             <div class="flex justify-center gap-2">
-              <button class="btn btn-primary btn-sm">{t("send.selectFile")}</button>
+              <button class="btn btn-primary btn-sm">
+                <TbOutlineFile size={16} />
+                {t("send.selectFile")}
+              </button>
               <button
                 class="btn btn-outline btn-sm"
                 onClick={(e) => {
@@ -298,9 +343,17 @@ export default function SendTab() {
                     <div class="w-20 h-20 rounded-2xl bg-base-300 flex items-center justify-center">
                       <Show
                         when={isFolder()}
-                        fallback={<TbOutlineFile size={32} class="text-base-content/50" />}
+                        fallback={
+                          <TbOutlineFile
+                            size={32}
+                            class="text-base-content/50"
+                          />
+                        }
                       >
-                        <TbOutlineFolder size={32} class="text-base-content/50" />
+                        <TbOutlineFolder
+                          size={32}
+                          class="text-base-content/50"
+                        />
                       </Show>
                     </div>
                   }
@@ -318,7 +371,8 @@ export default function SendTab() {
                   <div class="min-w-0">
                     <h3 class="font-semibold truncate">
                       {isFolder()
-                        ? files()[0]?.webkitRelativePath?.split("/")[0] || t("send.folder")
+                        ? files()[0]?.webkitRelativePath?.split("/")[0] ||
+                          t("send.folder")
                         : file()?.name}
                     </h3>
                     <p class="text-sm text-base-content/60 mt-1">
@@ -343,7 +397,9 @@ export default function SendTab() {
                       class={`btn btn-primary ${isSending() ? "loading" : ""}`}
                     >
                       <TbOutlineSparkles size={18} />
-                      {isSending() ? t("send.sending") : t("send.generateTicket")}
+                      {isSending()
+                        ? t("send.sending")
+                        : t("send.generateTicket")}
                     </button>
                   </div>
                 </Show>
@@ -352,21 +408,63 @@ export default function SendTab() {
 
             <Show when={ticket()}>
               <div class="mt-6 pt-6 border-t border-base-300">
+                <div role="alert" class="alert alert-warning mb-4 text-sm">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                    />
+                  </svg>
+                  <span>{t("send.keepPageOpen")}</span>
+                </div>
                 <div class="flex items-center justify-between mb-3">
                   <h4 class="font-medium">{t("send.ticketReady")}</h4>
-                  <button onClick={copyTicket} class="btn btn-ghost btn-sm">
-                    <TbOutlineCopy size={16} />
-                    {t("common.copy")}
-                  </button>
+                  <div class="flex gap-1">
+                    <button
+                      onClick={() => setShowQr((v) => !v)}
+                      class="btn btn-ghost btn-sm"
+                    >
+                      <TbOutlineQrcode size={16} />
+                      {showQr() ? t("send.hideQrCode") : t("send.showQrCode")}
+                    </button>
+                    <button onClick={copyTicket} class="btn btn-ghost btn-sm">
+                      <TbOutlineCopy size={16} />
+                      {t("common.copy")}
+                    </button>
+                  </div>
                 </div>
                 <div class="mockup-code text-xs break-all mb-4">
-                  <pre class="whitespace-pre-wrap"><code>{ticket()}</code></pre>
+                  <pre class="whitespace-pre-wrap">
+                    <code>{ticket()}</code>
+                  </pre>
                 </div>
 
+                <Show when={showQr()}>
+                  <div class="flex justify-center mb-4">
+                    <div class="bg-white p-3 rounded-2xl inline-block shadow">
+                      <QRCode value={ticket()} size={200} />
+                    </div>
+                  </div>
+                </Show>
+
                 <div class="flex flex-wrap gap-2">
+                  <button onClick={resetFile} class="btn btn-outline btn-sm">
+                    <TbOutlineX size={16} />
+                    {t("send.newTransfer")}
+                  </button>
                   <Show when={auth.isSignedIn()}>
                     <button
-                      onClick={() => globalStore.send.setIsDeviceModalOpen(true)}
+                      onClick={() =>
+                        globalStore.send.setIsDeviceModalOpen(true)
+                      }
                       class="btn btn-outline btn-sm"
                     >
                       <TbOutlineDevices size={16} />
@@ -423,11 +521,14 @@ export default function SendTab() {
                     <div class="flex items-center justify-between">
                       <div>
                         <p class="font-medium">{friend.friend.name}</p>
-                        <p class="text-sm text-base-content/60">{friend.friend.email}</p>
+                        <p class="text-sm text-base-content/60">
+                          {friend.friend.email}
+                        </p>
                       </div>
                       <div class="flex items-center gap-1 text-success text-sm">
                         <div class="w-2 h-2 rounded-full bg-success" />
-                        {friend.friendDevices.length} device{friend.friendDevices.length !== 1 ? "s" : ""}
+                        {friend.friendDevices.length} device
+                        {friend.friendDevices.length !== 1 ? "s" : ""}
                       </div>
                     </div>
                   </button>

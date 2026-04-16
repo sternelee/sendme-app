@@ -60,6 +60,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       );
     }
 
+    // Notify the receiver: their ticket list should no longer show this ticket
     try {
       const doId = env.USER_DO.idFromName(userId);
       const stub = env.USER_DO.get(doId);
@@ -71,7 +72,29 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         }),
       );
     } catch (broadcastErr) {
-      console.warn("[Tickets/receive] DO broadcast failed:", broadcastErr);
+      console.warn("[Tickets/receive] DO broadcast to receiver failed:", broadcastErr);
+    }
+
+    // Notify the sender (friend transfers only): show a "received" confirmation
+    if (updated.fromUserId) {
+      try {
+        const senderDoId = env.USER_DO.idFromName(updated.fromUserId);
+        const senderStub = env.USER_DO.get(senderDoId);
+        await senderStub.fetch(
+          new Request("https://do/broadcast/transfer_received", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ticketId: updated.id,
+              filename: updated.filename,
+              fileSize: updated.fileSize,
+            }),
+          }),
+        );
+      } catch (senderBroadcastErr) {
+        // Non-fatal: sender may not be connected
+        console.warn("[Tickets/receive] DO broadcast to sender failed:", senderBroadcastErr);
+      }
     }
 
     return new Response(JSON.stringify(updated), {

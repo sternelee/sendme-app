@@ -3,117 +3,47 @@
 export const memory: WebAssembly.Memory;
 export const __wbg_sendmenodewasm_free: (a: number, b: number) => void;
 export const sendmenodewasm_endpoint_id: (a: number) => [number, number];
-export const sendmenodewasm_get: (
-  a: number,
-  b: number,
-  c: number,
-) => [number, number, number];
-export const sendmenodewasm_get_collection: (
-  a: number,
-  b: number,
-  c: number,
-) => [number, number, number];
-export const sendmenodewasm_has_blob: (
-  a: number,
-  b: number,
-  c: number,
-) => [number, number, number];
-export const sendmenodewasm_import_and_create_ticket: (
-  a: number,
-  b: number,
-  c: number,
-  d: any,
-) => [number, number, number];
-export const sendmenodewasm_import_collection_and_create_ticket: (
-  a: number,
-  b: any,
-) => [number, number, number];
+export const sendmenodewasm_get: (a: number, b: number, c: number) => [number, number, number];
+export const sendmenodewasm_get_collection: (a: number, b: number, c: number) => [number, number, number];
+export const sendmenodewasm_has_blob: (a: number, b: number, c: number) => [number, number, number];
+export const sendmenodewasm_import_and_create_ticket: (a: number, b: number, c: number, d: any) => [number, number, number];
+export const sendmenodewasm_import_collection_and_create_ticket: (a: number, b: any) => [number, number, number];
 export const sendmenodewasm_local_addrs: (a: number) => any;
 export const sendmenodewasm_relay_urls: (a: number) => any;
 export const sendmenodewasm_spawn: () => any;
-export const sendmenodewasm_wait_for_ready: (
-  a: number,
-  b: number,
-) => [number, number, number];
+export const sendmenodewasm_wait_for_ready: (a: number, b: number) => [number, number, number];
 export const start: () => void;
-export const __wbg_intounderlyingsource_free: (a: number, b: number) => void;
-export const intounderlyingsource_cancel: (a: number) => void;
-export const intounderlyingsource_pull: (a: number, b: any) => any;
-export const __wbg_intounderlyingsink_free: (a: number, b: number) => void;
-export const intounderlyingsink_abort: (a: number, b: any) => any;
-export const intounderlyingsink_close: (a: number) => any;
-export const intounderlyingsink_write: (a: number, b: any) => any;
-export const __wbg_intounderlyingbytesource_free: (
-  a: number,
-  b: number,
-) => void;
-export const intounderlyingbytesource_autoAllocateChunkSize: (
-  a: number,
-) => number;
+export const __wbg_intounderlyingbytesource_free: (a: number, b: number) => void;
+export const intounderlyingbytesource_autoAllocateChunkSize: (a: number) => number;
 export const intounderlyingbytesource_cancel: (a: number) => void;
 export const intounderlyingbytesource_pull: (a: number, b: any) => any;
 export const intounderlyingbytesource_start: (a: number, b: any) => void;
 export const intounderlyingbytesource_type: (a: number) => number;
-export const ring_core_0_17_14__bn_mul_mont: (
-  a: number,
-  b: number,
-  c: number,
-  d: number,
-  e: number,
-  f: number,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke___web_sys_151e8c21c3b28caf___features__gen_CloseEvent__CloseEvent_____: (
-  a: number,
-  b: number,
-  c: any,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__FnMut__web_sys_151e8c21c3b28caf___features__gen_CloseEvent__CloseEvent____Output_______: (
-  a: number,
-  b: number,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke___web_sys_151e8c21c3b28caf___features__gen_MessageEvent__MessageEvent_____: (
-  a: number,
-  b: number,
-  c: any,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__FnMut__web_sys_151e8c21c3b28caf___features__gen_MessageEvent__MessageEvent____Output_______: (
-  a: number,
-  b: number,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__FnMut_____Output_______: (
-  a: number,
-  b: number,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke___wasm_bindgen_4dcbc014fc32cd2c___JsValue_____: (
-  a: number,
-  b: number,
-  c: any,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__FnMut__wasm_bindgen_4dcbc014fc32cd2c___JsValue____Output_______: (
-  a: number,
-  b: number,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke______: (
-  a: number,
-  b: number,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___closure__destroy___dyn_core_d0e082f9bee9a258___ops__function__Fn_____Output_______: (
-  a: number,
-  b: number,
-) => void;
-export const wasm_bindgen_4dcbc014fc32cd2c___convert__closures_____invoke___wasm_bindgen_4dcbc014fc32cd2c___JsValue__wasm_bindgen_4dcbc014fc32cd2c___JsValue_____: (
-  a: number,
-  b: number,
-  c: any,
-  d: any,
-) => void;
+export const __wbg_intounderlyingsink_free: (a: number, b: number) => void;
+export const intounderlyingsink_abort: (a: number, b: any) => any;
+export const intounderlyingsink_close: (a: number) => any;
+export const intounderlyingsink_write: (a: number, b: any) => any;
+export const __wbg_intounderlyingsource_free: (a: number, b: number) => void;
+export const intounderlyingsource_cancel: (a: number) => void;
+export const intounderlyingsource_pull: (a: number, b: any) => any;
+export const ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const wasm_bindgen__closure__destroy__h2ae4e991586a5f9d: (a: number, b: number) => void;
+export const wasm_bindgen__closure__destroy__h795aad1e29001829: (a: number, b: number) => void;
+export const wasm_bindgen__closure__destroy__he4abdafd81ca686b: (a: number, b: number) => void;
+export const wasm_bindgen__closure__destroy__hb0b10d0be0cb1863: (a: number, b: number) => void;
+export const wasm_bindgen__closure__destroy__h688c69ff9d3bb3f0: (a: number, b: number) => void;
+export const wasm_bindgen__closure__destroy__h240b8ed7118b845b: (a: number, b: number) => void;
+export const wasm_bindgen__closure__destroy__he022d2b521849f2a: (a: number, b: number) => void;
+export const wasm_bindgen__convert__closures_____invoke__h38f5f1ba433d40ee: (a: number, b: number, c: any) => [number, number];
+export const wasm_bindgen__convert__closures_____invoke__h829aa0c1c7d355c2: (a: number, b: number, c: any, d: any) => void;
+export const wasm_bindgen__convert__closures_____invoke__hc05e2a7a8a6bec23: (a: number, b: number, c: any) => void;
+export const wasm_bindgen__convert__closures_____invoke__h7f130a7cb27f4653: (a: number, b: number, c: any) => void;
+export const wasm_bindgen__convert__closures_____invoke__he476400ee74d587a: (a: number, b: number, c: any) => void;
+export const wasm_bindgen__convert__closures_____invoke__h5b98b02d974c0c46: (a: number, b: number) => void;
+export const wasm_bindgen__convert__closures_____invoke__hb17acabcdd1f2d53: (a: number, b: number) => void;
+export const wasm_bindgen__convert__closures_____invoke__hdddd5fff1dc236e3: (a: number, b: number) => void;
 export const __wbindgen_malloc: (a: number, b: number) => number;
-export const __wbindgen_realloc: (
-  a: number,
-  b: number,
-  c: number,
-  d: number,
-) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_exn_store: (a: number) => void;
 export const __externref_table_alloc: () => number;
 export const __wbindgen_externrefs: WebAssembly.Table;

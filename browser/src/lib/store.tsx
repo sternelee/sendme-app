@@ -34,10 +34,25 @@ export interface TextState {
   activeTextTab: "send" | "receive";
 }
 
+export interface HistoryEntry {
+  id: string;
+  filename: string;
+  ticket: string;
+  fileSize: number;
+  isFolder: boolean;
+  timestamp: number;
+}
+
+export interface HistoryState {
+  entries: HistoryEntry[];
+}
+
+const HISTORY_MAX_ENTRIES = 50;
 interface GlobalStoreValue {
   send: SendState;
   receive: ReceiveState;
   text: TextState;
+  history: HistoryState;
 }
 
 interface GlobalStore {
@@ -72,6 +87,12 @@ interface GlobalStore {
     setActiveTextTab: (tab: "send" | "receive") => void;
     reset: () => void;
   };
+  history: {
+    state: Accessor<HistoryState>;
+    addEntry: (entry: Omit<HistoryEntry, "id" | "timestamp">) => void;
+    removeEntry: (id: string) => void;
+    clear: () => void;
+  };
 }
 
 const defaultSendState: SendState = {
@@ -104,6 +125,7 @@ const defaultTextState: TextState = {
 
 const GlobalStoreContext = createContext<GlobalStore>();
 
+
 export const GlobalStoreProvider: ParentComponent = (props) => {
   const [sendState, setSendState] = createStore<SendState>({
     ...defaultSendState,
@@ -113,6 +135,9 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
   });
   const [textState, setTextState] = createStore<TextState>({
     ...defaultTextState,
+  });
+  const [historyState, setHistoryState] = createStore<HistoryState>({
+    entries: [],
   });
 
   const store: GlobalStore = {
@@ -153,6 +178,28 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
         setTextState("isReceivingText", isReceiving),
       setActiveTextTab: (tab) => setTextState("activeTextTab", tab),
       reset: () => setTextState(defaultTextState),
+    },
+    history: {
+      state: () => historyState,
+      addEntry: (entry) => {
+        const newEntry: HistoryEntry = {
+          ...entry,
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+        };
+        const updated = [newEntry, ...historyState.entries].slice(
+          0,
+          HISTORY_MAX_ENTRIES,
+        );
+        setHistoryState("entries", updated);
+      },
+      removeEntry: (id) => {
+        const updated = historyState.entries.filter((e) => e.id !== id);
+        setHistoryState("entries", updated);
+      },
+      clear: () => {
+        setHistoryState("entries", []);
+      },
     },
   };
 

@@ -19,6 +19,9 @@ import {
 
 const t = i18n.t;
 
+// Module-level set so Tab remounts don't re-notify the same pending requests
+const _notifiedFriendRequestIds = new Set<string>();
+
 interface FriendsTabProps {
   onSendToFriend?: (friend: EnrichedFriend) => void;
   showSendButton?: boolean;
@@ -77,7 +80,6 @@ export default function FriendsTab(props: FriendsTabProps) {
   const [email, setEmail] = createSignal("");
   const [isAdding, setIsAdding] = createSignal(false);
   const [activeTab, setActiveTab] = createSignal<"accepted" | "pending">("accepted");
-  const [notifiedIds, setNotifiedIds] = createSignal<Set<string>>(new Set());
 
   // Accepted / Pending splits
   const acceptedFriends = createMemo(() =>
@@ -102,14 +104,13 @@ export default function FriendsTab(props: FriendsTabProps) {
   // --- Toast notification on new incoming request ---
   createEffect(() => {
     const incoming = incomingRequests();
-    const seen = notifiedIds();
     const newRequests = incoming.filter(
-      (f) => !seen.has(f.id)
+      (f) => !_notifiedFriendRequestIds.has(f.id)
     );
 
     if (newRequests.length > 0) {
       newRequests.forEach((req) => {
-        const toastId = toast.custom(
+        toast.custom(
           (t2) => (
             <FriendRequestToast
               name={req.friend.name}
@@ -125,11 +126,7 @@ export default function FriendsTab(props: FriendsTabProps) {
           ),
           { duration: 15_000 }
         );
-      });
-      setNotifiedIds((prev) => {
-        const next = new Set(prev);
-        newRequests.forEach((r) => next.add(r.id));
-        return next;
+        _notifiedFriendRequestIds.add(req.id);
       });
     }
   });

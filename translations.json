@@ -116,7 +116,21 @@
       "readyToShare": "Ready to share",
       "readyHint": "Keep this screen open until the receiver joins, or copy the ticket and send it through any chat app.",
       "showQrCode": "Show QR Code",
-      "hideQrCode": "Hide QR Code"
+      "hideQrCode": "Hide QR Code",
+      "keepPageOpen": "Keep this page open while the recipient downloads. Closing it will stop the transfer.",
+      "newTransfer": "New Transfer",
+      "sendSuccess": "Ticket generated! Share it with the receiver.",
+      "sendError": "Failed to generate ticket. Please try again.",
+      "dropFile": "Drop file here",
+      "orClick": "or click to browse",
+      "selectFile": "Select File",
+      "selectFolder": "Select Folder",
+      "folder": "folder",
+      "sending": "Generating...",
+      "sendToMyDevices": "Send to My Devices",
+      "sendToFriend": "Send to Friend",
+      "ticketReady": "Your ticket is ready",
+      "chooseFriend": "Choose a friend"
     },
     "receive": {
       "title": "Receive Files",
@@ -153,10 +167,13 @@
     },
     "history": {
       "title": "Transfer History",
+      "subtitle": "Tickets from files you've sent",
       "empty": "No transfers yet",
       "emptyDesc": "Your shared and received files will appear here",
       "sent": "Sent",
-      "received": "Received"
+      "received": "Received",
+      "clear": "Clear All",
+      "copyTicket": "Copy Ticket"
     },
     "settings": {
       "title": "Settings",
@@ -366,7 +383,21 @@
       "readyToShare": "可以分享了",
       "readyHint": "在接收方加入前请保持此页面开启，或复制票据并通过任意聊天工具发送。",
       "showQrCode": "显示二维码",
-      "hideQrCode": "收起二维码"
+      "hideQrCode": "收起二维码",
+      "keepPageOpen": "在接收方完成下载前请保持此页面开启，关闭页面将中断传输。",
+      "newTransfer": "新建传输",
+      "sendSuccess": "票据已生成！请将其分享给接收方。",
+      "sendError": "生成票据失败，请重试。",
+      "dropFile": "拖放文件到此处",
+      "orClick": "或点击浏览",
+      "selectFile": "选择文件",
+      "selectFolder": "选择文件夹",
+      "folder": "文件夹",
+      "sending": "生成中...",
+      "sendToMyDevices": "发送到我的设备",
+      "sendToFriend": "发送给好友",
+      "ticketReady": "票据已就绪",
+      "chooseFriend": "选择好友"
     },
     "receive": {
       "title": "接收文件",
@@ -403,10 +434,13 @@
     },
     "history": {
       "title": "传输历史",
+      "subtitle": "您已发送文件的票据",
       "empty": "暂无传输记录",
       "emptyDesc": "您共享和接收的文件将显示在这里",
       "sent": "已发送",
-      "received": "已接收"
+      "received": "已接收",
+      "clear": "清空全部",
+      "copyTicket": "复制票据"
     },
     "settings": {
       "title": "设置",

@@ -3,7 +3,7 @@
  * Provides authentication state and actions to the app
  */
 
-import { createContext, useContext, ParentComponent, createSignal, onMount } from "solid-js";
+import { createContext, useContext, ParentComponent, createSignal, createEffect } from "solid-js";
 import { useAuth as useClerkAuth, SignedIn, SignedOut, SignInButton, UserButton, ClerkLoading, ClerkLoaded } from "clerk-solidjs";
 
 export interface UserInfo {
@@ -33,38 +33,24 @@ export const AuthProvider: ParentComponent = (props) => {
   const [isLoaded, setIsLoaded] = createSignal(false);
   const [isSignedIn, setIsSignedIn] = createSignal(false);
 
-  // Use clerk-solidjs hook
+  // Use clerk-solidjs hook — these are already reactive signals
   const { userId, isLoaded: clerkIsLoaded, isSignedIn: clerkIsSignedIn } = useClerkAuth();
 
-  // Update state based on clerk auth state
-  onMount(() => {
-    // Watch for changes in auth state
-    const checkAuth = () => {
-      setIsLoaded(clerkIsLoaded());
-      const signedIn = clerkIsSignedIn();
-      setIsSignedIn(!!signedIn);
+  // Sync local signals with Clerk's reactive state — no polling needed
+  createEffect(() => {
+    setIsLoaded(clerkIsLoaded());
+    const signedIn = clerkIsSignedIn();
+    setIsSignedIn(!!signedIn);
 
-      if (signedIn && userId()) {
-        // Create user info from clerk - the actual user data needs to be fetched
-        // For now, we'll just use the userId
-        setUser({
-          id: userId() || "",
-          email: "",
-          name: "",
-        });
-      } else {
-        setUser(null);
-      }
-    };
-
-    // Initial check
-    checkAuth();
-
-    // Set up a periodic check for auth state changes
-    // This is a workaround since clerk-solidjs doesn't expose a direct listener
-    const interval = setInterval(checkAuth, 1000);
-
-    return () => clearInterval(interval);
+    if (signedIn && userId()) {
+      setUser({
+        id: userId() || "",
+        email: "",
+        name: "",
+      });
+    } else {
+      setUser(null);
+    }
   });
 
   /**

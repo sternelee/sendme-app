@@ -4,7 +4,7 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Env } from "~/lib/auth";
 import {
@@ -25,6 +25,10 @@ type WebSocketMessageTickets = { type: "tickets"; data: Ticket[] };
 type WebSocketMessageFriends = { type: "friends"; data: EnrichedFriend[] };
 type WebSocketMessageError = { type: "error"; data: string };
 type WebSocketMessagePong = { type: "pong" };
+type WebSocketMessageTransferReceived = {
+  type: "transfer_received";
+  data: { ticketId: string; filename: string | null; fileSize: number | null };
+};
 
 interface EnrichedFriend {
   id: string;
@@ -54,7 +58,8 @@ type WebSocketMessage =
   | WebSocketMessageTickets
   | WebSocketMessageFriends
   | WebSocketMessageError
-  | WebSocketMessagePong;
+  | WebSocketMessagePong
+  | WebSocketMessageTransferReceived;
 
 export class UserDO extends DurableObject<Env> {
   private sessions: Map<WebSocket, string>;
@@ -108,6 +113,20 @@ export class UserDO extends DurableObject<Env> {
     if (pathname.endsWith("/broadcast/presence") && request.method === "POST") {
       const { userId } = (await request.json()) as { userId: string };
       await this.broadcastPresence(userId);
+      return new Response("ok");
+    }
+
+    if (pathname.endsWith("/broadcast/transfer_received") && request.method === "POST") {
+      const payload = (await request.json()) as {
+        ticketId: string;
+        filename: string | null;
+        fileSize: number | null;
+      };
+      const message: WebSocketMessageTransferReceived = {
+        type: "transfer_received",
+        data: payload,
+      };
+      this.broadcastToAllSockets(message);
       return new Response("ok");
     }
 
@@ -345,6 +364,7 @@ export class UserDO extends DurableObject<Env> {
             and(
               eq(tickets.userId, userId),
               eq(tickets.status, "pending"),
+              gt(tickets.expiresAt, new Date()),
               or(
                 eq(tickets.toDeviceId, currentDevice.id),
                 and(isNull(tickets.toDeviceId), isNotNull(tickets.toUserId)),
@@ -359,6 +379,7 @@ export class UserDO extends DurableObject<Env> {
             and(
               eq(tickets.userId, userId),
               eq(tickets.status, "pending"),
+              gt(tickets.expiresAt, new Date()),
               isNull(tickets.toDeviceId),
               isNotNull(tickets.toUserId),
             ),
