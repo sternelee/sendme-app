@@ -7,7 +7,7 @@
  *   const { devices, tickets, isConnected, markTicketReceived } = useWebSocket();
  */
 
-import { createSignal, createEffect, onCleanup, batch } from "solid-js";
+import { createSignal, batch, createRoot } from "solid-js";
 import { useAuth } from "clerk-solidjs";
 import toast from "solid-toast";
 import type { Device, Ticket, Friend } from "~/lib/db/schema";
@@ -80,11 +80,14 @@ export function getDeviceId(): string {
 }
 
 let sharedInstance: ReturnType<typeof createWebSocketStore> | null = null;
+// Dispose function for the root scope that owns the singleton's effects
+let sharedRootDispose: (() => void) | null = null;
 
 /**
- * Internal store — created once, shared across all consumers
+ * Internal store — created once, shared across all consumers.
+ * @param getToken  stable async fn that returns the current Clerk JWT (or null)
  */
-function createWebSocketStore() {
+function createWebSocketStore(getToken: () => Promise<string | null>) {
   const [devices, setDevices] = createSignal<Device[]>([]);
   const [tickets, setTickets] = createSignal<Ticket[]>([]);
   const [friends, setFriends] = createSignal<EnrichedFriend[]>([]);
@@ -97,8 +100,6 @@ function createWebSocketStore() {
   let destroyed = false;
   let connecting = false;
 
-  const auth = useAuth();
-
   const connect = async () => {
     if (destroyed) return;
     // Guard against concurrent connect() calls (e.g. from multiple component effects)
@@ -106,7 +107,7 @@ function createWebSocketStore() {
     if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
     connecting = true;
 
-    const token = await auth.getToken();
+    const token = await getToken();
     if (!token) {
       // Not signed in yet — retry after a short delay
       connecting = false;
@@ -251,6 +252,10 @@ function createWebSocketStore() {
     ws?.close();
     ws = null;
     sharedInstance = null;
+    if (sharedRootDispose) {
+      sharedRootDispose();
+      sharedRootDispose = null;
+    }
   };
 
   /**
@@ -259,7 +264,7 @@ function createWebSocketStore() {
    */
   const markTicketReceived = async (ticketId: string): Promise<boolean> => {
     try {
-      const token = await auth.getToken();
+      const token = await getToken();
       const res = await fetch(`/api/tickets/${ticketId}/receive`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -288,23 +293,28 @@ function createWebSocketStore() {
 /**
  * useWebSocket — shared singleton hook.
  * Call this from any component; all calls share the same connection.
+ *
+ * The WebSocket is created ONCE via createRoot so its reactive effects
+ * are never cleaned up by individual component lifecycles.
  */
 export function useWebSocket() {
   if (!sharedInstance) {
-    sharedInstance = createWebSocketStore();
+    // useAuth() must be called in component context (needs ClerkProvider in tree).
+    // We capture getToken here and pass it into the permanent root scope.
+    const auth = useAuth();
+    const getToken = () => auth.getToken();
+
+    // createRoot creates a permanent reactive scope — its effects are never
+    // tied to any component and won't be cleaned up on component unmount.
+    createRoot((dispose) => {
+      sharedRootDispose = dispose;
+      sharedInstance = createWebSocketStore(getToken);
+      // Kick off the connection once. connect() manages its own retry loop.
+      sharedInstance.connect();
+    });
   }
 
-  const instance = sharedInstance;
-
-  // Start connection reactively when auth is ready
-  createEffect(() => {
-    instance.connect();
-  });
-
-  onCleanup(() => {
-    // Don't destroy the singleton on individual component unmount;
-    // destroy only when the whole app tears down.
-  });
+  const instance = sharedInstance!;
 
   return {
     devices: instance.devices,
