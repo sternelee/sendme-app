@@ -12,6 +12,10 @@ There are four distinct products in this repo:
 - `app/` + `app/src-tauri/` — Tauri desktop/mobile app with a SolidJS frontend
 - `browser/` + `browser-lib/` — browser app plus WASM bindings
 
+Additional crates:
+- `app/src-tauri/plugins/tauri-plugin-clerk/` — custom Tauri plugin for Clerk auth on mobile
+- `app/src-tauri/plugins/tauri-plugin-media-picker/` — custom Tauri plugin for iOS photo/video picking
+
 `browser-lib/` is intentionally a separate Cargo workspace from the root workspace because the native workspace dependencies are not WASM-compatible.
 
 Use `pnpm` for all JavaScript/TypeScript work.
@@ -47,6 +51,7 @@ pnpm run build        # frontend build only
 pnpm run tauri dev    # Tauri shell + frontend
 pnpm run tauri build
 pnpm run format
+pnpm run test         # vitest
 
 CLERK_PUBLISHABLE_KEY='pk_test_...' pnpm run tauri android build
 export CLERK_PUBLISHABLE_KEY='pk_test_...'
@@ -62,13 +67,17 @@ cd browser
 pnpm install
 pnpm run build:wasm         # rebuild browser-lib output into browser/src/wasm
 pnpm run build:wasm:release
-pnpm run dev
+pnpm run dev                # Vinxi dev server
+pnpm run dev:cf             # wrangler dev on built output
 pnpm run build
 pnpm run preview
-pnpm run deploy:cf
+pnpm run deploy             # npm run build && wrangler deploy
+pnpm run deploy:cf          # production deploy with minify
 pnpm run db:generate
 pnpm run db:migrate
 pnpm run db:migrate:prod
+pnpm run db:studio
+pnpm run test               # vitest
 ```
 
 `browser/package.json` requires Node `>=22`.
@@ -137,6 +146,12 @@ The browser-specific backend stack is Cloudflare-based:
 - `browser/src/routes/api/tickets/index.ts` persists tickets and broadcasts updates
 - `browser/src/routes/api/ws.ts` upgrades to a WebSocket and routes it into a user-scoped Durable Object
 - `browser/src/worker/durable-objects/user.ts` is the real-time hub for device presence, pending tickets, and friend updates
+
+Real-time state is managed on the client by `browser/src/lib/composables/useWebSocket.ts`, which maintains a singleton WebSocket connection with automatic reconnect, heartbeat, and device registration deduplication (via `deviceRegistration.ts`). The Clerk JWT is passed as a query parameter because browsers cannot set custom headers on WebSocket connections.
+
+`browser/app.config.ts` contains two custom Rollup plugins that are critical for Cloudflare deployment:
+- `cloudflareDoExportsPlugin` — injects the `UserDO` named export into the worker entry so Wrangler can bind it
+- `cloudflareWsBypassPlugin` — intercepts `/api/ws` upgrade requests before Nitro's h3 pipeline reconstructs the Response, preserving Cloudflare's special `webSocket` property required for Durable Object handshakes
 
 ### Browser WASM layer (`browser-lib/`)
 
@@ -281,7 +296,7 @@ xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Pr
 ### Platform-Specific File Picking
 
 - **Android**: Uses `tauri_plugin_android_fs` for file/directory picking
-- **iOS**: Uses `tauri_plugin_fs_ios` + Documents directory (no directory picking support)
+- **iOS**: Uses `tauri_plugin_fs_ios` for Documents access, and a custom `tauri-plugin-media-picker` (Swift + Rust) for photo/video selection via `PHPickerViewController`
 - **Desktop**: Uses `tauri_plugin_dialog`
 
 ## Environment Variables
