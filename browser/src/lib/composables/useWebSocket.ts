@@ -11,6 +11,7 @@ import { createSignal, batch, createRoot } from "solid-js";
 import { useAuth } from "clerk-solidjs";
 import toast from "solid-toast";
 import type { Device, Ticket, Friend } from "~/lib/db/schema";
+import { createDeviceRegistrationGuard } from "./deviceRegistration";
 
 export type { Device, Ticket, Friend };
 
@@ -92,6 +93,7 @@ function createWebSocketStore(getToken: () => Promise<string | null>) {
   const [tickets, setTickets] = createSignal<Ticket[]>([]);
   const [friends, setFriends] = createSignal<EnrichedFriend[]>([]);
   const [isConnected, setIsConnected] = createSignal(false);
+  const registrationGuard = createDeviceRegistrationGuard(fetch);
 
   let ws: WebSocket | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -118,18 +120,10 @@ function createWebSocketStore(getToken: () => Promise<string | null>) {
     const deviceId = getDeviceId();
 
     try {
-      const registerResponse = await fetch("/api/devices", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ deviceId }),
-      });
-
-      if (!registerResponse.ok) {
-        throw new Error("Failed to register current device");
-      }
+      // Device registration is required before the first WS handshake, but
+      // repeating it on every reconnect floods /api/devices when the socket
+      // is unstable.
+      await registrationGuard.ensureRegistered({ token, deviceId });
     } catch (error) {
       console.error("[useWebSocket] Device registration failed:", error);
       connecting = false;

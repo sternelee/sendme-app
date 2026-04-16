@@ -4,7 +4,7 @@
  * Allows sending tickets to other devices
  */
 
-import { createSignal, createEffect, For, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { Motion, Presence } from "solid-motionone";
 import {
   TbOutlineDeviceDesktop,
@@ -66,23 +66,6 @@ export default function DeviceListModal(props: DeviceListModalProps) {
   const [error, setError] = createSignal<string | null>(null);
   const currentPersistentDeviceId = getDeviceId();
 
-  createEffect(() => {
-    if (props.isOpen) {
-      getToken().then((token) => {
-        return fetch("/api/devices", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ deviceId: currentPersistentDeviceId }),
-        });
-      }).catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Failed to register device");
-      });
-    }
-  });
-
   const devices = wsDevices;
   const isLoading = () => !isConnected();
 
@@ -97,6 +80,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
         throw new Error("Failed to delete device");
       }
     } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete device");
       console.error("Failed to delete device:", err);
     }
   };
