@@ -161,6 +161,8 @@ pub struct SendArgs {
     pub ticket_type: AddrInfoOptions,
     /// Common configuration.
     pub common: CommonConfig,
+    /// How to import files into the blob store.
+    pub import_mode: iroh_blobs::api::blobs::ImportMode,
 }
 
 /// Arguments for receiving data.

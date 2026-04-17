@@ -6,7 +6,7 @@
 
 @file:Suppress("unused", "SetJavaScriptEnabled")
 
-package com.sendme.dev
+package io.sendme.app
 
 import android.annotation.SuppressLint
 import android.webkit.*

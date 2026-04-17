@@ -4,9 +4,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-package com.sendme.dev
+package io.sendme.app
 
-import com.sendme.dev.RustWebView
+import io.sendme.app.RustWebView
 import android.annotation.SuppressLint
 import android.os.Build
 import android.os.Bundle

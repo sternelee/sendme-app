@@ -1,4 +1,4 @@
-package com.sendme.dev
+package io.sendme.app
 
 import android.content.Context
 import android.net.Uri

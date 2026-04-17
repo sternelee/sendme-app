@@ -56,236 +56,242 @@ async fn receive_internal(
 
     let endpoint = builder.bind().await?;
 
-    // Determine the base directory for temp files
-    // Use temp_dir from args if provided (required for Android/macOS sandbox),
-    // otherwise fall back to current directory
-    let base_dir = args
-        .common
-        .temp_dir
-        .as_ref()
-        .cloned()
-        .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
+    let result = async {
+        // Determine the base directory for temp files
+        // Use temp_dir from args if provided (required for Android/macOS sandbox),
+        // otherwise fall back to current directory
+        let base_dir = args
+            .common
+            .temp_dir
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
-    tracing::info!("📁 Using base directory for temp storage: {:?}", base_dir);
+        tracing::info!("📁 Using base directory for temp storage: {:?}", base_dir);
 
-    let dir_name = format!(".sendme-recv-{}", ticket.hash().to_hex());
-    let iroh_data_dir = base_dir.join(&dir_name);
+        let dir_name = format!(".sendme-recv-{}", ticket.hash().to_hex());
+        let iroh_data_dir = base_dir.join(&dir_name);
 
-    tracing::info!("📂 Creating/loading FsStore at: {:?}", iroh_data_dir);
+        tracing::info!("📂 Creating/loading FsStore at: {:?}", iroh_data_dir);
 
-    // Verify parent directory exists and is writable
-    if !base_dir.exists() {
-        tracing::error!("❌ Base directory does not exist: {:?}", base_dir);
-        anyhow::bail!("Base directory does not exist: {:?}", base_dir);
-    }
-
-    // Test write permissions by creating the temp directory
-    std::fs::create_dir_all(&iroh_data_dir).map_err(|e| {
-        tracing::error!(
-            "❌ Failed to create temp directory {:?}: {}",
-            iroh_data_dir,
-            e
-        );
-        anyhow::anyhow!(
-            "Failed to create temp directory {:?}: {}. Check write permissions.",
-            iroh_data_dir,
-            e
-        )
-    })?;
-
-    tracing::info!("✅ Temp directory created/verified");
-
-    let db = FsStore::load(&iroh_data_dir).await.map_err(|e| {
-        tracing::error!("❌ Failed to load FsStore: {}", e);
-        anyhow::anyhow!("Failed to load FsStore: {}", e)
-    })?;
-
-    tracing::info!("✅ FsStore loaded successfully");
-
-    let hash_and_format = ticket.hash_and_format();
-    let local = db.remote().local(hash_and_format).await?;
-
-    let (stats, total_files, payload_size, metadata_collection) = if !local.is_complete() {
-        if let Some(ref tx) = progress_tx {
-            let _ = tx
-                .send(ProgressEvent::Download(DownloadProgress::Connecting))
-                .await;
+        // Verify parent directory exists and is writable
+        if !base_dir.exists() {
+            tracing::error!("❌ Base directory does not exist: {:?}", base_dir);
+            anyhow::bail!("Base directory does not exist: {:?}", base_dir);
         }
 
-        let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
+        // Test write permissions by creating the temp directory
+        std::fs::create_dir_all(&iroh_data_dir).map_err(|e| {
+            tracing::error!(
+                "❌ Failed to create temp directory {:?}: {}",
+                iroh_data_dir,
+                e
+            );
+            anyhow::anyhow!(
+                "Failed to create temp directory {:?}: {}. Check write permissions.",
+                iroh_data_dir,
+                e
+            )
+        })?;
 
-        if let Some(ref tx) = progress_tx {
-            let _ = tx
-                .send(ProgressEvent::Download(DownloadProgress::GettingSizes))
-                .await;
-        }
+        tracing::info!("✅ Temp directory created/verified");
 
-        let (hash_seq, sizes) =
-            get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
-                .await
-                .map_err(|e| show_get_error(e))?;
+        let db = FsStore::load(&iroh_data_dir).await.map_err(|e| {
+            tracing::error!("❌ Failed to load FsStore: {}", e);
+            anyhow::anyhow!("Failed to load FsStore: {}", e)
+        })?;
 
-        let total_size = sizes.iter().copied().sum::<u64>();
-        let payload_size = sizes.iter().skip(2).copied().sum::<u64>();
-        let total_files = (sizes.len().saturating_sub(1)) as u64;
+        tracing::info!("✅ FsStore loaded successfully");
 
-        if let Some(ref tx) = progress_tx {
-            let _ = tx
-                .send(ProgressEvent::Download(DownloadProgress::Downloading {
-                    offset: 0,
-                    total: total_size,
-                }))
-                .await;
-        }
+        let hash_and_format = ticket.hash_and_format();
+        let local = db.remote().local(hash_and_format).await?;
 
-        let local_size = local.local_bytes();
-        let get = db.remote().execute_get(connection, local.missing());
-        let mut stream = get.stream();
-        let mut stats = Stats::default();
-        let mut metadata_sent = false;
-        let mut metadata_collection: Option<Collection> = None;
-        let mut progress_count = 0u32;
+        let (stats, total_files, payload_size, metadata_collection) = if !local.is_complete() {
+            if let Some(ref tx) = progress_tx {
+                let _ = tx
+                    .send(ProgressEvent::Download(DownloadProgress::Connecting))
+                    .await;
+            }
 
-        while let Some(item) = stream.next().await {
-            match item {
-                iroh_blobs::api::remote::GetProgressItem::Progress(offset) => {
-                    // Try to load collection metadata as soon as it's available
-                    // Try on first event and then every 10th event thereafter (events 1, 11, 21...) to avoid excessive load attempts
-                    if !metadata_sent {
-                        progress_count += 1;
-                        if (progress_count - 1) % 10 == 0 {
-                            if let Ok(collection) =
-                                Collection::load(hash_and_format.hash, db.as_ref()).await
-                            {
-                                // Calculate actual payload size from collection files
-                                let mut actual_payload_size = 0u64;
-                                for (name, file_hash) in collection.iter() {
-                                    // Find the size for this file hash in the hash_seq
-                                    if let Some(idx) = hash_seq.iter().position(|h| h == *file_hash)
-                                    {
-                                        if idx < sizes.len() {
-                                            actual_payload_size += sizes[idx];
-                                            tracing::debug!(
-                                                "File {}: hash at index {}, size {}",
-                                                name,
-                                                idx,
-                                                sizes[idx]
-                                            );
+            let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
+
+            if let Some(ref tx) = progress_tx {
+                let _ = tx
+                    .send(ProgressEvent::Download(DownloadProgress::GettingSizes))
+                    .await;
+            }
+
+            let (hash_seq, sizes) =
+                get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
+                    .await
+                    .map_err(|e| show_get_error(e))?;
+
+            let total_size = sizes.iter().copied().sum::<u64>();
+            let payload_size = sizes.iter().skip(2).copied().sum::<u64>();
+            let total_files = (sizes.len().saturating_sub(1)) as u64;
+
+            if let Some(ref tx) = progress_tx {
+                let _ = tx
+                    .send(ProgressEvent::Download(DownloadProgress::Downloading {
+                        offset: 0,
+                        total: total_size,
+                    }))
+                    .await;
+            }
+
+            let local_size = local.local_bytes();
+            let get = db.remote().execute_get(connection, local.missing());
+            let mut stream = get.stream();
+            let mut stats = Stats::default();
+            let mut metadata_sent = false;
+            let mut metadata_collection: Option<Collection> = None;
+            let mut progress_count = 0u32;
+
+            while let Some(item) = stream.next().await {
+                match item {
+                    iroh_blobs::api::remote::GetProgressItem::Progress(offset) => {
+                        // Try to load collection metadata as soon as it's available
+                        // Try on first event and then every 10th event thereafter (events 1, 11, 21...) to avoid excessive load attempts
+                        if !metadata_sent {
+                            progress_count += 1;
+                            if (progress_count - 1) % 10 == 0 {
+                                if let Ok(collection) =
+                                    Collection::load(hash_and_format.hash, db.as_ref()).await
+                                {
+                                    // Calculate actual payload size from collection files
+                                    let mut actual_payload_size = 0u64;
+                                    for (name, file_hash) in collection.iter() {
+                                        // Find the size for this file hash in the hash_seq
+                                        if let Some(idx) = hash_seq.iter().position(|h| h == *file_hash)
+                                        {
+                                            if idx < sizes.len() {
+                                                actual_payload_size += sizes[idx];
+                                                tracing::debug!(
+                                                    "File {}: hash at index {}, size {}",
+                                                    name,
+                                                    idx,
+                                                    sizes[idx]
+                                                );
+                                            }
+                                        } else {
+                                            tracing::warn!("File {} hash not found in hash_seq", name);
                                         }
-                                    } else {
-                                        tracing::warn!("File {} hash not found in hash_seq", name);
                                     }
+
+                                    tracing::info!(
+                                        "Metadata: {} files, total size: {}",
+                                        collection.iter().count(),
+                                        actual_payload_size
+                                    );
+
+                                    let names: Vec<String> = collection
+                                        .iter()
+                                        .map(|(name, _hash)| name.to_string())
+                                        .collect();
+
+                                    if let Some(ref tx) = progress_tx {
+                                        let _ = tx
+                                            .send(ProgressEvent::Download(DownloadProgress::Metadata {
+                                                total_size: actual_payload_size,
+                                                file_count: total_files,
+                                                names,
+                                            }))
+                                            .await;
+                                    }
+                                    metadata_sent = true;
+                                    metadata_collection = Some(collection);
                                 }
-
-                                tracing::info!(
-                                    "Metadata: {} files, total size: {}",
-                                    collection.iter().count(),
-                                    actual_payload_size
-                                );
-
-                                let names: Vec<String> = collection
-                                    .iter()
-                                    .map(|(name, _hash)| name.to_string())
-                                    .collect();
-
-                                if let Some(ref tx) = progress_tx {
-                                    let _ = tx
-                                        .send(ProgressEvent::Download(DownloadProgress::Metadata {
-                                            total_size: actual_payload_size,
-                                            file_count: total_files,
-                                            names,
-                                        }))
-                                        .await;
-                                }
-                                metadata_sent = true;
-                                metadata_collection = Some(collection);
                             }
                         }
-                    }
 
-                    if let Some(ref tx) = progress_tx {
-                        let _ = tx
-                            .send(ProgressEvent::Download(DownloadProgress::Downloading {
-                                offset: local_size + offset,
-                                total: total_size,
-                            }))
-                            .await;
+                        if let Some(ref tx) = progress_tx {
+                            let _ = tx
+                                .send(ProgressEvent::Download(DownloadProgress::Downloading {
+                                    offset: local_size + offset,
+                                    total: total_size,
+                                }))
+                                .await;
+                        }
                     }
-                }
-                iroh_blobs::api::remote::GetProgressItem::Done(value) => {
-                    stats = value;
-                    break;
-                }
-                iroh_blobs::api::remote::GetProgressItem::Error(cause) => {
-                    anyhow::bail!(show_get_error(cause));
+                    iroh_blobs::api::remote::GetProgressItem::Done(value) => {
+                        stats = value;
+                        break;
+                    }
+                    iroh_blobs::api::remote::GetProgressItem::Error(cause) => {
+                        anyhow::bail!(show_get_error(cause));
+                    }
                 }
             }
-        }
 
-        (stats, total_files, payload_size, metadata_collection)
-    } else {
-        // Collection already cached locally
-        let total_files = local.children().unwrap() - 1;
-        // Use local_bytes as an approximation for total size (includes some metadata overhead)
-        let payload_bytes = local.local_bytes();
+            (stats, total_files, payload_size, metadata_collection)
+        } else {
+            // Collection already cached locally
+            let total_files = local.children().unwrap() - 1;
+            // Use local_bytes as an approximation for total size (includes some metadata overhead)
+            let payload_bytes = local.local_bytes();
 
-        // Load collection and emit metadata event
-        let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
-        let names: Vec<String> = collection
-            .iter()
-            .map(|(name, _hash)| name.to_string())
-            .collect();
+            // Load collection and emit metadata event
+            let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
+            let names: Vec<String> = collection
+                .iter()
+                .map(|(name, _hash)| name.to_string())
+                .collect();
+
+            if let Some(ref tx) = progress_tx {
+                let _ = tx
+                    .send(ProgressEvent::Download(DownloadProgress::Metadata {
+                        total_size: payload_bytes,
+                        file_count: total_files,
+                        names,
+                    }))
+                    .await;
+            }
+
+            (
+                Stats::default(),
+                total_files,
+                payload_bytes,
+                Some(collection),
+            )
+        };
+
+        // Use cached collection if available, otherwise load it
+        let collection = match metadata_collection {
+            Some(col) => col,
+            None => Collection::load(hash_and_format.hash, db.as_ref()).await?,
+        };
+
+        tracing::info!("📤 Starting export to base_dir: {:?}", base_dir);
+        // Use export_dir from args if provided, otherwise export to base_dir
+        let export_dir = args.export_dir.as_ref().unwrap_or(&base_dir);
+        export::export(
+            &db,
+            collection.clone(),
+            progress_tx.clone(),
+            Some(export_dir),
+        )
+        .await?;
 
         if let Some(ref tx) = progress_tx {
             let _ = tx
-                .send(ProgressEvent::Download(DownloadProgress::Metadata {
-                    total_size: payload_bytes,
-                    file_count: total_files,
-                    names,
-                }))
+                .send(ProgressEvent::Download(DownloadProgress::Completed))
                 .await;
         }
 
-        (
-            Stats::default(),
+        // Clean up temp directory
+        tokio::fs::remove_dir_all(iroh_data_dir).await?;
+
+        Ok(ReceiveResult {
+            collection,
             total_files,
-            payload_bytes,
-            Some(collection),
-        )
-    };
+            payload_size,
+            stats,
+        })
+    }.await;
 
-    // Use cached collection if available, otherwise load it
-    let collection = match metadata_collection {
-        Some(col) => col,
-        None => Collection::load(hash_and_format.hash, db.as_ref()).await?,
-    };
+    endpoint.close().await;
 
-    tracing::info!("📤 Starting export to base_dir: {:?}", base_dir);
-    // Use export_dir from args if provided, otherwise export to base_dir
-    let export_dir = args.export_dir.as_ref().unwrap_or(&base_dir);
-    export::export(
-        &db,
-        collection.clone(),
-        progress_tx.clone(),
-        Some(export_dir),
-    )
-    .await?;
-
-    if let Some(ref tx) = progress_tx {
-        let _ = tx
-            .send(ProgressEvent::Download(DownloadProgress::Completed))
-            .await;
-    }
-
-    // Clean up temp directory
-    tokio::fs::remove_dir_all(iroh_data_dir).await?;
-
-    Ok(ReceiveResult {
-        collection,
-        total_files,
-        payload_size,
-        stats,
-    })
+    result
 }
 
 /// Show get error with context.

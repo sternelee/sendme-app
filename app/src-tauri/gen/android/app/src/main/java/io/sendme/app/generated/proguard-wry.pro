@@ -4,25 +4,25 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-License-Identifier: MIT
 
--keep class com.sendme.dev.* {
+-keep class io.sendme.app.* {
   native <methods>;
 }
 
--keep class com.sendme.dev.WryActivity {
+-keep class io.sendme.app.WryActivity {
   public <init>(...);
 
-  void setWebView(com.sendme.dev.RustWebView);
+  void setWebView(io.sendme.app.RustWebView);
   java.lang.Class getAppClass(...);
   java.lang.String getVersion();
 }
 
--keep class com.sendme.dev.Ipc {
+-keep class io.sendme.app.Ipc {
   public <init>(...);
 
   @android.webkit.JavascriptInterface public <methods>;
 }
 
--keep class com.sendme.dev.RustWebView {
+-keep class io.sendme.app.RustWebView {
   public <init>(...);
 
   void loadUrlMainThread(...);
@@ -30,6 +30,6 @@
   void evalScript(...);
 }
 
--keep class com.sendme.dev.RustWebChromeClient,com.sendme.dev.RustWebViewClient {
+-keep class io.sendme.app.RustWebChromeClient,io.sendme.app.RustWebViewClient {
   public <init>(...);
 }

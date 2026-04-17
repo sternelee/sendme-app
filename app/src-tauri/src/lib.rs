@@ -63,11 +63,11 @@ fn ios_documents_dir(app: &AppHandle) -> Result<String, String> {
 #[cfg(target_os = "android")]
 mod android;
 
-// macOS menubar module
-#[cfg(target_os = "macos")]
+// Desktop menubar / system tray module
+#[cfg(desktop)]
 mod menubar;
 
-#[cfg(target_os = "macos")]
+#[cfg(desktop)]
 mod menubar_cmd;
 
 // Import tracing for non-Android platforms
@@ -778,6 +778,7 @@ async fn send_to_device(
             temp_dir: Some(temp_dir),
             ..Default::default()
         },
+        import_mode: sendme_lib::ImportMode::Copy,
     };
 
     let (tx, rx) = tokio::sync::mpsc::channel(32);
@@ -1938,6 +1939,19 @@ pub fn run() {
         builder = builder.plugin(tauri_nspanel::init());
     }
 
+    #[cfg(desktop)]
+    let builder = builder.on_window_event(|window, event| {
+        if window.label() == "main" {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                #[cfg(target_os = "macos")]
+                let _ = window.app_handle().hide();
+                #[cfg(not(target_os = "macos"))]
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        }
+    });
+
     builder
         .on_page_load(|window, _payload| {
             if window.label() != "main" {
@@ -1975,8 +1989,8 @@ pub fn run() {
                 }
             }
 
-            // Create system tray icon on macOS
-            #[cfg(target_os = "macos")]
+            // Create system tray icon on desktop
+            #[cfg(desktop)]
             {
                 if let Err(e) = menubar::create_tray(app.handle()) {
                     tracing::error!("Failed to create tray icon: {}", e);
@@ -2125,6 +2139,7 @@ async fn send_file(
             temp_dir: Some(temp_dir),
             ..Default::default()
         },
+        import_mode: sendme_lib::ImportMode::TryReference,
     };
     log_info!("⚙️  SendArgs created successfully");
 
@@ -3646,6 +3661,7 @@ async fn send_text(app: AppHandle, request: SendTextRequest) -> Result<String, S
             temp_dir: Some(temp_dir.clone()),
             ..Default::default()
         },
+        import_mode: sendme_lib::ImportMode::Copy,
     };
 
     log_info!("Calling sendme_lib::send_with_progress...");

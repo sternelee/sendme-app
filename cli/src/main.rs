@@ -15,7 +15,7 @@ use indicatif::HumanBytes;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use sendme_lib::{
     types::{CommonConfig, Format, RelayModeOption},
-    BlobTicket, ReceiveArgs, SendArgs,
+    BlobTicket, ImportMode, ReceiveArgs, SendArgs,
 };
 use tokio::sync::mpsc;
 
@@ -152,6 +152,7 @@ async fn do_send(args: &SendArgs2) -> Result<()> {
         path: args.path.clone(),
         ticket_type: args.ticket_type,
         common: common_args_to_config(&args.common),
+        import_mode: ImportMode::TryReference,
     };
 
     let result = sendme_lib::send_with_progress(send_args, mpsc::channel(32).0).await?;
@@ -440,6 +441,7 @@ async fn handle_send_request(request: SendRequest, event_handler: EventHandler) 
         path,
         ticket_type: AddrInfoOptions::RelayAndAddresses,
         common: CommonConfig::default(),
+        import_mode: ImportMode::TryReference,
     };
 
     let (progress_tx, mut progress_rx) = mpsc::channel(32);

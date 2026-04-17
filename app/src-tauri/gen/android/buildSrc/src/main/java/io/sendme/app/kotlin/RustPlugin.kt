@@ -1,4 +1,4 @@
-package com.sendme.dev.kotlin
+package io.sendme.app.kotlin
 
 import com.android.build.api.dsl.ApplicationExtension
 import org.gradle.api.DefaultTask

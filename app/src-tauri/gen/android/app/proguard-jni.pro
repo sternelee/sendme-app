@@ -3,7 +3,7 @@
 # so ProGuard can't detect them and would strip them by default.
 
 # Keep FileUtils class - called from Rust via JNI for Android SAF operations
--keep class com.sendme.dev.FileUtils {
+-keep class io.sendme.app.FileUtils {
     public static boolean writeFileToContentUri(android.content.Context, java.lang.String, java.lang.String, byte[]);
 }
 
