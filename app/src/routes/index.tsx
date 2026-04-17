@@ -1157,12 +1157,6 @@ export default function MainPage() {
                   </div>
                   <div class="flex gap-2">
                     <button
-                      onClick={() => setActiveTab("transfer")}
-                      class="btn btn-ghost btn-sm rounded-xl"
-                    >
-                      {t("common.transfer")}
-                    </button>
-                    <button
                       onClick={handleClearTransfers}
                       class="btn btn-ghost btn-sm text-error rounded-xl"
                     >
