@@ -34,31 +34,15 @@ const shouldRunTauriFetch = (input: FetchArgs[0], init: FetchArgs[1]) => {
 
   if (initHeaders) {
     if (initHeaders instanceof Headers) {
-      // Don't route Clerk requests through Tauri HTTP plugin — on Android,
-      // the native HTTP layer auto-adds Origin, which conflicts with
-      // Authorization (Clerk's origin_authorization_headers_conflict check).
-      // Browser fetch + _is_native=1 handles this correctly.
-      if (initHeaders.has("x-no-origin")) {
-        return false;
-      }
       return initHeaders.has("x-tauri-fetch");
     } else if (Array.isArray(initHeaders)) {
-      if (initHeaders.some((h) => h[0] === "x-no-origin")) {
-        return false;
-      }
       return initHeaders.some((h) => h[0] === "x-tauri-fetch");
     } else {
-      if (initHeaders["x-no-origin"]) {
-        return false;
-      }
       return !!initHeaders["x-tauri-fetch"];
     }
   }
 
   if (input instanceof Request) {
-    if (input.headers.has("x-no-origin")) {
-      return false;
-    }
     return input.headers.has("x-tauri-fetch");
   }
   return false;
@@ -163,11 +147,19 @@ const patchFetch = async (
 
 let __internalIsPatched = false;
 
+// Only proxy on mobile platforms where tauriFetch's native HTTP layer
+// auto-adds Origin and triggers Clerk's origin_authorization_headers_conflict.
+// On desktop, tauriFetch falls through to runRealFetch which can inject
+// Origin: "" correctly.
+const isMobile = /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent);
+
 // Check if a request targets Clerk's API and should be proxied through Rust
 const shouldProxyClerkRequest = (
   input: FetchArgs[0],
   init: FetchArgs[1],
 ): boolean => {
+  if (!isMobile) return false;
+
   const initHeaders = init?.headers;
   const hasNoOrigin =
     initHeaders instanceof Headers
@@ -234,10 +226,26 @@ const proxyClerkRequest = async (
       responseHeaders.append(k, v);
     }
 
-    return new Response(JSON.stringify(result.body), {
+    let responseBody: string;
+    if (result.body === null || result.body === undefined) {
+      responseBody = "";
+    } else if (typeof result.body === "string") {
+      responseBody = result.body;
+    } else {
+      responseBody = JSON.stringify(result.body);
+    }
+
+    const response = new Response(responseBody, {
       status: result.status,
       headers: responseHeaders,
     });
+    // Preserve the response URL so Clerk JS can inspect it.
+    Object.defineProperty(response, "url", {
+      value: url.toString(),
+      writable: false,
+      configurable: true,
+    });
+    return response;
   } catch (e) {
     // Fall back to normal fetch if proxy fails
     console.error("[clerk] Proxy failed, falling back to direct fetch:", e);

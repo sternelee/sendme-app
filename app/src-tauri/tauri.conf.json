@@ -43,6 +43,10 @@
     ]
   },
   "plugins": {
+    "deep-link": {
+      "mobile": [{ "scheme": ["sendme"] }],
+      "desktop": { "schemes": ["sendme"] }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVDMTIwRkNFRjY2QTY4NUQKUldSZGFHcjJ6ZzhTWEpMemlZUHRxRlpPTGovSXZ4MHZUdmRicFgwdWYxY0JLR0dlZ2FKaGV3MEUK",
       "endpoints": ["https://cdn.crabnebula.cloud/update/cloudplay/sendme"]

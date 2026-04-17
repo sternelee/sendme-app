@@ -11,6 +11,8 @@
     "http:default",
     "http:allow-fetch",
     "clerk:default",
+    "opener:allow-open-url",
+    "deep-link:default",
     {
       "identifier": "http:default",
       "allow": [

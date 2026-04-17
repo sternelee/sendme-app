@@ -56,6 +56,18 @@ impl ClerkFapiClient {
         self.config.into_api_configuration(self.client.clone())
     }
 
+    pub fn request<U: reqwest::IntoUrl>(
+        &self,
+        method: reqwest::Method,
+        url: U,
+    ) -> reqwest::RequestBuilder {
+        self.client.request(method, url)
+    }
+
+    pub async fn execute(&self, request: Request) -> Result<Response, reqwest::Error> {
+        self.client.execute(request).await
+    }
+
     pub fn set_dev_browser_token_id(&self, token_id: String) {
         self.client.set_dev_browser_token_id(token_id);
     }

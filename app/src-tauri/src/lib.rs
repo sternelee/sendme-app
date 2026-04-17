@@ -7,8 +7,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 #[cfg(desktop)]
 use tauri::WebviewWindowBuilder;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, Url};
+use tauri_plugin_clerk::ClerkExt;
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_fs::FsExt;
+use tauri_plugin_opener::OpenerExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
@@ -1788,6 +1791,81 @@ fn enable_ios_web_inspector(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Handle deep link callbacks for Clerk browser-based auth.
+/// Skips handshake_client because it can return a 302 redirect that reqwest
+/// follows into a system-browser OAuth page, causing a 30-second timeout.
+async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
+    log_info!("Received Clerk auth deep link: {}", url_str);
+
+    let parsed = match Url::parse(&url_str) {
+        Ok(u) => u,
+        Err(e) => {
+            log_error!("Failed to parse deep link URL: {}", e);
+            return;
+        }
+    };
+
+    let mut db_jwt: Option<String> = None;
+    for (k, v) in parsed.query_pairs() {
+        if k == "__clerk_db_jwt" {
+            db_jwt = Some(v.into_owned());
+            break;
+        }
+    }
+
+    let clerk = app.clerk();
+    let fapi_client = clerk.get_fapi_client();
+
+    if let Some(token) = db_jwt {
+        log_info!("Setting Clerk dev browser token from deep link");
+        fapi_client.set_dev_browser_token_id(token);
+    }
+
+    let success = match tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        fapi_client.get_client(),
+    )
+    .await
+    {
+        Ok(Ok(Some(client))) => {
+            log_info!(
+                "Clerk client refreshed, sessions={}, last_active_session_id={:?}",
+                client.sessions.len(),
+                client.last_active_session_id
+            );
+            let _ = clerk.set_client(client);
+            true
+        }
+        Ok(Ok(None)) => {
+            log_warn!("Clerk client refreshed but no session found");
+            false
+        }
+        Ok(Err(e)) => {
+            log_error!("Failed to reload Clerk client after deep link: {}", e);
+            false
+        }
+        Err(_) => {
+            log_error!("Clerk get_client timed out after 5 seconds");
+            false
+        }
+    };
+
+    if let Err(e) = app.emit(
+        "clerk-auth-callback-complete",
+        serde_json::json!({ "success": success }),
+    ) {
+        log_error!("Failed to emit clerk-auth-callback-complete event: {}", e);
+    }
+}
+
+#[tauri::command]
+async fn open_system_browser(app: AppHandle, url: String) -> Result<(), String> {
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|e| format!("Failed to open system browser: {}", e))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging for Android
@@ -1817,6 +1895,7 @@ pub fn run() {
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
@@ -1904,6 +1983,34 @@ pub fn run() {
                 }
             }
 
+            // Deep link handler for Clerk browser auth callbacks
+            {
+                let app_handle = app.handle().clone();
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    for url in urls {
+                        if url.as_str().starts_with("sendme://auth/callback") {
+                            let app_clone = app_handle.clone();
+                            let url_str = url.to_string();
+                            tauri::async_runtime::spawn(async move {
+                                handle_clerk_auth_callback(app_clone, url_str).await;
+                            });
+                        }
+                    }
+                }
+
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        if url.as_str().starts_with("sendme://auth/callback") {
+                            let app_clone = app_handle.clone();
+                            let url_str = url.to_string();
+                            tauri::async_runtime::spawn(async move {
+                                handle_clerk_auth_callback(app_clone, url_str).await;
+                            });
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1932,6 +2039,7 @@ pub fn run() {
             accept_incoming,
             decline_incoming,
             app_ready,
+            open_system_browser,
             // Menubar commands
             #[cfg(target_os = "macos")]
             menubar_cmd::init_menubar,

@@ -190,13 +190,21 @@ impl ClerkPluginBuilder {
                     store = Some(Arc::new(ClerkTauriStore::new(clerk_store)));
                 }
 
+                // Desktop Tauri apps run in a WebView which is effectively a browser
+                // environment. Using Browser kind avoids Clerk filtering sessions that
+                // were established in the system browser during OAuth flows.
+                #[cfg(desktop)]
+                let client_kind = ClientKind::Browser;
+                #[cfg(not(desktop))]
+                let client_kind = ClientKind::NonBrowser;
+
                 let config = ClerkFapiConfiguration::new_with_store(
                     publishable_key.clone(),
                     self.proxy,
                     self.domain,
                     store,
                     None,
-                    ClientKind::NonBrowser,
+                    client_kind,
                 )?;
 
                 let clerk = Clerk::new(config);

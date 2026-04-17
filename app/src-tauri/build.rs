@@ -4,6 +4,13 @@ fn main() {
     println!("cargo:rerun-if-changed=tauri.conf.json");
     println!("cargo:rerun-if-changed=tauri.ios.conf.json");
 
+    // Propagate CLERK_PUBLISHABLE_KEY from build environment into the compiled binary.
+    // This allows CI and local builds to set the key without modifying source code.
+    if let Ok(key) = std::env::var("CLERK_PUBLISHABLE_KEY") {
+        println!("cargo:rustc-env=CLERK_PUBLISHABLE_KEY={}", key);
+    }
+    println!("cargo:rerun-if-env-changed=CLERK_PUBLISHABLE_KEY");
+
     tauri_build::build();
 
     // On Android, copy our custom Kotlin files and ProGuard rules to the generated project

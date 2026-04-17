@@ -20,9 +20,8 @@
         "width": 400,
         "height": 560,
         "resizable": false,
-        "alwaysOnTop": true,
+        "alwaysOnTop": false,
         "fullscreen": false,
-        "decorations": false,
         "visible": true,
         "backgroundColor": "#12151D"
       }

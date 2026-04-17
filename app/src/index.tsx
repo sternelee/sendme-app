@@ -1,14 +1,10 @@
 import { render } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
+import VConsole from "vconsole";
 import App from "./app";
 import "./styles.css";
 
-// Mobile debugging with vconsole (detect via userAgent)
-if (/android|ios/i.test(navigator.userAgent)) {
-  import("vconsole").then(({ default: VConsole }) => {
-    new VConsole();
-  });
-}
+new VConsole();
 
 const appRoot = document.getElementById("app");
 if (!(appRoot instanceof HTMLElement)) {

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-const DEFAULT_BROWSER_API_ORIGIN = "https://sendme-browser.sternelee.workers.dev";
+const DEFAULT_BROWSER_API_ORIGIN = "https://sendme.leeapp.dev";
 const DEVICE_ID_STORAGE_KEY = "sendme_device_id";
 
 function trimTrailingSlash(value: string): string {

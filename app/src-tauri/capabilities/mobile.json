@@ -6,6 +6,8 @@
     "core:default",
     "barcode-scanner:allow-scan",
     "barcode-scanner:allow-cancel",
-    "barcode-scanner:default"
+    "barcode-scanner:default",
+    "opener:allow-open-url",
+    "deep-link:default"
   ]
 }

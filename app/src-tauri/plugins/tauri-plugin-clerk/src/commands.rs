@@ -1,6 +1,5 @@
 use crate::ClerkExt;
 use clerk_fapi_rs::models::{ClientClient, ClientEnvironment};
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Runtime};
@@ -74,37 +73,47 @@ pub(crate) async fn clerk_proxy<R: Runtime>(
     body: Option<Value>,
     headers: Option<Vec<(String, String)>>,
 ) -> Result<ClerkProxyResponse, String> {
-    let client = reqwest::Client::new();
-
     let method = method.to_uppercase();
-    let mut req_builder = match method.as_str() {
-        "GET" => client.get(&url),
-        "POST" => client.post(&url),
-        "PUT" => client.put(&url),
-        "PATCH" => client.patch(&url),
-        "DELETE" => client.delete(&url),
+    let req_method = match method.as_str() {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "PATCH" => reqwest::Method::PATCH,
+        "DELETE" => reqwest::Method::DELETE,
         _ => return Err(format!("Unsupported method: {method}")),
     };
+
+    // Use the ClerkFapiClient's request builder so that ClerkHttpClient can
+    // inject dev-browser tokens, Authorization, and _is_native params.
+    let clerk = app.clerk().clone();
+    let fapi_client = clerk.get_fapi_client();
+    let mut req_builder = fapi_client.request(req_method, &url);
 
     // Forward safe headers from JS (skip browser/native-specific ones)
     if let Some(hdrs) = headers {
         for (k, v) in hdrs {
             if !should_skip_header(&k.to_lowercase()) {
-                req_builder = req_builder.header(&k, &v);
+                if let Ok(name) = reqwest::header::HeaderName::from_bytes(k.as_bytes()) {
+                    if let Ok(value) = reqwest::header::HeaderValue::from_str(&v) {
+                        req_builder = req_builder.header(name, value);
+                    }
+                }
             }
         }
-    }
-
-    // Set Authorization from Rust-side stored state (single source of truth)
-    if let Some(auth) = app.clerk().get_client_authorization_header() {
-        req_builder = req_builder.header("Authorization", auth);
     }
 
     if let Some(b) = body {
         req_builder = req_builder.json(&b);
     }
 
-    let resp = req_builder.send().await.map_err(|e| e.to_string())?;
+    let req = req_builder
+        .build()
+        .map_err(|e| format!("Failed to build request: {e}"))?;
+
+    let resp = clerk
+        .execute_request(req)
+        .await
+        .map_err(|e| format!("Clerk proxy request failed: {e}"))?;
     let status = resp.status().as_u16();
 
     let resp_headers: Vec<(String, String)> = resp
@@ -116,14 +125,6 @@ pub(crate) async fn clerk_proxy<R: Runtime>(
                 .map(|vs| (k.as_str().to_string(), vs.to_string()))
         })
         .collect();
-
-    // Save Authorization header if present (like __internal_onAfterResponse)
-    if let Some(auth_val) = resp.headers().get("authorization") {
-        if let Ok(auth_str) = auth_val.to_str() {
-            app.clerk()
-                .set_client_authorization_header(Some(auth_str.to_string()));
-        }
-    }
 
     // Read as text first, then try JSON parse — Clerk responses may not always be valid JSON
     let resp_text = resp.text().await.map_err(|e| e.to_string())?;

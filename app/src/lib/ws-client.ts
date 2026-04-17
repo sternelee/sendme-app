@@ -6,6 +6,7 @@ import {
   getCloudWebSocketUrl,
   getPersistentDeviceId,
 } from "~/lib/cloud-api";
+import { createDeviceRegistrationGuard } from "~/lib/deviceRegistration";
 
 export interface WebSocketFriendDevice {
   id: string;
@@ -42,7 +43,9 @@ type ServerMessage =
 type UnsubscribeFn = () => void;
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
-const RECONNECT_DELAY_MS = 5_000;
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
+const RECONNECT_MAX_ATTEMPTS = 20;
 
 class WSClient {
   private ws: WebSocket | null = null;
@@ -51,7 +54,30 @@ class WSClient {
   private _connected = false;
   private shouldReconnect = true;
   private connectPromise: Promise<void> | null = null;
-  private deviceName: string | null = null;
+  private reconnectAttempts = 0;
+
+  private registrationGuard = createDeviceRegistrationGuard(
+    async ({ token, deviceId }) => {
+      const name = (await get_hostname().catch(() => "Sendme")) || "Sendme";
+      const response = await fetch(getCloudApiUrl("/api/devices"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          deviceId,
+          name,
+          hostname: name,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await response.text().catch(() => "Failed to register device");
+        throw new Error(message || "Failed to register device");
+      }
+    },
+  );
 
   private friendsHandlers = new Set<(friends: WebSocketFriend[]) => void>();
   private errorHandlers = new Set<(err: string) => void>();
@@ -84,12 +110,21 @@ class WSClient {
   }
 
   private async openConnection(): Promise<void> {
-    await this.ensureDeviceRegistered();
-
     const authorization = await getAuthorizationHeaderValue();
     const token = extractBearerToken(authorization);
     if (!token) {
-      throw new Error("No auth token available");
+      // Not authenticated yet — the app-level auth watcher will retry on sign-in
+      return;
+    }
+
+    try {
+      await this.registrationGuard.ensureRegistered({
+        token,
+        deviceId: getPersistentDeviceId(),
+      });
+    } catch (error) {
+      console.error("[WSClient] Device registration failed:", error);
+      throw error;
     }
 
     const wsUrl = new URL(getCloudWebSocketUrl());
@@ -109,6 +144,7 @@ class WSClient {
       this.ws.onopen = () => {
         settled = true;
         this._connected = true;
+        this.reconnectAttempts = 0;
         this.startHeartbeat();
         resolve();
       };
@@ -141,33 +177,6 @@ class WSClient {
         this.handleMessage(event.data);
       };
     });
-  }
-
-  private async ensureDeviceRegistered(): Promise<void> {
-    const [hostname, authorization] = await Promise.all([
-      get_hostname().catch(() => "Sendme"),
-      getAuthorizationHeaderValue(),
-    ]);
-
-    this.deviceName = hostname || "Sendme";
-
-    const response = await fetch(getCloudApiUrl("/api/devices"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(authorization ? { Authorization: authorization } : {}),
-      },
-      body: JSON.stringify({
-        deviceId: getPersistentDeviceId(),
-        name: this.deviceName,
-        hostname: this.deviceName,
-      }),
-    });
-
-    if (!response.ok) {
-      const message = await response.text().catch(() => "Failed to register device");
-      throw new Error(message || "Failed to register device");
-    }
   }
 
   private handleMessage(data: string) {
@@ -208,6 +217,16 @@ class WSClient {
       return;
     }
 
+    if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
+      console.warn("[WSClient] Max reconnect attempts reached");
+      return;
+    }
+
+    const delay = Math.min(
+      RECONNECT_BASE_MS * 2 ** this.reconnectAttempts,
+      RECONNECT_MAX_MS,
+    );
+    this.reconnectAttempts++;
     this.reconnectTimer = window.setTimeout(async () => {
       this.reconnectTimer = null;
       try {
@@ -216,7 +235,7 @@ class WSClient {
         console.error("[WSClient] Reconnect failed:", error);
         this.scheduleReconnect();
       }
-    }, RECONNECT_DELAY_MS);
+    }, delay);
   }
 
   disconnect() {
@@ -234,6 +253,7 @@ class WSClient {
     }
 
     this._connected = false;
+    this.reconnectAttempts = 0;
   }
 
   onFriends(handler: (friends: WebSocketFriend[]) => void): UnsubscribeFn {

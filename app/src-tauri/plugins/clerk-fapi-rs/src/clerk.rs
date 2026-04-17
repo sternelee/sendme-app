@@ -14,6 +14,7 @@ use crate::utils::{
 use futures::TryFutureExt;
 use log::{error, warn};
 use parking_lot::{RwLock, RwLockWriteGuard};
+use reqwest::{Request, Response};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
@@ -307,6 +308,10 @@ impl Clerk {
     /// direct interaction with the Clerk API when needed.
     pub fn get_fapi_client(&self) -> &ClerkFapiClient {
         &self.api_client
+    }
+
+    pub async fn execute_request(&self, request: Request) -> Result<Response, reqwest::Error> {
+        self.api_client.execute(request).await
     }
 
     /// Returns a reference to the client's configuration

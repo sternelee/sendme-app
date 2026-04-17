@@ -5,6 +5,8 @@
   "permissions": [
     "core:default",
     "clerk:default",
+    "opener:allow-open-url",
+    "deep-link:default",
     {
       "identifier": "http:default",
       "allow": [

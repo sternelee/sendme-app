@@ -109,29 +109,8 @@ impl ClerkHttpClient {
     }
 
     pub async fn execute(&self, request: Request) -> Result<Response, reqwest::Error> {
-        // FOR DEBUG
-        // let method = request.method().clone();
-        // let url = request.url().clone();
-        // END FOR DEBUG
-
         let processed_request = self.process_request(request);
         let response = self.inner.execute(processed_request).await?;
-
-        // FOR DEBUG
-        // let status = response.status();
-        // let version = response.version();
-        // let headers = response.headers().clone();
-        // let resp_text = response.text().await?;
-        // println!("[DEBUG] Request {} {} -> Response {}", method, url, status);
-        // println!("[DEBUG] Response body: {}", resp_text);
-        // let mut builder = http::Response::builder().status(status).version(version);
-        // let builder_headers = builder.headers_mut().unwrap();
-        // for (key, value) in headers.iter() {
-        //     builder_headers.insert(key, value.clone());
-        // }
-        // let response = Response::from(builder.body(resp_text).unwrap());
-        // END FOR DEBUG
-
         self.process_response(&response);
         Ok(response)
     }

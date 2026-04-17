@@ -86,15 +86,17 @@ export default function FriendsPage() {
 
     unsubscribeErrors = wsClient.onError((message) => {
       console.error("[FriendsPage] WS error:", message);
+      toast.error(message);
     });
 
-    wsClient.connect().catch((e) => console.error("[FriendsPage] WS connect failed:", e));
+    if (isLoggedIn()) {
+      wsClient.connect().catch((e) => console.error("[FriendsPage] WS connect failed:", e));
+    }
   });
 
   onCleanup(() => {
     unsubscribeFriends?.();
     unsubscribeErrors?.();
-    wsClient.disconnect();
   });
 
   function getPlatformIcon(platform: string) {
