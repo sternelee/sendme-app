@@ -29,6 +29,10 @@ import {
 } from "~/bindings";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import {
+  readText as readClipboardText,
+  writeText as writeClipboardText,
+} from "@tauri-apps/plugin-clipboard-manager";
 import { platform } from "@tauri-apps/plugin-os";
 import {
   scan,
@@ -398,7 +402,7 @@ export default function MainPage() {
 
   async function copyToClipboard(text: string) {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeClipboardText(text);
       toast.success(t("common.copied"));
     } catch (error) {
       toast.error(String(error));
@@ -426,7 +430,7 @@ export default function MainPage() {
 
   async function pasteTicketFromClipboard() {
     try {
-      const text = (await navigator.clipboard.readText()).trim();
+      const text = (await readClipboardText()).trim();
       if (!text) {
         toast.error(t("receive.clipboardError"));
         return;

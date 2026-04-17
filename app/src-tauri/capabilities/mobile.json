@@ -1,13 +1,19 @@
 {
   "identifier": "mobile-capability",
-  "platforms": ["android", "iOS"],
-  "windows": ["main"],
+  "platforms": [
+    "android",
+    "iOS"
+  ],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "barcode-scanner:allow-scan",
     "barcode-scanner:allow-cancel",
     "barcode-scanner:default",
     "opener:allow-open-url",
-    "deep-link:default"
+    "deep-link:default",
+    "clipboard-manager:default"
   ]
 }

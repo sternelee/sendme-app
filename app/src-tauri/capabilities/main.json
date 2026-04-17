@@ -11,6 +11,7 @@
     "dialog:allow-ask",
     "dialog:allow-message",
     "core:event:allow-listen",
-    "core:event:default"
+    "core:event:default",
+    "clipboard-manager:default"
   ]
 }
