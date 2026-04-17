@@ -6,6 +6,7 @@
 
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
+import { users } from "~/lib/db/schema";
 import {
   detectPlatform,
   generateDeviceName,
@@ -13,6 +14,7 @@ import {
   upsertDevice,
 } from "~/lib/api/devices";
 import { authenticateRequest, type Env } from "~/lib/auth";
+import { createClerkClient } from "@clerk/backend";
 
 interface CloudflareContext {
   env: Env;
@@ -111,6 +113,52 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     const deviceName = body.name || generateDeviceName(platform, userAgent);
 
     const db = drizzle(env.DB!, { schema });
+
+    // Ensure the user record exists in our local DB (required for friends feature)
+    try {
+      const clerk = createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
+      const clerkUser = await clerk.users.getUser(userId);
+      const primaryEmail =
+        clerkUser.emailAddresses.find(
+          (e) => e.id === clerkUser.primaryEmailAddressId,
+        )?.emailAddress ??
+        clerkUser.emailAddresses[0]?.emailAddress ??
+        "";
+      const displayName =
+        [clerkUser.firstName, clerkUser.lastName]
+          .filter(Boolean)
+          .join(" ") ||
+        clerkUser.username ||
+        primaryEmail;
+
+      await db
+        .insert(users)
+        .values({
+          id: userId,
+          name: displayName,
+          email: primaryEmail,
+          emailVerified: true,
+          image: clerkUser.imageUrl,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: users.id,
+          set: {
+            name: displayName,
+            email: primaryEmail,
+            image: clerkUser.imageUrl,
+            updatedAt: new Date(),
+          },
+        });
+    } catch (clerkErr) {
+      console.warn(
+        "[Devices API] Could not sync user from Clerk:",
+        clerkErr,
+      );
+      // Non-blocking: friend search may fail if user record is missing
+    }
+
     const device = await upsertDevice(db, userId, {
       platform,
       deviceId,
