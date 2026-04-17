@@ -12,6 +12,8 @@
     "dialog:allow-message",
     "core:event:allow-listen",
     "core:event:default",
-    "clipboard-manager:default"
+    "clipboard-manager:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text"
   ]
 }

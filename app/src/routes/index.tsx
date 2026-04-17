@@ -402,9 +402,15 @@ export default function MainPage() {
 
   async function copyToClipboard(text: string) {
     try {
-      await writeClipboardText(text);
+      try {
+        await writeClipboardText(text);
+      } catch (tauriErr) {
+        console.warn("Tauri clipboard write failed, falling back:", tauriErr);
+        await navigator.clipboard.writeText(text);
+      }
       toast.success(t("common.copied"));
     } catch (error) {
+      console.error("Clipboard write failed:", error);
       toast.error(String(error));
     }
   }
@@ -430,7 +436,14 @@ export default function MainPage() {
 
   async function pasteTicketFromClipboard() {
     try {
-      const text = (await readClipboardText()).trim();
+      let text: string;
+      try {
+        text = await readClipboardText();
+      } catch (tauriErr) {
+        console.warn("Tauri clipboard read failed, falling back:", tauriErr);
+        text = await navigator.clipboard.readText();
+      }
+      text = text.trim();
       if (!text) {
         toast.error(t("receive.clipboardError"));
         return;
@@ -438,6 +451,7 @@ export default function MainPage() {
       globalStore.receive.setTicket(text);
       toast.success(t("receive.readyToDownload"));
     } catch (error) {
+      console.error("Clipboard read failed:", error);
       toast.error(t("receive.clipboardError"));
     }
   }
