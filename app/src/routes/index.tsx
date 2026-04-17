@@ -381,6 +381,25 @@ export default function MainPage() {
     }
   }
 
+  async function handleReshare(transfer: Transfer) {
+    if (transfer.transfer_type !== "send") return;
+    const ticket = transfer.ticket;
+    if (!ticket) {
+      toast.error(t("common.ticketNotFound"));
+      return;
+    }
+    globalStore.send.setPath(transfer.path);
+    globalStore.send.setTicket(ticket);
+    globalStore.send.setTicketQrCode(
+      await QRCode.toDataURL(ticket, {
+        errorCorrectionLevel: "H",
+        width: 280,
+      }),
+    );
+    setShowQrCode(!isMobile());
+    globalStore.send.setShowReshareModal(true);
+  }
+
   async function copyToClipboard(text: string) {
     try {
       try {
@@ -1271,6 +1290,17 @@ export default function MainPage() {
                                 </div>
 
                                 <div class="flex gap-2 md:self-start">
+                                  <Show
+                                    when={transfer.transfer_type === "send"}
+                                  >
+                                    <button
+                                      onClick={() => handleReshare(transfer)}
+                                      class="btn btn-ghost btn-sm text-primary rounded-xl"
+                                      title={t("common.share")}
+                                    >
+                                      <SendIcon size={16} />
+                                    </button>
+                                  </Show>
                                   <button
                                     onClick={() => handleCancel(transfer)}
                                     class="btn btn-ghost btn-sm rounded-xl"
