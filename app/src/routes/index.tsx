@@ -65,6 +65,7 @@ import {
 import { Toaster, toast } from "solid-sonner";
 import {
   formatDate,
+  formatFileSize,
   getDisplayName,
   getFileIcon,
   getTransferStatus,
@@ -113,59 +114,20 @@ const ticketTypes = [
   { value: "relay_and_addresses", label: "Relay + Addresses" },
 ];
 
-function ProgressBorder(props: { percent: number; children: any }) {
+function ProgressBorder(props: { percent: () => number; children: any }) {
+  let barRef: HTMLDivElement | undefined;
+  createEffect(() => {
+    if (barRef) {
+      barRef.style.width = `${Math.max(0, Math.min(100, Math.round(props.percent())))}%`;
+    }
+  });
   return (
-    <div class="relative rounded-3xl">
-      <svg
-        class="absolute overflow-visible"
-        style={{
-          top: "-1.5px",
-          left: "-1.5px",
-          width: "calc(100% + 3px)",
-          height: "calc(100% + 3px)",
-        }}
-      >
-        <defs>
-          <linearGradient id="neonGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="hsl(var(--s))" />
-            <stop offset="100%" stop-color="hsl(var(--sf))" />
-          </linearGradient>
-          <filter id="neonGlow">
-            <feDropShadow
-              dx="0"
-              dy="0"
-              stdDeviation="2"
-              flood-color="hsl(var(--s))"
-              flood-opacity="0.9"
-            />
-            <feDropShadow
-              dx="0"
-              dy="0"
-              stdDeviation="5"
-              flood-color="hsl(var(--s))"
-              flood-opacity="0.5"
-            />
-          </filter>
-        </defs>
-        <rect
-          x="1.5"
-          y="1.5"
-          width="100%"
-          height="100%"
-          rx="22"
-          ry="22"
-          fill="none"
-          stroke="url(#neonGradient)"
-          stroke-width="3"
-          pathLength="100"
-          stroke-dasharray="100"
-          stroke-dashoffset={Math.max(0, 100 - props.percent)}
-          style={{ filter: "url(#neonGlow)" }}
-        />
-      </svg>
-      <div class="relative m-[3px] rounded-3xl bg-base-100">
-        {props.children}
-      </div>
+    <div class="border-base-300/60 bg-base-100 relative overflow-hidden rounded-3xl border">
+      <div
+        ref={barRef}
+        class="bg-secondary absolute bottom-0 left-0 h-[3px] transition-[width] duration-300 ease-out"
+      />
+      {props.children}
     </div>
   );
 }
@@ -204,15 +166,28 @@ export default function MainPage() {
     Record<string, ProgressData>
   >({});
 
-  const receiveProgressPercent = () => {
-    if (!currentReceivingId()) return 0;
-    const data = progressData()[currentReceivingId()!];
+  const receiveProgressPercent = createMemo(() => {
+    const id = currentReceivingId();
+    if (!id) return 0;
+    const data = progressData()[id];
     if (!data?.progress) return 0;
-    if (data.progress.type === "downloading")
-      return (data.progress.offset / data.progress.total) * 100;
     if (data.progress.type === "completed") return 100;
+    // Download in progress: use live offset/total, capped at 99%
+    if (data.progress.type === "downloading" && data.progress.total > 0) {
+      return Math.min((data.progress.offset / data.progress.total) * 100, 99);
+    }
+    // Export phase: download is done, show 99% until completed
+    if (
+      data.event_type === "export" ||
+      data.progress.type === "file_progress" ||
+      data.progress.type === "file_started" ||
+      data.progress.type === "file_completed" ||
+      data.progress.type === "started"
+    ) {
+      return 99;
+    }
     return 0;
-  };
+  });
 
   function setTransferView(mode: TransferMode) {
     setTransferMode(mode);
@@ -534,11 +509,31 @@ export default function MainPage() {
 
     const unlisten = await listen<ProgressUpdate>("progress", (event) => {
       const { transfer_id, ...data } = event.payload.data;
-      setProgressData((prev) => ({
-        ...prev,
-        [transfer_id]: { transfer_id, ...data },
-      }));
-      if (!currentReceivingId() && data.progress?.type === "metadata")
+      setProgressData((prev) => {
+        const prevData = prev[transfer_id];
+        let downloadPercent = prevData?.downloadPercent ?? 0;
+        // Keep the max download percentage across download events
+        if (data.progress?.type === "downloading" && data.progress.total > 0) {
+          downloadPercent = Math.max(
+            downloadPercent,
+            (data.progress.offset / data.progress.total) * 100,
+          );
+        }
+        return {
+          ...prev,
+          [transfer_id]: {
+            transfer_id,
+            event_type: event.payload.event_type,
+            downloadPercent,
+            ...data,
+          },
+        };
+      });
+      if (
+        !currentReceivingId() &&
+        data.progress?.type &&
+        data.progress.type !== "completed"
+      )
         setCurrentReceivingId(transfer_id);
       if (
         currentReceivingId() === transfer_id &&
@@ -779,45 +774,43 @@ export default function MainPage() {
                           <button
                             onClick={handleReceive}
                             disabled={isReceiving() || !receiveTicket().trim()}
-                            class={`btn btn-secondary btn-lg w-full rounded-2xl shadow-sm ${isReceiving() ? "loading" : ""}`}
+                            class={`btn btn-secondary btn-lg w-full rounded-2xl shadow-sm`}
                           >
-                            <Show when={!isReceiving()}>
-                              <Download size={18} /> {t("receive.receiveFile")}
-                            </Show>
+                            <Download size={18} /> {t("receive.receiveFile")}
                           </button>
 
                           <Show when={currentReceivingId()}>
-                            {(id) => {
-                              const percent = Math.round(
-                                receiveProgressPercent(),
-                              );
-                              const data = progressData()[id()];
-                              const isDownloading =
-                                data?.progress?.type === "downloading";
-                              return (
-                                <ProgressBorder percent={percent}>
-                                  <div class="p-4">
-                                    <div class="mb-3 flex items-start justify-between gap-3">
+                            {(id) => (
+                              <ProgressBorder
+                                percent={() =>
+                                  Math.round(receiveProgressPercent())
+                                }
+                              >
+                                <div class="p-4">
+                                  <div class="mb-3 flex items-start justify-between gap-3">
                                     <div>
                                       <p class="text-base-content/55 text-xs font-semibold tracking-[0.2em] uppercase">
                                         {t("common.receiving")}
-                                        </p>
-                                      <p class="mt-1 text-2xl font-semibold text-secondary">
-                                        {percent}%
+                                      </p>
+                                      <p class="text-secondary mt-1 text-2xl font-semibold">
+                                        {Math.round(receiveProgressPercent())}%
                                       </p>
                                     </div>
                                     <div class="text-right text-sm opacity-70">
-                                      <Show when={isDownloading}>
+                                      {progressData()[id()]?.progress?.type ===
+                                      "downloading" ? (
                                         <p>
                                           {formatFileSize(
-                                            data!.progress.offset,
+                                            progressData()[id()]!.progress
+                                              .offset,
                                           )}{" "}
                                           /{" "}
                                           {formatFileSize(
-                                            data!.progress.total,
+                                            progressData()[id()]!.progress
+                                              .total,
                                           )}
                                         </p>
-                                      </Show>
+                                      ) : null}
                                     </div>
                                   </div>
                                   <button
@@ -827,10 +820,9 @@ export default function MainPage() {
                                     <X size={14} class="mr-1" />{" "}
                                     {t("common.cancel")}
                                   </button>
-                                  </div>
-                                </ProgressBorder>
-                              );
-                            }}
+                                </div>
+                              </ProgressBorder>
+                            )}
                           </Show>
 
                           <Show
@@ -987,13 +979,15 @@ export default function MainPage() {
                                 <Show when={isMobile() && sendTicketQrCode()}>
                                   <button
                                     onClick={() => setShowQrCode((v) => !v)}
-                                    class="btn btn-ghost btn-sm w-full rounded-2xl gap-1 text-xs"
+                                    class="btn btn-ghost btn-sm w-full gap-1 rounded-2xl text-xs"
                                   >
                                     <ChevronDown
                                       size={14}
                                       class={`transition-transform ${showQrCode() ? "rotate-180" : ""}`}
                                     />
-                                    {showQrCode() ? t("send.hideQrCode") : t("send.showQrCode")}
+                                    {showQrCode()
+                                      ? t("send.hideQrCode")
+                                      : t("send.showQrCode")}
                                   </button>
                                 </Show>
 
@@ -1213,17 +1207,28 @@ export default function MainPage() {
                         const isActiveReceive =
                           transfer.transfer_type === "receive" &&
                           status.label === "Downloading";
-                        const receiveProgress = isActiveReceive
-                          ? progressData()[transfer.id]
-                          : null;
-                        const receivePercent =
-                          receiveProgress?.progress?.type === "downloading"
-                            ? Math.round(
-                                (receiveProgress.progress.offset /
-                                  receiveProgress.progress.total) *
-                                  100,
-                              )
-                            : 0;
+                        const receivePercent = () => {
+                          const p = progressData()[transfer.id];
+                          return p?.progress?.type === "completed"
+                            ? 100
+                            : p?.progress?.type === "downloading"
+                              ? Math.round(
+                                  Math.min(
+                                    (p.progress.offset / p.progress.total) *
+                                      100,
+                                    99,
+                                  ),
+                                )
+                              : p?.event_type === "export" ||
+                                  [
+                                    "file_progress",
+                                    "file_started",
+                                    "file_completed",
+                                    "started",
+                                  ].includes(p?.progress?.type)
+                                ? 99
+                                : 0;
+                        };
                         return (() => {
                           const content = (
                             <>
@@ -1260,12 +1265,16 @@ export default function MainPage() {
                                     >
                                       {status.label}
                                     </span>
-                                    <span>{formatDate(transfer.created_at)}</span>
+                                    <span>
+                                      {formatDate(transfer.created_at)}
+                                    </span>
                                   </div>
                                 </div>
 
                                 <div class="flex gap-2 md:self-start">
-                                  <Show when={transfer.transfer_type === "send"}>
+                                  <Show
+                                    when={transfer.transfer_type === "send"}
+                                  >
                                     <button
                                       onClick={() => handleReshare(transfer)}
                                       class="btn btn-ghost btn-sm text-primary rounded-xl"
@@ -1283,31 +1292,38 @@ export default function MainPage() {
                                 </div>
                               </div>
 
-                              <Show
-                                when={isActiveReceive && receiveProgress}
-                              >
+                              {isActiveReceive &&
+                              progressData()[transfer.id] ? (
                                 <div class="mt-4">
                                   <div class="mb-1 flex items-center justify-between text-xs">
                                     <span class="text-secondary font-medium">
-                                      {receivePercent}%
+                                      {receivePercent()}%
                                     </span>
                                     <span class="opacity-60">
                                       {formatFileSize(
-                                        receiveProgress!.progress.offset,
+                                        progressData()[transfer.id]?.progress
+                                          ?.offset ?? 0,
                                       )}{" "}
                                       /{" "}
                                       {formatFileSize(
-                                        receiveProgress!.progress.total,
+                                        progressData()[transfer.id]?.progress
+                                          ?.total ?? 1,
                                       )}
                                     </span>
                                   </div>
                                   <progress
                                     class="progress progress-secondary w-full"
-                                    value={receiveProgress!.progress.offset}
-                                    max={receiveProgress!.progress.total}
+                                    value={
+                                      progressData()[transfer.id]?.progress
+                                        ?.offset ?? 0
+                                    }
+                                    max={
+                                      progressData()[transfer.id]?.progress
+                                        ?.total ?? 1
+                                    }
                                   ></progress>
                                 </div>
-                              </Show>
+                              ) : null}
                             </>
                           );
 
@@ -1321,9 +1337,7 @@ export default function MainPage() {
                             );
                           }
 
-                          return (
-                            <div class="surface-card p-4">{content}</div>
-                          );
+                          return <div class="surface-card p-4">{content}</div>;
                         })();
                       }}
                     </For>
@@ -1515,7 +1529,9 @@ export default function MainPage() {
                   <X size={18} />
                 </button>
               </div>
-              <Show when={globalStore.send.state().ticketQrCode && showQrCode()}>
+              <Show
+                when={globalStore.send.state().ticketQrCode && showQrCode()}
+              >
                 <div class="flex justify-center">
                   <div class="rounded-xl bg-white p-2">
                     <img
@@ -1529,7 +1545,7 @@ export default function MainPage() {
               <Show when={isMobile() && globalStore.send.state().ticketQrCode}>
                 <button
                   onClick={() => setShowQrCode((v) => !v)}
-                  class="btn btn-ghost btn-sm w-full rounded-xl gap-1 text-xs"
+                  class="btn btn-ghost btn-sm w-full gap-1 rounded-xl text-xs"
                 >
                   <ChevronDown
                     size={14}

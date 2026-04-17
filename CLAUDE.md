@@ -58,6 +58,8 @@ export CLERK_PUBLISHABLE_KEY='pk_test_...'
 cd src-tauri/gen/apple
 xcodegen generate
 xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
+xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
+xcrun devicectl device process launch --console --terminate-existing --device <device-id> io.sendme.app
 ```
 
 ### Browser app (`browser/`)
@@ -127,11 +129,18 @@ That file contains:
 - the in-memory transfer registry (`Arc<RwLock<HashMap<String, TransferState>>>`)
 - progress emission to the frontend via Tauri events
 - platform-specific mobile file handling
+- desktop system tray (`menubar.rs`) and menubar panel commands (`menubar_cmd.rs`)
+- Clerk auth deep link callback handler (`handle_clerk_auth_callback`)
 
 Nearby-device support crosses layers:
 - protocol/discovery primitives are in `lib/src/nearby/*`
 - the Tauri backend keeps a `NearbyRuntime` with the live endpoint, discovery instance, and pending approval state
 - the frontend subscribes to backend events and renders nearby send/receive state from the global store
+
+Desktop system tray:
+- `app/src-tauri/src/menubar.rs` creates the tray icon with Show/Exit menus
+- Clicking the tray icon shows and focuses the main window
+- The tray uses `include_bytes!("../icons/tray.png")` for its icon
 
 ### Browser app (`browser/`)
 
@@ -261,17 +270,6 @@ If you encounter "recursion limit reached" compilation errors, add to `app/src-t
 - Each transfer has `Option<tokio::sync::oneshot::Sender<()>>` for abort
 - Cancel sends `()` through channel, task listens via `abort_rx.await`
 
-## Common Pitfalls
-
-1. **Router keep-alive**: Never remove `std::future::pending()` - critical for send functionality
-2. **Browser WASM**: Never add `browser-lib` to workspace members (conflicts with native builds)
-3. **Tauri errors**: Convert Rust errors to String with descriptive messages for frontend
-4. **Path validation**: Always validate user paths (see `canonicalized_path_to_string`)
-5. **Tokio RwLock**: Use `tokio::sync::RwLock` for shared async state, not `std::sync::RwLock`
-6. **Android temp directories**: Use `args.common.temp_dir` instead of `std::env::current_dir()`
-7. **Android JNI**: Always use `push_local_frame()`/`pop_local_frame()` in loops
-8. **WASM builds on macOS**: Use `export CC=/opt/homebrew/opt/llvm/bin/clang` (llvm.org Clang, NOT Apple Clang)
-
 ## Mobile Development
 
 ### Clerk Authentication (Required)
@@ -293,11 +291,34 @@ xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Pr
 - Production key (`pk_live_...`) for release builds
 - Prefer direct `xcodebuild` over `pnpm run tauri ios build` in this repo; the latter can fail during archive/export by reintroducing unsupported entitlements for personal-team signing.
 
+### Clerk Auth Flow (System Browser + Deep Link)
+
+The Tauri app uses system-browser OAuth instead of an in-app WebView:
+1. Frontend calls `open_system_browser(url)` to open the OAuth page in the system browser
+2. User authenticates with the OAuth provider
+3. Clerk redirects to the app via a deep link (`sendme://auth-callback?__clerk_db_jwt=...`)
+4. `handle_clerk_auth_callback` in `lib.rs` extracts the `__clerk_db_jwt` token, sets it on the FAPI client, refreshes the Clerk session, and emits `clerk-auth-callback-complete`
+5. Frontend listens for `clerk-auth-callback-complete` and refreshes auth state
+
+This avoids a 30-second timeout that occurs when `handshake_client` follows a 302 redirect into an OAuth page inside reqwest.
+
 ### Platform-Specific File Picking
 
 - **Android**: Uses `tauri_plugin_android_fs` for file/directory picking
 - **iOS**: Uses `tauri_plugin_fs_ios` for Documents access, and a custom `tauri-plugin-media-picker` (Swift + Rust) for photo/video selection via `PHPickerViewController`
 - **Desktop**: Uses `tauri_plugin_dialog`
+
+### iOS Safari Web Inspector
+
+Enable the `ios-web-inspector` feature in `app/src-tauri/Cargo.toml` to allow Safari DevTools debugging of the iOS WebView:
+
+```toml
+[features]
+default = ["ios-web-inspector"]
+ios-web-inspector = []
+```
+
+When enabled, the app calls `setInspectable:true` on the `WKWebView` at startup.
 
 ## Environment Variables
 
