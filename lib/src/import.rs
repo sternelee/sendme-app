@@ -19,14 +19,16 @@ pub async fn import(
     path: std::path::PathBuf,
     db: &FsStore,
     progress_tx: Option<ProgressSenderTx>,
+    mode: iroh_blobs::api::blobs::ImportMode,
 ) -> anyhow::Result<(iroh_blobs::Hash, u64, Collection)> {
-    import_internal(path, db, progress_tx).await
+    import_internal(path, db, progress_tx, mode).await
 }
 
 async fn import_internal(
     path: std::path::PathBuf,
     db: &FsStore,
     progress_tx: Option<ProgressSenderTx>,
+    mode: iroh_blobs::api::blobs::ImportMode,
 ) -> anyhow::Result<(iroh_blobs::Hash, u64, Collection)> {
     let parallelism = num_cpus::get();
     let path = path.canonicalize()?;
@@ -84,7 +86,7 @@ async fn import_internal(
 
                 let import = db.add_path_with_opts(iroh_blobs::api::blobs::AddPathOptions {
                     path,
-                    mode: iroh_blobs::api::blobs::ImportMode::TryReference,
+                    mode,
                     format: BlobFormat::Raw,
                 });
                 let mut stream = import.stream().await;

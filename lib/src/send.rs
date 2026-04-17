@@ -129,7 +129,7 @@ async fn send_internal(
             tokio::spawn(async move { while event_rx.recv().await.is_some() {} });
         }
 
-        let import_result = crate::import::import(path, &store, progress_tx2).await?;
+        let import_result = crate::import::import(path, &store, progress_tx2, args.import_mode).await?;
         let dt = t0.elapsed();
 
         let router = iroh::protocol::Router::builder(endpoint)

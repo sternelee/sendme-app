@@ -113,6 +113,63 @@ const ticketTypes = [
   { value: "relay_and_addresses", label: "Relay + Addresses" },
 ];
 
+function ProgressBorder(props: { percent: number; children: any }) {
+  return (
+    <div class="relative rounded-3xl">
+      <svg
+        class="absolute overflow-visible"
+        style={{
+          top: "-1.5px",
+          left: "-1.5px",
+          width: "calc(100% + 3px)",
+          height: "calc(100% + 3px)",
+        }}
+      >
+        <defs>
+          <linearGradient id="neonGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="hsl(var(--s))" />
+            <stop offset="100%" stop-color="hsl(var(--sf))" />
+          </linearGradient>
+          <filter id="neonGlow">
+            <feDropShadow
+              dx="0"
+              dy="0"
+              stdDeviation="2"
+              flood-color="hsl(var(--s))"
+              flood-opacity="0.9"
+            />
+            <feDropShadow
+              dx="0"
+              dy="0"
+              stdDeviation="5"
+              flood-color="hsl(var(--s))"
+              flood-opacity="0.5"
+            />
+          </filter>
+        </defs>
+        <rect
+          x="1.5"
+          y="1.5"
+          width="100%"
+          height="100%"
+          rx="22"
+          ry="22"
+          fill="none"
+          stroke="url(#neonGradient)"
+          stroke-width="3"
+          pathLength="100"
+          stroke-dasharray="100"
+          stroke-dashoffset={Math.max(0, 100 - props.percent)}
+          style={{ filter: "url(#neonGlow)" }}
+        />
+      </svg>
+      <div class="relative m-[3px] rounded-3xl bg-base-100">
+        {props.children}
+      </div>
+    </div>
+  );
+}
+
 export default function MainPage() {
   const auth = useAuth();
   const globalStore = useGlobalStore();
@@ -730,31 +787,50 @@ export default function MainPage() {
                           </button>
 
                           <Show when={currentReceivingId()}>
-                            <div class="border-secondary/20 bg-secondary/10 rounded-3xl border p-4">
-                              <div class="mb-3 flex items-center justify-between">
-                                <span class="text-secondary/80 text-xs font-semibold tracking-[0.2em] uppercase">
-                                  {t("common.receiving")}
-                                </span>
-                                <span class="font-mono text-sm font-semibold">
-                                  {Math.round(receiveProgressPercent())}%
-                                </span>
-                              </div>
-                              <progress
-                                class="progress progress-secondary w-full"
-                                value={receiveProgressPercent()}
-                                max="100"
-                              ></progress>
-                              <div class="mt-3 flex justify-end">
-                                <button
-                                  onClick={() =>
-                                    handleCancelById(currentReceivingId()!)
-                                  }
-                                  class="btn btn-ghost btn-sm text-error"
-                                >
-                                  {t("common.cancel")}
-                                </button>
-                              </div>
-                            </div>
+                            {(id) => {
+                              const percent = Math.round(
+                                receiveProgressPercent(),
+                              );
+                              const data = progressData()[id()];
+                              const isDownloading =
+                                data?.progress?.type === "downloading";
+                              return (
+                                <ProgressBorder percent={percent}>
+                                  <div class="p-4">
+                                    <div class="mb-3 flex items-start justify-between gap-3">
+                                    <div>
+                                      <p class="text-base-content/55 text-xs font-semibold tracking-[0.2em] uppercase">
+                                        {t("common.receiving")}
+                                        </p>
+                                      <p class="mt-1 text-2xl font-semibold text-secondary">
+                                        {percent}%
+                                      </p>
+                                    </div>
+                                    <div class="text-right text-sm opacity-70">
+                                      <Show when={isDownloading}>
+                                        <p>
+                                          {formatFileSize(
+                                            data!.progress.offset,
+                                          )}{" "}
+                                          /{" "}
+                                          {formatFileSize(
+                                            data!.progress.total,
+                                          )}
+                                        </p>
+                                      </Show>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => handleCancelById(id())}
+                                    class="btn btn-ghost btn-sm text-error mt-2 w-full rounded-2xl"
+                                  >
+                                    <X size={14} class="mr-1" />{" "}
+                                    {t("common.cancel")}
+                                  </button>
+                                  </div>
+                                </ProgressBorder>
+                              );
+                            }}
                           </Show>
 
                           <Show
@@ -1134,65 +1210,121 @@ export default function MainPage() {
                     <For each={transfers()}>
                       {(transfer) => {
                         const status = getTransferStatus(transfer.status);
-                        return (
-                          <div class="surface-card p-4">
-                            <div class="flex flex-col gap-4 md:flex-row md:items-center">
-                              <div
-                                class={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                                  transfer.transfer_type === "send"
-                                    ? "bg-primary/12 text-primary"
-                                    : "bg-secondary/12 text-secondary"
-                                }`}
-                              >
-                                <Show
-                                  when={transfer.transfer_type === "send"}
-                                  fallback={renderFileTypeIcon(transfer.path)}
+                        const isActiveReceive =
+                          transfer.transfer_type === "receive" &&
+                          status.label === "Downloading";
+                        const receiveProgress = isActiveReceive
+                          ? progressData()[transfer.id]
+                          : null;
+                        const receivePercent =
+                          receiveProgress?.progress?.type === "downloading"
+                            ? Math.round(
+                                (receiveProgress.progress.offset /
+                                  receiveProgress.progress.total) *
+                                  100,
+                              )
+                            : 0;
+                        return (() => {
+                          const content = (
+                            <>
+                              <div class="flex flex-col gap-4 md:flex-row md:items-center">
+                                <div
+                                  class={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                                    transfer.transfer_type === "send"
+                                      ? "bg-primary/12 text-primary"
+                                      : "bg-secondary/12 text-secondary"
+                                  }`}
                                 >
-                                  <Send size={18} />
-                                </Show>
-                              </div>
-
-                              <div class="min-w-0 flex-1">
-                                <button
-                                  onClick={() => handleOpenFile(transfer)}
-                                  class="hover:text-primary truncate text-left text-sm font-semibold"
-                                >
-                                  {getDisplayName(transfer.path)}
-                                </button>
-                                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-70">
-                                  <span
-                                    class={`badge badge-sm border-0 ${
-                                      transfer.transfer_type === "send"
-                                        ? "bg-primary/12 text-primary"
-                                        : "bg-secondary/12 text-secondary"
-                                    }`}
+                                  <Show
+                                    when={transfer.transfer_type === "send"}
+                                    fallback={renderFileTypeIcon(transfer.path)}
                                   >
-                                    {status.label}
-                                  </span>
-                                  <span>{formatDate(transfer.created_at)}</span>
+                                    <Send size={18} />
+                                  </Show>
+                                </div>
+
+                                <div class="min-w-0 flex-1">
+                                  <button
+                                    onClick={() => handleOpenFile(transfer)}
+                                    class="hover:text-primary truncate text-left text-sm font-semibold"
+                                  >
+                                    {getDisplayName(transfer.path)}
+                                  </button>
+                                  <div class="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-70">
+                                    <span
+                                      class={`badge badge-sm border-0 ${
+                                        transfer.transfer_type === "send"
+                                          ? "bg-primary/12 text-primary"
+                                          : "bg-secondary/12 text-secondary"
+                                      }`}
+                                    >
+                                      {status.label}
+                                    </span>
+                                    <span>{formatDate(transfer.created_at)}</span>
+                                  </div>
+                                </div>
+
+                                <div class="flex gap-2 md:self-start">
+                                  <Show when={transfer.transfer_type === "send"}>
+                                    <button
+                                      onClick={() => handleReshare(transfer)}
+                                      class="btn btn-ghost btn-sm text-primary rounded-xl"
+                                      title={t("common.share")}
+                                    >
+                                      <SendIcon size={16} />
+                                    </button>
+                                  </Show>
+                                  <button
+                                    onClick={() => handleCancel(transfer)}
+                                    class="btn btn-ghost btn-sm rounded-xl"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
                                 </div>
                               </div>
 
-                              <div class="flex gap-2 md:self-start">
-                                <Show when={transfer.transfer_type === "send"}>
-                                  <button
-                                    onClick={() => handleReshare(transfer)}
-                                    class="btn btn-ghost btn-sm text-primary rounded-xl"
-                                    title={t("common.share")}
-                                  >
-                                    <SendIcon size={16} />
-                                  </button>
-                                </Show>
-                                <button
-                                  onClick={() => handleCancel(transfer)}
-                                  class="btn btn-ghost btn-sm rounded-xl"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
+                              <Show
+                                when={isActiveReceive && receiveProgress}
+                              >
+                                <div class="mt-4">
+                                  <div class="mb-1 flex items-center justify-between text-xs">
+                                    <span class="text-secondary font-medium">
+                                      {receivePercent}%
+                                    </span>
+                                    <span class="opacity-60">
+                                      {formatFileSize(
+                                        receiveProgress!.progress.offset,
+                                      )}{" "}
+                                      /{" "}
+                                      {formatFileSize(
+                                        receiveProgress!.progress.total,
+                                      )}
+                                    </span>
+                                  </div>
+                                  <progress
+                                    class="progress progress-secondary w-full"
+                                    value={receiveProgress!.progress.offset}
+                                    max={receiveProgress!.progress.total}
+                                  ></progress>
+                                </div>
+                              </Show>
+                            </>
+                          );
+
+                          if (isActiveReceive) {
+                            return (
+                              <ProgressBorder percent={receivePercent}>
+                                <div class="surface-card relative p-4">
+                                  {content}
+                                </div>
+                              </ProgressBorder>
+                            );
+                          }
+
+                          return (
+                            <div class="surface-card p-4">{content}</div>
+                          );
+                        })();
                       }}
                     </For>
                   </div>

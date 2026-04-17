@@ -4,7 +4,7 @@
 
 /* THIS FILE IS AUTO-GENERATED. DO NOT MODIFY!! */
 
-package com.sendme.dev
+package io.sendme.app
 
 import android.content.Intent
 import android.content.res.Configuration

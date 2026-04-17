@@ -775,6 +775,7 @@ async fn send_to_device(
             temp_dir: Some(temp_dir),
             ..Default::default()
         },
+        import_mode: sendme_lib::ImportMode::Copy,
     };
 
     let (tx, rx) = tokio::sync::mpsc::channel(32);
@@ -2030,6 +2031,7 @@ async fn send_file(
             temp_dir: Some(temp_dir),
             ..Default::default()
         },
+        import_mode: sendme_lib::ImportMode::TryReference,
     };
     log_info!("⚙️  SendArgs created successfully");
 
@@ -3551,6 +3553,7 @@ async fn send_text(app: AppHandle, request: SendTextRequest) -> Result<String, S
             temp_dir: Some(temp_dir.clone()),
             ..Default::default()
         },
+        import_mode: sendme_lib::ImportMode::Copy,
     };
 
     log_info!("Calling sendme_lib::send_with_progress...");

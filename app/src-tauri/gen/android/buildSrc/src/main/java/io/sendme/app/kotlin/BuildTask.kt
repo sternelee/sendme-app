@@ -1,4 +1,4 @@
-package com.sendme.dev.kotlin
+package io.sendme.app.kotlin
 
 import java.io.File
 import org.apache.tools.ant.taskdefs.condition.Os
