@@ -7,6 +7,38 @@ use n0_future::StreamExt;
 
 use crate::{get_export_path, progress::ProgressSenderTx};
 
+/// Generate a unique target path by appending a numeric suffix when the file already exists.
+/// e.g. `photo.jpg` → `photo (1).jpg` → `photo (2).jpg`
+fn unique_target_path(target: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("target has no parent directory"))?;
+    let stem = target
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow::anyhow!("target has no valid file stem"))?;
+    let ext = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| format!(".{}", e))
+        .unwrap_or_default();
+
+    let mut counter = 1;
+    loop {
+        let candidate = parent.join(format!("{} ({}){}", stem, counter, ext));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+        counter += 1;
+        if counter > 10000 {
+            anyhow::bail!(
+                "could not find unique name for {} after 10000 attempts",
+                target.display()
+            );
+        }
+    }
+}
+
 /// Export a collection to a directory.
 ///
 /// If `export_dir` is None, uses the current directory.
@@ -53,16 +85,11 @@ pub async fn export(
     for (_i, (name, hash)) in collection.iter().enumerate() {
         let target = get_export_path(&root, name)?;
 
-        // If file already exists, remove it to allow overwriting
-        if target.exists() {
-            std::fs::remove_file(&target).map_err(|e| {
-                anyhow::anyhow!(
-                    "failed to remove existing target {}: {}",
-                    target.display(),
-                    e
-                )
-            })?;
-        }
+        let target = if target.exists() {
+            unique_target_path(&target)?
+        } else {
+            target
+        };
 
         if let Some(ref tx) = progress_tx {
             let _ = tx
