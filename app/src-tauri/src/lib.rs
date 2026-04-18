@@ -875,9 +875,21 @@ async fn decline_incoming(
 }
 async fn ensure_nearby_runtime(app: &AppHandle, nearby: NearbyState) -> Result<(), String> {
     let (device_name, device_type) = current_nearby_profile(app)?;
-    let mut guard = nearby.write().await;
+    // Fast-path: check if already fully initialized (read lock only)
+    {
+        let guard = nearby.read().await;
+        if guard.endpoint.is_some() && guard.discovery.is_some() {
+            return Ok(());
+        }
+    }
 
-    if guard.endpoint.is_none() {
+    // --- Endpoint ---
+    let endpoint_needs_init = {
+        let guard = nearby.read().await;
+        guard.endpoint.is_none()
+    };
+
+    if endpoint_needs_init {
         let secret_key = sendme_lib::get_or_create_secret(false)
             .map_err(|e| format!("Failed to create nearby secret: {e}"))?;
         let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
@@ -887,20 +899,33 @@ async fn ensure_nearby_runtime(app: &AppHandle, nearby: NearbyState) -> Result<(
             .bind()
             .await
             .map_err(|e| format!("Failed to bind nearby endpoint: {e}"))?;
-        guard.endpoint = Some(endpoint.clone());
-        guard.device_name = device_name.clone();
-        guard.device_type = device_type.clone();
-        if !guard.listener_started {
-            spawn_nearby_listener(app.clone(), nearby.clone(), endpoint);
-            guard.listener_started = true;
+
+        let mut guard = nearby.write().await;
+        if guard.endpoint.is_none() {
+            guard.endpoint = Some(endpoint.clone());
+            guard.device_name = device_name.clone();
+            guard.device_type = device_type.clone();
+            if !guard.listener_started {
+                spawn_nearby_listener(app.clone(), nearby.clone(), endpoint);
+                guard.listener_started = true;
+            }
         }
     }
 
-    if guard.discovery.is_none() {
-        let endpoint = guard
-            .endpoint
-            .as_ref()
-            .ok_or_else(|| "Nearby endpoint is not initialized".to_string())?;
+    // --- Discovery ---
+    let discovery_needs_init = {
+        let guard = nearby.read().await;
+        guard.discovery.is_none()
+    };
+
+    if discovery_needs_init {
+        let endpoint = {
+            let guard = nearby.read().await;
+            guard
+                .endpoint
+                .clone()
+                .ok_or_else(|| "Nearby endpoint is not initialized".to_string())?
+        };
         let mut endpoint_addr = endpoint.addr();
         apply_options(&mut endpoint_addr, AddrInfoOptions::Addresses);
 
@@ -917,7 +942,11 @@ async fn ensure_nearby_runtime(app: &AppHandle, nearby: NearbyState) -> Result<(
                 })),
             )
             .map_err(|e| format!("Failed to start nearby discovery: {e}"))?;
-        guard.discovery = Some(discovery);
+
+        let mut guard = nearby.write().await;
+        if guard.discovery.is_none() {
+            guard.discovery = Some(discovery);
+        }
     }
 
     Ok(())
@@ -1189,7 +1218,18 @@ async fn start_nearby_receive(
     let sender_type_for_progress = sender_device_type.clone();
     tokio::spawn(async move {
         let started = Instant::now();
-        while let Some(event) = rx.recv().await {
+        const NEARBY_PROGRESS_TIMEOUT: Duration = Duration::from_secs(120);
+        loop {
+            let event = match tokio::time::timeout(NEARBY_PROGRESS_TIMEOUT, rx.recv()).await {
+                Ok(Some(e)) => e,
+                Ok(None) => break,
+                Err(_) => {
+                    log_warn!(
+                        "[Nearby Receive] No progress events for 120s, exiting listener"
+                    );
+                    break;
+                }
+            };
             match event {
                 ProgressEvent::Download(DownloadProgress::Downloading { offset, total }) => {
                     let progress = nearby_progress_from_offset(offset, total, started);
@@ -1502,7 +1542,18 @@ fn spawn_nearby_send_progress_listener(
 ) {
     tokio::spawn(async move {
         let started = Instant::now();
-        while let Some(event) = rx.recv().await {
+        const NEARBY_PROGRESS_TIMEOUT: Duration = Duration::from_secs(120);
+        loop {
+            let event = match tokio::time::timeout(NEARBY_PROGRESS_TIMEOUT, rx.recv()).await {
+                Ok(Some(e)) => e,
+                Ok(None) => break,
+                Err(_) => {
+                    log_warn!(
+                        "[Nearby Send] No progress events for 120s, exiting listener"
+                    );
+                    break;
+                }
+            };
             match event {
                 ProgressEvent::Connection(ConnectionStatus::RequestProgress { offset, .. }) => {
                     update_transfer_status(&transfers, &transfer_id, "sending").await;
@@ -1733,15 +1784,20 @@ async fn write_nearby_message(
 async fn read_nearby_message(
     recv: &mut (impl AsyncReadExt + Unpin),
 ) -> Result<sendme_lib::nearby::Message, String> {
-    let len = recv
-        .read_u32()
-        .await
-        .map_err(|e| format!("Failed to read nearby message size: {e}"))?;
-    let mut buf = vec![0u8; len as usize];
-    recv.read_exact(&mut buf)
-        .await
-        .map_err(|e| format!("Failed to read nearby message body: {e}"))?;
-    serde_json::from_slice(&buf).map_err(|e| format!("Failed to decode nearby message: {e}"))
+    const READ_TIMEOUT: Duration = Duration::from_secs(30);
+    tokio::time::timeout(READ_TIMEOUT, async {
+        let len = recv
+            .read_u32()
+            .await
+            .map_err(|e| format!("Failed to read nearby message size: {e}"))?;
+        let mut buf = vec![0u8; len as usize];
+        recv.read_exact(&mut buf)
+            .await
+            .map_err(|e| format!("Failed to read nearby message body: {e}"))?;
+        serde_json::from_slice(&buf).map_err(|e| format!("Failed to decode nearby message: {e}"))
+    })
+    .await
+    .map_err(|_| "Nearby message read timed out (30s)".to_string())?
 }
 
 #[tauri::command]
@@ -2178,7 +2234,6 @@ async fn send_file(
     let app_clone = app.clone();
     let transfers_clone = transfers.inner().clone();
     let transfer_id_clone = transfer_id.clone();
-    let transfer_id_for_abort = transfer_id.clone();
 
     log_info!("🔄 Spawning progress listener task...");
     tokio::spawn(async move {
@@ -2187,100 +2242,142 @@ async fn send_file(
             transfer_id_clone
         );
 
-        // Listen for abort signal
-        tokio::spawn(async move {
-            let _ = abort_rx.await;
-            log_info!(
-                "  [Progress Task] Transfer {} aborted",
-                transfer_id_for_abort
-            );
-        });
-
         let mut event_count = 0;
-        while let Some(event) = rx.recv().await {
-            event_count += 1;
-            log_info!(
-                "  [Progress Task] Event #{}: {:?}",
-                event_count,
-                match &event {
-                    ProgressEvent::Import(name, _) => format!("Import({})", name),
-                    ProgressEvent::Export(name, _) => format!("Export({})", name),
-                    ProgressEvent::Download(_) => "Download".to_string(),
-                    ProgressEvent::Connection(status) => format!("Connection({:?})", status),
-                }
-            );
+        // Use a timeout to avoid hanging if the progress sender is leaked
+        // (e.g. when the task is aborted but the sender lives on in a zombie)
+        const PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
+        loop {
+            match tokio::time::timeout(PROGRESS_TIMEOUT, rx.recv()).await {
+                Ok(Some(event)) => {
+                    event_count += 1;
+                    log_info!(
+                        "  [Progress Task] Event #{}: {:?}",
+                        event_count,
+                        match &event {
+                            ProgressEvent::Import(name, _) => format!("Import({})", name),
+                            ProgressEvent::Export(name, _) => format!("Export({})", name),
+                            ProgressEvent::Download(_) => "Download".to_string(),
+                            ProgressEvent::Connection(status) => format!("Connection({:?})", status),
+                        }
+                    );
 
-            let update = match event {
-                ProgressEvent::Import(name, progress) => {
-                    update_transfer_status(
-                        &transfers_clone,
-                        &transfer_id_clone,
-                        &format!("importing: {}", name),
-                    )
-                    .await;
-                    ProgressUpdate {
-                        event_type: "import".to_string(),
-                        data: serde_json::json!({
-                            "transfer_id": transfer_id_clone,
-                            "name": name,
-                            "progress": serialize_import_progress(&progress),
-                        }),
-                    }
-                }
-                ProgressEvent::Export(name, progress) => {
-                    update_transfer_status(
-                        &transfers_clone,
-                        &transfer_id_clone,
-                        &format!("exporting: {}", name),
-                    )
-                    .await;
-                    ProgressUpdate {
-                        event_type: "export".to_string(),
-                        data: serde_json::json!({
-                            "transfer_id": transfer_id_clone,
-                            "name": name,
-                            "progress": serialize_export_progress(&progress),
-                        }),
-                    }
-                }
-                ProgressEvent::Download(progress) => {
-                    update_transfer_status(&transfers_clone, &transfer_id_clone, "downloading")
-                        .await;
-                    ProgressUpdate {
-                        event_type: "download".to_string(),
-                        data: serde_json::json!({
-                            "transfer_id": transfer_id_clone,
-                            "progress": serialize_download_progress(&progress),
-                        }),
-                    }
-                }
-                ProgressEvent::Connection(status) => {
-                    update_transfer_status(
-                        &transfers_clone,
-                        &transfer_id_clone,
-                        &format!("connection: {:?}", status),
-                    )
-                    .await;
-                    ProgressUpdate {
-                        event_type: "connection".to_string(),
-                        data: serde_json::json!({
-                            "transfer_id": transfer_id_clone,
-                            "status": format!("{:?}", status),
-                        }),
-                    }
-                }
-            };
+                    let update = match event {
+                        ProgressEvent::Import(name, progress) => {
+                            update_transfer_status(
+                                &transfers_clone,
+                                &transfer_id_clone,
+                                &format!("importing: {}", name),
+                            )
+                            .await;
+                            ProgressUpdate {
+                                event_type: "import".to_string(),
+                                data: serde_json::json!({
+                                    "transfer_id": transfer_id_clone,
+                                    "name": name,
+                                    "progress": serialize_import_progress(&progress),
+                                }),
+                            }
+                        }
+                        ProgressEvent::Export(name, progress) => {
+                            update_transfer_status(
+                                &transfers_clone,
+                                &transfer_id_clone,
+                                &format!("exporting: {}", name),
+                            )
+                            .await;
+                            ProgressUpdate {
+                                event_type: "export".to_string(),
+                                data: serde_json::json!({
+                                    "transfer_id": transfer_id_clone,
+                                    "name": name,
+                                    "progress": serialize_export_progress(&progress),
+                                }),
+                            }
+                        }
+                        ProgressEvent::Download(progress) => {
+                            update_transfer_status(&transfers_clone, &transfer_id_clone, "downloading")
+                                .await;
+                            ProgressUpdate {
+                                event_type: "download".to_string(),
+                                data: serde_json::json!({
+                                    "transfer_id": transfer_id_clone,
+                                    "progress": serialize_download_progress(&progress),
+                                }),
+                            }
+                        }
+                        ProgressEvent::Connection(status) => {
+                            update_transfer_status(
+                                &transfers_clone,
+                                &transfer_id_clone,
+                                &format!("connection: {:?}", status),
+                            )
+                            .await;
+                            ProgressUpdate {
+                                event_type: "connection".to_string(),
+                                data: serde_json::json!({
+                                    "transfer_id": transfer_id_clone,
+                                    "status": format!("{:?}", status),
+                                }),
+                            }
+                        }
+                    };
 
-            let _ = app_clone.emit("progress", update);
+                    let _ = app_clone.emit("progress", update);
+                }
+                Ok(None) => {
+                    log_info!(
+                        "  [Progress Task] Channel closed after {} events",
+                        event_count
+                    );
+                    break;
+                }
+                Err(_) => {
+                    log_warn!(
+                        "  [Progress Task] No events for 60s, exiting"
+                    );
+                    break;
+                }
+            }
         }
 
         log_info!("  [Progress Task] Completed. Total events: {}", event_count);
-        // Mark transfer as complete
-        update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
+        // Only mark as complete if not already in an error/cancelled state
+        let mut guard = transfers_clone.write().await;
+        if let Some(state) = guard.get(&transfer_id_clone) {
+            if state.info.status != "completed"
+                && !state.info.status.starts_with("error:")
+                && !state.info.status.starts_with("cancelled")
+            {
+                drop(guard);
+                update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
+            }
+        }
     });
 
     log_info!("🚀 Calling sendme_lib::send_with_progress...");
-    match sendme_lib::send_with_progress(args, tx).await {
+    let mut send_handle = Some(tokio::spawn(sendme_lib::send_with_progress(args, tx)));
+    let send_result = tokio::select! {
+        biased;
+        _ = abort_rx => {
+            if let Some(h) = send_handle.take() {
+                h.abort();
+            }
+            Err("Transfer cancelled by user".to_string())
+        }
+        result = async {
+            match send_handle.take() {
+                Some(h) => h.await,
+                None => unreachable!(),
+            }
+        } => match result {
+            Ok(Ok(r)) => Ok(r),
+            Ok(Err(e)) => Err(e.to_string()),
+            Err(join_err) if join_err.is_cancelled() => Err("Transfer cancelled by user".to_string()),
+            Err(join_err) => Err(format!("Send task panicked: {}", join_err)),
+        }
+    };
+
+    match send_result {
         Ok(result) => {
             log_info!("═══════════════════════════════════════════════════");
             log_info!("✅ SEND COMPLETED SUCCESSFULLY");
@@ -2292,6 +2389,10 @@ async fn send_file(
             update_transfer_ticket(transfers.inner(), &transfer_id, &ticket_str).await;
             Ok(ticket_str)
         }
+        Err(ref e) if e.contains("cancelled by user") => {
+            update_transfer_status(transfers.inner(), &transfer_id, e).await;
+            Err(e.clone())
+        }
         Err(e) => {
             log_error!("═══════════════════════════════════════════════════");
             log_error!("❌ SEND FAILED");
@@ -2299,7 +2400,7 @@ async fn send_file(
             log_error!("Error: {}", e);
             log_error!("Transfer ID: {}", transfer_id);
             update_transfer_status(transfers.inner(), &transfer_id, &format!("error: {}", e)).await;
-            Err(e.to_string())
+            Err(e)
         }
     }
 }
@@ -2317,7 +2418,7 @@ async fn receive_file(
     log_info!("Transfer ID: {}", transfer_id);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
-    let (abort_tx, _abort_rx) = tokio::sync::oneshot::channel();
+    let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
 
     // On Android, set_current_dir doesn't work with public directories due to sandboxing.
     #[cfg(not(target_os = "android"))]
@@ -2460,91 +2561,139 @@ async fn receive_file(
             transfer_id_clone
         );
         let mut event_count = 0;
-        while let Some(event) = rx.recv().await {
-            event_count += 1;
-            log_info!(
-                "  [Progress Task] Event #{}: {:?}",
-                event_count,
-                match &event {
-                    ProgressEvent::Import(name, _) => format!("Import({})", name),
-                    ProgressEvent::Export(name, _) => format!("Export({})", name),
-                    ProgressEvent::Download(_) => "Download".to_string(),
-                    ProgressEvent::Connection(status) => format!("Connection({:?})", status),
-                }
-            );
+        const PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
+        loop {
+            match tokio::time::timeout(PROGRESS_TIMEOUT, rx.recv()).await {
+                Ok(Some(event)) => {
+                    event_count += 1;
+                    log_info!(
+                        "  [Progress Task] Event #{}: {:?}",
+                        event_count,
+                        match &event {
+                            ProgressEvent::Import(name, _) => format!("Import({})", name),
+                            ProgressEvent::Export(name, _) => format!("Export({})", name),
+                            ProgressEvent::Download(_) => "Download".to_string(),
+                            ProgressEvent::Connection(status) => format!("Connection({:?})", status),
+                        }
+                    );
 
-            let update = match event {
-                ProgressEvent::Import(name, progress) => {
-                    update_transfer_status(
-                        &transfers_clone,
-                        &transfer_id_clone,
-                        &format!("importing: {}", name),
-                    )
-                    .await;
-                    ProgressUpdate {
-                        event_type: "import".to_string(),
-                        data: serde_json::json!({
-                            "transfer_id": transfer_id_clone,
-                            "name": name,
-                            "progress": serialize_import_progress(&progress),
-                        }),
-                    }
-                }
-                ProgressEvent::Export(name, progress) => {
-                    update_transfer_status(
-                        &transfers_clone,
-                        &transfer_id_clone,
-                        &format!("exporting: {}", name),
-                    )
-                    .await;
-                    ProgressUpdate {
-                        event_type: "export".to_string(),
-                        data: serde_json::json!({
-                            "transfer_id": transfer_id_clone,
-                            "name": name,
-                            "progress": serialize_export_progress(&progress),
-                        }),
-                    }
-                }
-                ProgressEvent::Download(progress) => {
-                    update_transfer_status(&transfers_clone, &transfer_id_clone, "downloading")
-                        .await;
-                    ProgressUpdate {
-                        event_type: "download".to_string(),
-                        data: serde_json::json!({
-                            "transfer_id": transfer_id_clone,
-                            "progress": serialize_download_progress(&progress),
-                        }),
-                    }
-                }
-                ProgressEvent::Connection(status) => {
-                    update_transfer_status(
-                        &transfers_clone,
-                        &transfer_id_clone,
-                        &format!("connection: {:?}", status),
-                    )
-                    .await;
-                    ProgressUpdate {
-                        event_type: "connection".to_string(),
-                        data: serde_json::json!({
-                            "transfer_id": transfer_id_clone,
-                            "status": format!("{:?}", status),
-                        }),
-                    }
-                }
-            };
+                    let update = match event {
+                        ProgressEvent::Import(name, progress) => {
+                            update_transfer_status(
+                                &transfers_clone,
+                                &transfer_id_clone,
+                                &format!("importing: {}", name),
+                            )
+                            .await;
+                            ProgressUpdate {
+                                event_type: "import".to_string(),
+                                data: serde_json::json!({
+                                    "transfer_id": transfer_id_clone,
+                                    "name": name,
+                                    "progress": serialize_import_progress(&progress),
+                                }),
+                            }
+                        }
+                        ProgressEvent::Export(name, progress) => {
+                            update_transfer_status(
+                                &transfers_clone,
+                                &transfer_id_clone,
+                                &format!("exporting: {}", name),
+                            )
+                            .await;
+                            ProgressUpdate {
+                                event_type: "export".to_string(),
+                                data: serde_json::json!({
+                                    "transfer_id": transfer_id_clone,
+                                    "name": name,
+                                    "progress": serialize_export_progress(&progress),
+                                }),
+                            }
+                        }
+                        ProgressEvent::Download(progress) => {
+                            update_transfer_status(&transfers_clone, &transfer_id_clone, "downloading")
+                                .await;
+                            ProgressUpdate {
+                                event_type: "download".to_string(),
+                                data: serde_json::json!({
+                                    "transfer_id": transfer_id_clone,
+                                    "progress": serialize_download_progress(&progress),
+                                }),
+                            }
+                        }
+                        ProgressEvent::Connection(status) => {
+                            update_transfer_status(
+                                &transfers_clone,
+                                &transfer_id_clone,
+                                &format!("connection: {:?}", status),
+                            )
+                            .await;
+                            ProgressUpdate {
+                                event_type: "connection".to_string(),
+                                data: serde_json::json!({
+                                    "transfer_id": transfer_id_clone,
+                                    "status": format!("{:?}", status),
+                                }),
+                            }
+                        }
+                    };
 
-            let _ = app_clone.emit("progress", update);
+                    let _ = app_clone.emit("progress", update);
+                }
+                Ok(None) => {
+                    log_info!(
+                        "  [Progress Task] Channel closed after {} events",
+                        event_count
+                    );
+                    break;
+                }
+                Err(_) => {
+                    log_warn!(
+                        "  [Progress Task] No events for 60s, exiting"
+                    );
+                    break;
+                }
+            }
         }
 
         log_info!("  [Progress Task] Completed. Total events: {}", event_count);
-        // Mark transfer as complete
-        update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
+        let mut guard = transfers_clone.write().await;
+        if let Some(state) = guard.get(&transfer_id_clone) {
+            if state.info.status != "completed"
+                && !state.info.status.starts_with("error:")
+                && !state.info.status.starts_with("cancelled")
+            {
+                drop(guard);
+                update_transfer_status(
+                    &transfers_clone, &transfer_id_clone, "completed").await;
+            }
+        }
     });
 
     log_info!("Calling sendme_lib::receive_with_progress...");
+    let mut receive_handle = Some(tokio::spawn(sendme_lib::receive_with_progress(args, tx)));
+    let receive_result = tokio::select! {
+        biased;
+        _ = abort_rx => {
+            if let Some(h) = receive_handle.take() {
+                h.abort();
+            }
+            Err("Transfer cancelled by user".to_string())
+        }
+        result = async {
+            match receive_handle.take() {
+                Some(h) => h.await,
+                None => unreachable!(),
+            }
+        } => match result {
+            Ok(Ok(r)) => Ok(r),
+            Ok(Err(e)) => Err(e.to_string()),
+            Err(join_err) if join_err.is_cancelled() => Err("Transfer cancelled by user".to_string()),
+            Err(join_err) => Err(format!("Receive task panicked: {}", join_err)),
+        }
+    };
 
-    match sendme_lib::receive_with_progress(args, tx).await {
+    match receive_result {
         Ok(result) => {
             log_info!("✅ RECEIVE COMPLETED");
             log_info!(
@@ -2595,10 +2744,14 @@ async fn receive_file(
                 result.stats.total_bytes_read()
             ))
         }
+        Err(ref e) if e.contains("cancelled by user") => {
+            update_transfer_status(transfers.inner(), &transfer_id, e).await;
+            Err(e.clone())
+        }
         Err(e) => {
             log_error!("❌ RECEIVE FAILED: {}", e);
             update_transfer_status(transfers.inner(), &transfer_id, &format!("error: {}", e)).await;
-            Err(e.to_string())
+            Err(e)
         }
     }
 }
@@ -2666,6 +2819,17 @@ async fn get_transfer_status(
 
 // Helper functions
 async fn update_transfer_status(transfers: &Transfers, id: &str, status: &str) {
+    // Fast-path: read check to avoid unnecessary write lock
+    {
+        let guard = transfers.read().await;
+        if let Some(state) = guard.get(id) {
+            if state.info.status == status {
+                return;
+            }
+        } else {
+            return;
+        }
+    }
     let mut transfers_guard = transfers.write().await;
     if let Some(state) = transfers_guard.get_mut(id) {
         state.info.status = status.to_string();
