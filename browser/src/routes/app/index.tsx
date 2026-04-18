@@ -19,7 +19,10 @@ import {
   TbOutlineHistory,
   TbOutlineSettings,
   TbOutlineUsers,
+  TbOutlineLogout,
+  TbOutlineUser,
 } from "solid-icons/tb";
+import { SignInButton } from "clerk-solidjs";
 
 const t = i18n.t;
 
@@ -34,7 +37,7 @@ type ActiveTab =
 export default function AppPage() {
   const [activeTab, setActiveTab] = createSignal<ActiveTab>("send");
   const [isInitializing, setIsInitializing] = createSignal(true);
-  const { isSignedIn } = useAuth();
+  const auth = useAuth();
   const { user: clerkUser } = useUser();
 
   onMount(async () => {
@@ -75,7 +78,7 @@ export default function AppPage() {
         label: t("common.settings"),
       },
     ];
-    if (isSignedIn()) {
+    if (auth.isSignedIn()) {
       baseTabs.splice(3, 0, {
         id: "friends" as ActiveTab,
         icon: TbOutlineUsers,
@@ -107,25 +110,35 @@ export default function AppPage() {
                   (e) => e.id === u().primaryEmailAddressId,
                 )?.emailAddress ?? u().emailAddresses[0]?.emailAddress ?? "";
               return (
-                <div class="tooltip tooltip-bottom" data-tip={primaryEmail}>
-                  <div class="avatar">
-                    <div class="w-8 h-8 rounded-full">
-                      <Show
-                        when={u().imageUrl}
-                        fallback={
-                          <div class="w-full h-full bg-primary text-primary-content flex items-center justify-center text-sm font-bold rounded-full">
-                            {(u().firstName?.charAt(0) || u().username?.charAt(0) || "?").toUpperCase()}
-                          </div>
-                        }
-                      >
-                        <img
-                          src={u().imageUrl!}
-                          alt={u().fullName || "User"}
-                          class="w-full h-full object-cover"
-                        />
-                      </Show>
+                <div class="dropdown dropdown-end">
+                  <div tabindex="0" role="button" class="tooltip tooltip-bottom" data-tip={primaryEmail}>
+                    <div class="avatar cursor-pointer">
+                      <div class="w-8 h-8 rounded-full">
+                        <Show
+                          when={u().imageUrl}
+                          fallback={
+                            <div class="w-full h-full bg-primary text-primary-content flex items-center justify-center text-sm font-bold rounded-full">
+                              {(u().firstName?.charAt(0) || u().username?.charAt(0) || "?").toUpperCase()}
+                            </div>
+                          }
+                        >
+                          <img
+                            src={u().imageUrl!}
+                            alt={u().fullName || "User"}
+                            class="w-full h-full object-cover"
+                          />
+                        </Show>
+                      </div>
                     </div>
                   </div>
+                  <ul tabindex="-1" class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-box w-40 border border-base-200 z-50 mt-2">
+                    <li>
+                      <button onClick={() => auth.signOut()} class="flex items-center gap-2">
+                        <TbOutlineLogout size={16} />
+                        {t("common.signOut")}
+                      </button>
+                    </li>
+                  </ul>
                 </div>
               );
             }}
@@ -187,6 +200,64 @@ export default function AppPage() {
                         <span class="font-bold">{t("settings.title")}</span>
                         <span class="text-base-content/60">v0.31.0</span>
                       </div>
+
+                      {/* Account Card */}
+                      <Show
+                        when={auth.isSignedIn()}
+                        fallback={
+                          <div class="bg-base-300 rounded-xl p-4">
+                            <div class="flex items-center gap-3">
+                              <div class="avatar placeholder">
+                                <div class="bg-primary text-primary-content w-10 h-10 rounded-full flex items-center justify-center">
+                                  <TbOutlineUser size={20} />
+                                </div>
+                              </div>
+                              <div class="flex-1">
+                                <p class="font-semibold">{t("common.account")}</p>
+                                <p class="text-sm text-base-content/60">{t("common.signInToSync")}</p>
+                              </div>
+                            </div>
+                            <SignInButton mode="modal">
+                              <button class="btn btn-primary btn-sm mt-3 w-full rounded-lg">
+                                {t("common.signIn")}
+                              </button>
+                            </SignInButton>
+                          </div>
+                        }
+                      >
+                        <div class="bg-base-300 rounded-xl p-4">
+                          <div class="flex items-center gap-3">
+                            <Show when={clerkUser()?.imageUrl}>
+                              <img
+                                src={clerkUser()!.imageUrl}
+                                class="w-10 h-10 rounded-full object-cover"
+                                alt="avatar"
+                              />
+                            </Show>
+                            <Show when={!clerkUser()?.imageUrl}>
+                              <div class="avatar placeholder">
+                                <div class="bg-primary text-primary-content w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold">
+                                  {(clerkUser()?.firstName?.charAt(0) || clerkUser()?.username?.charAt(0) || "?").toUpperCase()}
+                                </div>
+                              </div>
+                            </Show>
+                            <div class="min-w-0 flex-1">
+                              <p class="truncate font-semibold">{clerkUser()?.fullName || clerkUser()?.username || "User"}</p>
+                              <p class="truncate text-sm text-base-content/60">
+                                {clerkUser()?.emailAddresses.find((e) => e.id === clerkUser()?.primaryEmailAddressId)?.emailAddress ?? ""}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => auth.signOut()}
+                              class="btn btn-ghost btn-sm rounded-lg"
+                              title={t("common.signOut")}
+                            >
+                              <TbOutlineLogout size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      </Show>
+
                       <div class="flex items-center justify-between">
                         <span class="font-bold">{t("common.protocol")}</span>
                         <span class="badge badge-success gap-1">

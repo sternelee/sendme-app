@@ -1,6 +1,7 @@
 import { Motion } from "solid-motionone";
 import { createSignal, Show } from "solid-js";
 import { SignedIn, SignedOut, SignInButton, SignUpButton } from "clerk-solidjs";
+import { useAuth } from "~/lib/contexts/user-clerk";
 import {
   TbOutlineSparkles,
   TbOutlineUpload,
@@ -22,6 +23,7 @@ import { i18n } from "~/lib/i18n";
 const t = i18n.t;
 
 export default function HomePage() {
+  const auth = useAuth();
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
@@ -76,6 +78,11 @@ export default function HomePage() {
                     <a href="/app" class="font-bold">
                       {t("landing.menu.goToApp")}
                     </a>
+                  </li>
+                  <li>
+                    <button onClick={() => auth.signOut()} class="text-left w-full">
+                      {t("common.signOut")}
+                    </button>
                   </li>
                 </SignedIn>
               </ul>

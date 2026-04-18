@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, ParentComponent, createSignal, createEffect } from "solid-js";
-import { useAuth as useClerkAuth, SignedIn, SignedOut, SignInButton, UserButton, ClerkLoading, ClerkLoaded } from "clerk-solidjs";
+import { useAuth as useClerkAuth, useClerk, SignedIn, SignedOut, SignInButton, UserButton, ClerkLoading, ClerkLoaded } from "clerk-solidjs";
 
 export interface UserInfo {
   id: string;
@@ -35,6 +35,7 @@ export const AuthProvider: ParentComponent = (props) => {
 
   // Use clerk-solidjs hook — these are already reactive signals
   const { userId, isLoaded: clerkIsLoaded, isSignedIn: clerkIsSignedIn } = useClerkAuth();
+  const clerk = useClerk();
 
   // Sync local signals with Clerk's reactive state — no polling needed
   createEffect(() => {
@@ -70,11 +71,13 @@ export const AuthProvider: ParentComponent = (props) => {
   };
 
   /**
-   * Sign out
+   * Sign out using Clerk
    */
-  const signOut = () => {
-    // Clerk's UserButton handles sign out automatically
-    // This is a placeholder
+  const signOut = async () => {
+    const c = clerk();
+    if (c) {
+      await c.signOut();
+    }
   };
 
   const value: AuthContextValue = {
