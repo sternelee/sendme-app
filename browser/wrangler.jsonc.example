@@ -1,0 +1,73 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sendme-app",
+  "compatibility_date": "2026-01-16",
+  "observability": {
+    "enabled": true,
+  },
+  "main": "./.output/server/index.mjs",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./.output/public",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sendme-db",
+      "database_id": "YOUR_D1_DATABASE_ID",
+      "migrations_dir": "./drizzle",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "USER_DO",
+        "class_name": "UserDO",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["UserDO"],
+    },
+  ],
+  "vars": {
+    "VITE_CLERK_PUBLISHABLE_KEY": "pk_test_YOUR_PUBLISHABLE_KEY_HERE",
+    "CLERK_SECRET_KEY": "sk_test_YOUR_SECRET_KEY_HERE",
+  },
+  "env": {
+    "production": {
+      "vars": {
+        "VITE_CLERK_PUBLISHABLE_KEY": "pk_test_YOUR_PUBLISHABLE_KEY_HERE",
+        "CLERK_SECRET_KEY": "sk_test_YOUR_SECRET_KEY_HERE",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "sendme-db",
+          "database_id": "YOUR_D1_DATABASE_ID",
+          "migrations_dir": "./drizzle",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "USER_DO",
+            "class_name": "UserDO",
+          },
+        ],
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["UserDO"],
+        },
+      ],
+    },
+  },
+  "dev": {
+    "port": 8788,
+  },
+}

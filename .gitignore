@@ -27,3 +27,4 @@ android/build
 # Log files
 *.log
 app_logs.txt
+wrangler.jsonc
