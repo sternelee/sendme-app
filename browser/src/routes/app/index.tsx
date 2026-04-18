@@ -10,6 +10,7 @@ import { LanguageSwitcher } from "../../lib/LanguageSwitcher";
 import { i18n } from "../../lib/i18n";
 import { Presence } from "solid-motionone";
 import { useAuth } from "../../lib/contexts/user-clerk";
+import { useUser } from "clerk-solidjs";
 import {
   TbOutlineSparkles,
   TbOutlineUpload,
@@ -34,6 +35,7 @@ export default function AppPage() {
   const [activeTab, setActiveTab] = createSignal<ActiveTab>("send");
   const [isInitializing, setIsInitializing] = createSignal(true);
   const { isSignedIn } = useAuth();
+  const { user: clerkUser } = useUser();
 
   onMount(async () => {
     try {
@@ -95,9 +97,39 @@ export default function AppPage() {
             <span>Sendme</span>
           </a>
         </div>
-        <div class="flex-none flex items-center gap-1">
+        <div class="flex-none flex items-center gap-2">
           <LanguageSwitcher />
           <ThemeSwitcher />
+          <Show when={clerkUser()}>
+            {(u) => {
+              const primaryEmail =
+                u().emailAddresses.find(
+                  (e) => e.id === u().primaryEmailAddressId,
+                )?.emailAddress ?? u().emailAddresses[0]?.emailAddress ?? "";
+              return (
+                <div class="tooltip tooltip-bottom" data-tip={primaryEmail}>
+                  <div class="avatar">
+                    <div class="w-8 h-8 rounded-full">
+                      <Show
+                        when={u().imageUrl}
+                        fallback={
+                          <div class="w-full h-full bg-primary text-primary-content flex items-center justify-center text-sm font-bold rounded-full">
+                            {(u().firstName?.charAt(0) || u().username?.charAt(0) || "?").toUpperCase()}
+                          </div>
+                        }
+                      >
+                        <img
+                          src={u().imageUrl!}
+                          alt={u().fullName || "User"}
+                          class="w-full h-full object-cover"
+                        />
+                      </Show>
+                    </div>
+                  </div>
+                </div>
+              );
+            }}
+          </Show>
         </div>
       </header>
 

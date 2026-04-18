@@ -1,6 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { i18n } from "./i18n";
-import { TbOutlineGlobe, TbOutlineCheck } from "solid-icons/tb";
+import { TbOutlineCheck } from "solid-icons/tb";
+import { FaSolidLanguage } from "solid-icons/fa";
 
 interface LanguageSwitcherProps {
   class?: string;
@@ -23,7 +24,7 @@ export function LanguageSwitcher(props: LanguageSwitcherProps) {
         onClick={() => setIsOpen(!isOpen())}
         class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-base-content/10"
       >
-        <TbOutlineGlobe size={18} />
+        <FaSolidLanguage size={18} />
         <span class="text-sm font-medium hidden sm:inline">
           {currentLocaleName()}
         </span>
