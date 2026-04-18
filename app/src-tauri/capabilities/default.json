@@ -17,17 +17,7 @@
     "deep-link:default",
     {
       "identifier": "http:default",
-      "allow": [
-        { "url": "https://*.clerk.accounts.dev/**" },
-        { "url": "https://*.clerk.com/**" },
-        { "url": "https://clerk-telemetry.com/**" },
-        { "url": "https://github.com/**" },
-        { "url": "https://api.github.com/**" },
-        { "url": "https://appleid.apple.com/**" },
-        { "url": "https://accounts.google.com/**" },
-        { "url": "https://oauth2.googleapis.com/**" },
-        { "url": "https://www.googleapis.com/**" }
-      ]
+      "allow": [{ "url": "https://*.leeapp.dev/**" }]
     }
   ]
 }

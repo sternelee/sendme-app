@@ -2,10 +2,7 @@
   "identifier": "main",
   "description": "permissions for desktop app",
   "local": true,
-  "windows": [
-    "main",
-    "splashscreen"
-  ],
+  "windows": ["main", "splashscreen"],
   "permissions": [
     "dialog:default",
     "dialog:allow-ask",
@@ -17,3 +14,4 @@
     "clipboard-manager:allow-write-text"
   ]
 }
+

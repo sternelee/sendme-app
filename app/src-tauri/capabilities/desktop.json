@@ -1,32 +1,15 @@
 {
   "identifier": "desktop-capability",
-  "platforms": [
-    "macOS",
-    "windows",
-    "linux"
-  ],
-  "windows": [
-    "main",
-    "splashscreen"
-  ],
+  "platforms": ["macOS", "windows", "linux"],
+  "windows": ["main", "splashscreen"],
   "permissions": [
     "core:default",
     "clerk:default",
     "opener:allow-open-url",
     "deep-link:default",
-    {
-      "identifier": "http:default",
-      "allow": [
-        {
-          "url": "https://*.clerk.accounts.dev/**"
-        },
-        {
-          "url": "https://*.clerk.com/**"
-        }
-      ]
-    },
     "clipboard-manager:default",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text"
   ]
 }
+
