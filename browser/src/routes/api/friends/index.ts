@@ -220,14 +220,31 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         );
       }
 
-      if (existingFriendship.userId === targetUser.id && existingFriendship.status === "pending") {
+      // Find any pending request from the target user to me (incoming direction)
+      const incomingRequest = existingFriendshipRows.find(
+        (r) => r.userId === targetUser.id && r.friendUserId === userId && r.status === "pending"
+      );
+
+      if (incomingRequest) {
+        // Accept the incoming request
         const now = new Date();
         const updated = await db
           .update(friends)
           .set({ status: "accepted", updatedAt: now, acceptedAt: now })
-          .where(eq(friends.id, existingFriendship.id))
+          .where(eq(friends.id, incomingRequest.id))
           .returning()
           .get();
+
+        // Also accept/clean up any reverse pending request (my request to them)
+        const reverseRequest = existingFriendshipRows.find(
+          (r) => r.userId === userId && r.friendUserId === targetUser.id && r.status === "pending"
+        );
+        if (reverseRequest) {
+          await db
+            .update(friends)
+            .set({ status: "accepted", updatedAt: now, acceptedAt: now })
+            .where(eq(friends.id, reverseRequest.id));
+        }
 
         await broadcastFriendUpdate(env, userId);
         await broadcastFriendUpdate(env, targetUser.id);
