@@ -3,6 +3,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../index.html");
     println!("cargo:rerun-if-changed=tauri.conf.json");
     println!("cargo:rerun-if-changed=tauri.ios.conf.json");
+    println!("cargo:rerun-if-changed=android-includes/proguard-jni.pro");
 
     // Propagate CLERK_PUBLISHABLE_KEY from build environment into the compiled binary.
     // This allows CI and local builds to set the key without modifying source code.

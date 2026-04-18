@@ -1,4 +1,6 @@
 <resources>
     <string name="app_name">Sendme</string>
     <string name="main_activity_title">Sendme</string>
+    <string name="foreground_channel_name">Sendme background sync</string>
+    <string name="foreground_channel_description">Keeps Sendme listening for tickets, friends, and incoming transfers in the background.</string>
 </resources>

@@ -19,9 +19,7 @@ pub use types::*;
 
 // Re-export commonly used types from dependencies
 pub use iroh::{RelayUrl, SecretKey};
-pub use iroh_blobs::{
-    api::blobs::ImportMode, ticket::BlobTicket, BlobFormat, Hash,
-};
+pub use iroh_blobs::{api::blobs::ImportMode, ticket::BlobTicket, BlobFormat, Hash};
 
 // Public API
 pub use import::{get_export_path, import_from_bytes};

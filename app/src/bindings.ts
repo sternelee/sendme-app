@@ -149,6 +149,67 @@ export interface DirectoryInfo {
   name: string;
 }
 
+export interface StartCloudPresenceRequest {
+  deviceId: string;
+  apiOrigin: string;
+}
+
+export interface CloudDevice {
+  id: string;
+  deviceId?: string | null;
+  name: string;
+  platform: string;
+  online: boolean;
+  lastSeenAt?: string | null;
+}
+
+export interface CloudFriendUser {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+}
+
+export interface CloudFriendDevice {
+  id: string;
+  name: string;
+  platform: string;
+  online: boolean;
+  last_seen_at: string;
+}
+
+export interface CloudFriend {
+  id: string;
+  userId: string;
+  friendUserId: string;
+  status: "pending" | "accepted" | string;
+  createdAt: string;
+  updatedAt: string;
+  acceptedAt?: string | null;
+  friend: CloudFriendUser;
+  friendDevices: CloudFriendDevice[];
+}
+
+export interface CloudTicket {
+  id: string;
+  ticket: string;
+  filename?: string | null;
+  fileSize?: number | null;
+  senderName?: string | null;
+  createdAt?: string | null;
+  status?: string | null;
+}
+
+export interface CloudPresenceState {
+  active: boolean;
+  connected: boolean;
+  deviceId?: string | null;
+  lastError?: string | null;
+  friends: CloudFriend[];
+  devices: CloudDevice[];
+  tickets: CloudTicket[];
+}
+
 /**
  * Pick a file using the native mobile file picker
  *
@@ -190,6 +251,20 @@ export async function pick_directory(options?: {
   return await invoke("pick_directory", {
     startDirectory: options?.startDirectory,
   });
+}
+
+export async function start_cloud_presence(
+  request: StartCloudPresenceRequest,
+): Promise<CloudPresenceState> {
+  return await invoke("start_cloud_presence", { request });
+}
+
+export async function stop_cloud_presence(): Promise<void> {
+  return await invoke("stop_cloud_presence");
+}
+
+export async function get_cloud_presence_state(): Promise<CloudPresenceState> {
+  return await invoke("get_cloud_presence_state");
 }
 
 // Text transfer types

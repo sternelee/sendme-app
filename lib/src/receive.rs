@@ -60,12 +60,10 @@ async fn receive_internal(
         // Determine the base directory for temp files
         // Use temp_dir from args if provided (required for Android/macOS sandbox),
         // otherwise fall back to current directory
-        let base_dir = args
-            .common
-            .temp_dir
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
+        let base_dir =
+            args.common.temp_dir.as_ref().cloned().unwrap_or_else(|| {
+                std::env::current_dir().expect("Failed to get current directory")
+            });
 
         tracing::info!("📁 Using base directory for temp storage: {:?}", base_dir);
 
@@ -162,7 +160,8 @@ async fn receive_internal(
                                     let mut actual_payload_size = 0u64;
                                     for (name, file_hash) in collection.iter() {
                                         // Find the size for this file hash in the hash_seq
-                                        if let Some(idx) = hash_seq.iter().position(|h| h == *file_hash)
+                                        if let Some(idx) =
+                                            hash_seq.iter().position(|h| h == *file_hash)
                                         {
                                             if idx < sizes.len() {
                                                 actual_payload_size += sizes[idx];
@@ -174,7 +173,10 @@ async fn receive_internal(
                                                 );
                                             }
                                         } else {
-                                            tracing::warn!("File {} hash not found in hash_seq", name);
+                                            tracing::warn!(
+                                                "File {} hash not found in hash_seq",
+                                                name
+                                            );
                                         }
                                     }
 
@@ -191,11 +193,13 @@ async fn receive_internal(
 
                                     if let Some(ref tx) = progress_tx {
                                         let _ = tx
-                                            .send(ProgressEvent::Download(DownloadProgress::Metadata {
-                                                total_size: actual_payload_size,
-                                                file_count: total_files,
-                                                names,
-                                            }))
+                                            .send(ProgressEvent::Download(
+                                                DownloadProgress::Metadata {
+                                                    total_size: actual_payload_size,
+                                                    file_count: total_files,
+                                                    names,
+                                                },
+                                            ))
                                             .await;
                                     }
                                     metadata_sent = true;
@@ -287,7 +291,8 @@ async fn receive_internal(
             payload_size,
             stats,
         })
-    }.await;
+    }
+    .await;
 
     endpoint.close().await;
 

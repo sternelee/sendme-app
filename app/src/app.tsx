@@ -2,21 +2,30 @@ import { createEffect } from "solid-js";
 import { Router, Route } from "@solidjs/router";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { GlobalStoreProvider } from "./lib/store";
-import { usePresenceWS } from "./lib/ws-client";
+import { start_cloud_presence, stop_cloud_presence } from "./bindings";
+import { getCloudApiOrigin, getPersistentDeviceId } from "./lib/cloud-api";
 import Home from "./routes/index";
 import "./styles.css";
 
 function PresenceConnector() {
   const auth = useAuth();
-  const wsClient = usePresenceWS();
 
   createEffect(() => {
+    if (!auth.isLoaded()) {
+      return;
+    }
+
     if (auth.isSignedIn()) {
-      wsClient.connect().catch((e) =>
-        console.error("[PresenceConnector] WS connect failed:", e),
+      start_cloud_presence({
+        deviceId: getPersistentDeviceId(),
+        apiOrigin: getCloudApiOrigin(),
+      }).catch((e) =>
+        console.error("[PresenceConnector] backend presence start failed:", e),
       );
     } else {
-      wsClient.disconnect();
+      stop_cloud_presence().catch((e) =>
+        console.error("[PresenceConnector] backend presence stop failed:", e),
+      );
     }
   });
 

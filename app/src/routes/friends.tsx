@@ -1,8 +1,9 @@
 import { createSignal, createMemo, onMount, onCleanup, Show, For } from "solid-js";
+import { listen } from "@tauri-apps/api/event";
 import { toast } from "solid-sonner";
+import { get_cloud_presence_state, type CloudFriend } from "~/bindings";
 import { useAuth } from "~/lib/auth";
 import { useFriends, type Friend } from "~/lib/friends";
-import { usePresenceWS, type WebSocketFriend } from "~/lib/ws-client";
 import { i18n } from "~/lib/i18n";
 import {
   Users,
@@ -23,7 +24,6 @@ const t = i18n.t;
 export default function FriendsPage() {
   const auth = useAuth();
   const friendsService = useFriends();
-  const wsClient = usePresenceWS();
 
   const [email, setEmail] = createSignal("");
   const [isAdding, setIsAdding] = createSignal(false);
@@ -63,7 +63,7 @@ export default function FriendsPage() {
     }
   }
 
-  function normalizeWsFriend(friend: WebSocketFriend): Friend {
+  function normalizeCloudFriend(friend: CloudFriend): Friend {
     return {
       ...friend,
       createdAt: new Date(friend.createdAt),
@@ -80,19 +80,34 @@ export default function FriendsPage() {
   let unsubscribeErrors: (() => void) | null = null;
 
   onMount(async () => {
-    await loadFriends();
+    const unlistenFriends = await listen<CloudFriend[]>(
+      "cloud_friends_updated",
+      (event) => {
+        setFriends(event.payload.map(normalizeCloudFriend));
+      },
+    );
+    unsubscribeFriends = unlistenFriends;
 
-    unsubscribeFriends = wsClient.onFriends((nextFriends) => {
-      setFriends(nextFriends.map(normalizeWsFriend));
+    const unlistenErrors = await listen<string>("cloud_presence_error", (event) => {
+      console.error("[FriendsPage] backend presence error:", event.payload);
+      toast.error(event.payload);
     });
+    unsubscribeErrors = unlistenErrors;
 
-    unsubscribeErrors = wsClient.onError((message) => {
-      console.error("[FriendsPage] WS error:", message);
-      toast.error(message);
-    });
+    try {
+      const snapshot = await get_cloud_presence_state();
+      if (snapshot.friends.length > 0 || snapshot.active) {
+        setFriends(snapshot.friends.map(normalizeCloudFriend));
+      } else {
+        await loadFriends();
+      }
+    } catch (error) {
+      console.error("[FriendsPage] failed to get backend presence snapshot:", error);
+      await loadFriends();
+    }
 
-    if (isLoggedIn()) {
-      wsClient.connect().catch((e) => console.error("[FriendsPage] WS connect failed:", e));
+    if (!isLoggedIn()) {
+      setFriends([]);
     }
   });
 
@@ -185,7 +200,12 @@ export default function FriendsPage() {
   async function handleRefresh() {
     setIsRefreshing(true);
     try {
-      await loadFriends();
+      const snapshot = await get_cloud_presence_state();
+      if (snapshot.friends.length > 0 || snapshot.connected) {
+        setFriends(snapshot.friends.map(normalizeCloudFriend));
+      } else {
+        await loadFriends();
+      }
     } finally {
       setIsRefreshing(false);
     }

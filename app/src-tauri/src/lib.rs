@@ -1,3 +1,5 @@
+use futures_util::{SinkExt, StreamExt};
+use reqwest::Client;
 use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -12,7 +14,8 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_fs::FsExt;
 use tauri_plugin_opener::OpenerExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 use uuid::Uuid;
 
 use iroh::{endpoint::Incoming, Endpoint, RelayMode};
@@ -327,13 +330,10 @@ async fn copy_files_to_content_uri(
         log_info!("Created file URI: {:?}", file_uri);
 
         // Stream-copy from temp file to content URI to avoid loading large files into memory
-        let mut dest = api
-            .open_file_writable(&file_uri)
-            .await
-            .map_err(|e| {
-                log_error!("❌ Failed to open file '{}' for writing: {:?}", name, e);
-                anyhow::anyhow!("Failed to open file '{}' for writing: {:?}", name, e)
-            })?;
+        let mut dest = api.open_file_writable(&file_uri).await.map_err(|e| {
+            log_error!("❌ Failed to open file '{}' for writing: {:?}", name, e);
+            anyhow::anyhow!("Failed to open file '{}' for writing: {:?}", name, e)
+        })?;
         let mut src = std::fs::File::open(source_path).map_err(|e| {
             log_error!("Failed to open temp file {:?}: {}", source_path, e);
             anyhow::anyhow!("Failed to open temp file {:?}: {}", source_path, e)
@@ -425,6 +425,8 @@ pub struct TransferInfo {
 type Transfers = Arc<RwLock<HashMap<String, TransferState>>>;
 
 type NearbyState = Arc<RwLock<NearbyRuntime>>;
+type CloudPresenceState = Arc<RwLock<CloudPresenceRuntime>>;
+type AndroidForegroundState = Arc<RwLock<AndroidForegroundRuntime>>;
 
 #[derive(Debug)]
 struct TransferState {
@@ -509,6 +511,158 @@ struct NearbyProfilePayload {
     device_type: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartCloudPresenceRequest {
+    device_id: String,
+    api_origin: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudDevicePayload {
+    id: String,
+    #[serde(default)]
+    device_id: Option<String>,
+    name: String,
+    platform: String,
+    online: bool,
+    #[serde(default)]
+    last_seen_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudFriendUserPayload {
+    id: String,
+    name: String,
+    email: String,
+    image: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudFriendDevicePayload {
+    id: String,
+    name: String,
+    platform: String,
+    online: bool,
+    last_seen_at: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudFriendPayload {
+    id: String,
+    user_id: String,
+    friend_user_id: String,
+    status: String,
+    created_at: String,
+    updated_at: String,
+    accepted_at: Option<String>,
+    friend: CloudFriendUserPayload,
+    #[serde(default)]
+    friend_devices: Vec<CloudFriendDevicePayload>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudTicketPayload {
+    id: String,
+    ticket: String,
+    #[serde(default)]
+    filename: Option<String>,
+    #[serde(default)]
+    file_size: Option<u64>,
+    #[serde(default)]
+    sender_name: Option<String>,
+    #[serde(default)]
+    created_at: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudTransferReceivedPayload {
+    ticket_id: String,
+    filename: Option<String>,
+    file_size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudPresenceSnapshotPayload {
+    active: bool,
+    connected: bool,
+    device_id: Option<String>,
+    last_error: Option<String>,
+    #[serde(default)]
+    friends: Vec<CloudFriendPayload>,
+    #[serde(default)]
+    devices: Vec<CloudDevicePayload>,
+    #[serde(default)]
+    tickets: Vec<CloudTicketPayload>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", content = "data", rename_all = "snake_case")]
+enum CloudServerMessage {
+    Friends(Vec<CloudFriendPayload>),
+    Devices(Vec<CloudDevicePayload>),
+    Tickets(Vec<CloudTicketPayload>),
+    Error(String),
+    Pong,
+    TransferReceived(CloudTransferReceivedPayload),
+}
+
+#[derive(Debug)]
+struct CloudPresenceRuntime {
+    generation: u64,
+    api_origin: Option<String>,
+    snapshot: CloudPresenceSnapshotPayload,
+    shutdown_tx: Option<oneshot::Sender<()>>,
+}
+
+impl Default for CloudPresenceRuntime {
+    fn default() -> Self {
+        Self {
+            generation: 0,
+            api_origin: None,
+            snapshot: CloudPresenceSnapshotPayload::default(),
+            shutdown_tx: None,
+        }
+    }
+}
+
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[derive(Debug, Clone)]
+struct AndroidForegroundTransfer {
+    title: String,
+    message: String,
+    detail: String,
+    progress_current: u32,
+    progress_total: u32,
+    indeterminate: bool,
+}
+
+#[derive(Debug, Default)]
+struct AndroidForegroundRuntime {
+    active_receive: Option<AndroidForegroundTransfer>,
+}
+
+#[cfg(target_os = "android")]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AndroidForegroundNotificationPayload {
+    title: String,
+    message: String,
+    detail: String,
+    progress_current: u32,
+    progress_total: u32,
+    indeterminate: bool,
+}
+
 struct PreparedNearbySource {
     send_path: PathBuf,
     cleanup_path: Option<PathBuf>,
@@ -566,6 +720,90 @@ async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyState>) -> Result<
     guard.endpoint = None;
     guard.listener_started = false;
     Ok(())
+}
+
+#[tauri::command]
+async fn start_cloud_presence(
+    app: AppHandle,
+    cloud: tauri::State<'_, CloudPresenceState>,
+    request: StartCloudPresenceRequest,
+) -> Result<CloudPresenceSnapshotPayload, String> {
+    let request = normalize_cloud_presence_request(request)?;
+    let (shutdown_tx, snapshot) = {
+        let mut guard = cloud.write().await;
+        let same_config = guard.snapshot.active
+            && guard.snapshot.device_id.as_deref() == Some(request.device_id.as_str())
+            && guard.api_origin.as_deref() == Some(request.api_origin.as_str());
+        if same_config {
+            return Ok(guard.snapshot.clone());
+        }
+
+        guard.generation += 1;
+        let generation = guard.generation;
+        let previous_shutdown = guard.shutdown_tx.take();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        guard.shutdown_tx = Some(shutdown_tx);
+        guard.api_origin = Some(request.api_origin.clone());
+        guard.snapshot = CloudPresenceSnapshotPayload {
+            active: true,
+            connected: false,
+            device_id: Some(request.device_id.clone()),
+            last_error: None,
+            friends: Vec::new(),
+            devices: Vec::new(),
+            tickets: Vec::new(),
+        };
+        let snapshot = guard.snapshot.clone();
+        tauri::async_runtime::spawn(run_cloud_presence_loop(
+            app.clone(),
+            cloud.inner().clone(),
+            generation,
+            request,
+            shutdown_rx,
+        ));
+        (previous_shutdown, snapshot)
+    };
+
+    if let Some(tx) = shutdown_tx {
+        let _ = tx.send(());
+    }
+
+    emit_cloud_presence_state(&app, snapshot.clone());
+    refresh_android_foreground_notification(&app).await;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+async fn stop_cloud_presence(
+    app: AppHandle,
+    cloud: tauri::State<'_, CloudPresenceState>,
+) -> Result<(), String> {
+    let (shutdown_tx, snapshot) = {
+        let mut guard = cloud.write().await;
+        guard.generation += 1;
+        let shutdown_tx = guard.shutdown_tx.take();
+        guard.api_origin = None;
+        guard.snapshot = CloudPresenceSnapshotPayload::default();
+        (shutdown_tx, guard.snapshot.clone())
+    };
+
+    if let Some(tx) = shutdown_tx {
+        let _ = tx.send(());
+    }
+
+    emit_cloud_presence_state(&app, snapshot);
+    let _ = app.emit("cloud_friends_updated", Vec::<CloudFriendPayload>::new());
+    let _ = app.emit("cloud_devices_updated", Vec::<CloudDevicePayload>::new());
+    let _ = app.emit("cloud_tickets_updated", Vec::<CloudTicketPayload>::new());
+    refresh_android_foreground_notification(&app).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_cloud_presence_state(
+    cloud: tauri::State<'_, CloudPresenceState>,
+) -> Result<CloudPresenceSnapshotPayload, String> {
+    Ok(cloud.read().await.snapshot.clone())
 }
 
 #[tauri::command]
@@ -1208,6 +1446,18 @@ async fn start_nearby_receive(
             },
         );
     }
+    set_android_active_receive(
+        &app,
+        Some(AndroidForegroundTransfer {
+            title: format!("Receiving from {}", sender_name),
+            message: "Preparing nearby transfer".to_string(),
+            detail: "Waiting for transfer data.".to_string(),
+            progress_current: 0,
+            progress_total: 0,
+            indeterminate: true,
+        }),
+    )
+    .await;
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     let app_clone = app.clone();
@@ -1224,9 +1474,7 @@ async fn start_nearby_receive(
                 Ok(Some(e)) => e,
                 Ok(None) => break,
                 Err(_) => {
-                    log_warn!(
-                        "[Nearby Receive] No progress events for 120s, exiting listener"
-                    );
+                    log_warn!("[Nearby Receive] No progress events for 120s, exiting listener");
                     break;
                 }
             };
@@ -1247,6 +1495,28 @@ async fn start_nearby_receive(
                             progress: Some(progress),
                         },
                     );
+                    let (progress_current, progress_total, indeterminate) = if total > 0 {
+                        let current = ((offset as f64 / total as f64) * 1000.0).round() as u32;
+                        (current.min(1000), 1000, false)
+                    } else {
+                        (0, 0, true)
+                    };
+                    set_android_active_receive(
+                        &app_clone,
+                        Some(AndroidForegroundTransfer {
+                            title: format!("Receiving from {}", sender_name_for_progress),
+                            message: if total > 0 {
+                                format!("{:.0}% received", (offset as f64 / total as f64) * 100.0)
+                            } else {
+                                "Receiving nearby transfer".to_string()
+                            },
+                            detail: format!("{offset} / {total} bytes"),
+                            progress_current,
+                            progress_total,
+                            indeterminate,
+                        }),
+                    )
+                    .await;
                 }
                 ProgressEvent::Download(DownloadProgress::Completed) => {
                     update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
@@ -1262,6 +1532,7 @@ async fn start_nearby_receive(
                             progress: None,
                         },
                     );
+                    set_android_active_receive(&app_clone, None).await;
                 }
                 _ => {}
             }
@@ -1306,6 +1577,7 @@ async fn start_nearby_receive(
                                 progress: None,
                             },
                         );
+                        set_android_active_receive(&app_clone, None).await;
                         return;
                     }
                 }
@@ -1330,6 +1602,7 @@ async fn start_nearby_receive(
                             progress: None,
                         },
                     );
+                    set_android_active_receive(&app_clone, None).await;
                     return;
                 }
 
@@ -1361,6 +1634,7 @@ async fn start_nearby_receive(
                                 progress: None,
                             },
                         );
+                        set_android_active_receive(&app_clone, None).await;
                     }
                 }
 
@@ -1382,6 +1656,7 @@ async fn start_nearby_receive(
                         progress: None,
                     },
                 );
+                set_android_active_receive(&app_clone, None).await;
             }
         }
     });
@@ -1418,6 +1693,684 @@ fn emit_nearby_receive_state(app: &AppHandle, payload: NearbyTransferStatePayloa
 
 fn emit_nearby_devices_updated(app: &AppHandle, devices: Vec<sendme_lib::NearbyDevice>) {
     let _ = app.emit("nearby_devices_updated", devices);
+}
+
+fn emit_cloud_presence_state(app: &AppHandle, payload: CloudPresenceSnapshotPayload) {
+    let _ = app.emit("cloud_presence_state", payload);
+}
+
+fn normalize_cloud_presence_request(
+    request: StartCloudPresenceRequest,
+) -> Result<StartCloudPresenceRequest, String> {
+    let device_id = request.device_id.trim().to_string();
+    let api_origin = request.api_origin.trim().trim_end_matches('/').to_string();
+
+    if device_id.is_empty() {
+        return Err("Device ID is required".to_string());
+    }
+
+    if api_origin.is_empty() {
+        return Err("API origin is required".to_string());
+    }
+
+    Ok(StartCloudPresenceRequest {
+        device_id,
+        api_origin,
+    })
+}
+
+fn extract_bearer_token(header: &str) -> Option<&str> {
+    let mut parts = header.split_whitespace();
+    let scheme = parts.next()?;
+    let token = parts.next()?;
+    if !scheme.eq_ignore_ascii_case("bearer") {
+        return None;
+    }
+    Some(token)
+}
+
+fn current_cloud_authorization_header(app: &AppHandle) -> Result<String, String> {
+    app.clerk()
+        .get_client_authorization_header()
+        .ok_or_else(|| "Cloud presence is not authenticated".to_string())
+}
+
+fn cloud_user_agent() -> &'static str {
+    #[cfg(target_os = "android")]
+    {
+        "Sendme Android"
+    }
+    #[cfg(target_os = "ios")]
+    {
+        "Sendme iPhone"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "Sendme macOS"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "Sendme Windows"
+    }
+    #[cfg(all(
+        not(target_os = "android"),
+        not(target_os = "ios"),
+        not(target_os = "macos"),
+        not(target_os = "windows")
+    ))]
+    {
+        "Sendme Linux"
+    }
+}
+
+fn build_cloud_api_url(api_origin: &str, path: &str) -> Result<String, String> {
+    let base = format!("{}/", api_origin.trim_end_matches('/'));
+    let base_url = Url::parse(&base).map_err(|e| format!("Invalid cloud API origin: {e}"))?;
+    base_url
+        .join(path.trim_start_matches('/'))
+        .map(|url| url.to_string())
+        .map_err(|e| format!("Invalid cloud API path: {e}"))
+}
+
+fn build_cloud_websocket_url(
+    api_origin: &str,
+    device_id: &str,
+    token: &str,
+) -> Result<Url, String> {
+    let mut url = Url::parse(&format!("{}/", api_origin.trim_end_matches('/')))
+        .map_err(|e| format!("Invalid cloud API origin: {e}"))?;
+    match url.scheme() {
+        "http" => {
+            url.set_scheme("ws")
+                .map_err(|_| "Failed to convert http origin to ws".to_string())?;
+        }
+        "https" => {
+            url.set_scheme("wss")
+                .map_err(|_| "Failed to convert https origin to wss".to_string())?;
+        }
+        "ws" | "wss" => {}
+        other => {
+            return Err(format!("Unsupported cloud API origin scheme: {other}"));
+        }
+    }
+    url.set_path("api/ws");
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("deviceId", device_id);
+        query.append_pair("token", token);
+    }
+    Ok(url)
+}
+
+async fn update_cloud_connection_state(
+    app: &AppHandle,
+    cloud: &CloudPresenceState,
+    generation: u64,
+    connected: bool,
+    last_error: Option<String>,
+) {
+    let snapshot = {
+        let mut guard = cloud.write().await;
+        if guard.generation != generation {
+            return;
+        }
+        guard.snapshot.connected = connected;
+        guard.snapshot.last_error = last_error;
+        guard.snapshot.clone()
+    };
+
+    emit_cloud_presence_state(app, snapshot);
+    refresh_android_foreground_notification(app).await;
+}
+
+async fn update_cloud_friends(
+    app: &AppHandle,
+    cloud: &CloudPresenceState,
+    generation: u64,
+    friends: Vec<CloudFriendPayload>,
+) {
+    let snapshot = {
+        let mut guard = cloud.write().await;
+        if guard.generation != generation {
+            return;
+        }
+        guard.snapshot.friends = friends.clone();
+        guard.snapshot.last_error = None;
+        guard.snapshot.clone()
+    };
+
+    let _ = app.emit("cloud_friends_updated", friends);
+    emit_cloud_presence_state(app, snapshot);
+    refresh_android_foreground_notification(app).await;
+}
+
+async fn update_cloud_devices(
+    app: &AppHandle,
+    cloud: &CloudPresenceState,
+    generation: u64,
+    devices: Vec<CloudDevicePayload>,
+) {
+    let snapshot = {
+        let mut guard = cloud.write().await;
+        if guard.generation != generation {
+            return;
+        }
+        guard.snapshot.devices = devices.clone();
+        guard.snapshot.last_error = None;
+        guard.snapshot.clone()
+    };
+
+    let _ = app.emit("cloud_devices_updated", devices);
+    emit_cloud_presence_state(app, snapshot);
+    refresh_android_foreground_notification(app).await;
+}
+
+async fn update_cloud_tickets(
+    app: &AppHandle,
+    cloud: &CloudPresenceState,
+    generation: u64,
+    tickets: Vec<CloudTicketPayload>,
+) {
+    let snapshot = {
+        let mut guard = cloud.write().await;
+        if guard.generation != generation {
+            return;
+        }
+        guard.snapshot.tickets = tickets.clone();
+        guard.snapshot.last_error = None;
+        guard.snapshot.clone()
+    };
+
+    let _ = app.emit("cloud_tickets_updated", tickets);
+    emit_cloud_presence_state(app, snapshot);
+    refresh_android_foreground_notification(app).await;
+}
+
+async fn update_cloud_server_error(
+    app: &AppHandle,
+    cloud: &CloudPresenceState,
+    generation: u64,
+    message: String,
+) {
+    let snapshot = {
+        let mut guard = cloud.write().await;
+        if guard.generation != generation {
+            return;
+        }
+        guard.snapshot.last_error = Some(message.clone());
+        guard.snapshot.clone()
+    };
+
+    let _ = app.emit("cloud_presence_error", message);
+    emit_cloud_presence_state(app, snapshot);
+    refresh_android_foreground_notification(app).await;
+}
+
+async fn wait_for_shutdown_or_timeout(
+    shutdown_rx: &mut oneshot::Receiver<()>,
+    delay: Duration,
+) -> bool {
+    tokio::select! {
+        _ = shutdown_rx => true,
+        _ = tokio::time::sleep(delay) => false,
+    }
+}
+
+async fn ensure_cloud_device_registered(
+    app: &AppHandle,
+    client: &Client,
+    request: &StartCloudPresenceRequest,
+    token: &str,
+    registered_key: &mut Option<String>,
+    registered_at: &mut Option<Instant>,
+) -> Result<(), String> {
+    let registration_key = format!("{token}:{}", request.device_id);
+    let registration_fresh = registered_key.as_deref() == Some(registration_key.as_str())
+        && registered_at
+            .as_ref()
+            .is_some_and(|instant| instant.elapsed() < Duration::from_secs(60));
+    if registration_fresh {
+        return Ok(());
+    }
+
+    let (device_name, _) = current_nearby_profile(app)?;
+    let url = build_cloud_api_url(&request.api_origin, "/api/devices")?;
+    let response = client
+        .post(url)
+        .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
+        .json(&serde_json::json!({
+            "deviceId": request.device_id,
+            "name": device_name,
+            "hostname": device_name,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to register cloud device: {e}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to register device".to_string());
+        return Err(format!(
+            "Failed to register cloud device ({status}): {body}"
+        ));
+    }
+
+    *registered_key = Some(registration_key);
+    *registered_at = Some(Instant::now());
+    Ok(())
+}
+
+async fn handle_cloud_server_message(
+    app: &AppHandle,
+    cloud: &CloudPresenceState,
+    generation: u64,
+    message: Message,
+) -> Result<(), String> {
+    let payload = match message {
+        Message::Text(text) => text.to_string(),
+        Message::Binary(bytes) => String::from_utf8(bytes.to_vec())
+            .map_err(|e| format!("Invalid binary cloud presence message: {e}"))?,
+        Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => return Ok(()),
+        Message::Close(frame) => {
+            let reason = frame
+                .map(|value| value.reason.to_string())
+                .unwrap_or_else(|| "Cloud presence websocket closed".to_string());
+            return Err(reason);
+        }
+    };
+
+    let message: CloudServerMessage = serde_json::from_str(&payload)
+        .map_err(|e| format!("Failed to parse cloud presence message: {e}"))?;
+
+    match message {
+        CloudServerMessage::Friends(friends) => {
+            update_cloud_friends(app, cloud, generation, friends).await;
+        }
+        CloudServerMessage::Devices(devices) => {
+            update_cloud_devices(app, cloud, generation, devices).await;
+        }
+        CloudServerMessage::Tickets(tickets) => {
+            update_cloud_tickets(app, cloud, generation, tickets).await;
+        }
+        CloudServerMessage::Error(message) => {
+            update_cloud_server_error(app, cloud, generation, message).await;
+        }
+        CloudServerMessage::Pong => {}
+        CloudServerMessage::TransferReceived(payload) => {
+            let _ = app.emit("cloud_transfer_received", payload);
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_cloud_presence_loop(
+    app: AppHandle,
+    cloud: CloudPresenceState,
+    generation: u64,
+    request: StartCloudPresenceRequest,
+    mut shutdown_rx: oneshot::Receiver<()>,
+) {
+    let client = match Client::builder().user_agent(cloud_user_agent()).build() {
+        Ok(client) => client,
+        Err(error) => {
+            update_cloud_connection_state(
+                &app,
+                &cloud,
+                generation,
+                false,
+                Some(format!("Failed to initialize cloud client: {error}")),
+            )
+            .await;
+            return;
+        }
+    };
+
+    let mut reconnect_attempt = 0u32;
+    let mut registered_key: Option<String> = None;
+    let mut registered_at: Option<Instant> = None;
+
+    'outer: loop {
+        let authorization = match current_cloud_authorization_header(&app) {
+            Ok(value) => value,
+            Err(error) => {
+                update_cloud_connection_state(&app, &cloud, generation, false, Some(error)).await;
+                if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_secs(3)).await {
+                    break;
+                }
+                continue;
+            }
+        };
+
+        let token = match extract_bearer_token(&authorization) {
+            Some(token) => token.to_string(),
+            None => {
+                update_cloud_connection_state(
+                    &app,
+                    &cloud,
+                    generation,
+                    false,
+                    Some("Cloud presence authorization is missing a bearer token".to_string()),
+                )
+                .await;
+                if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_secs(3)).await {
+                    break;
+                }
+                continue;
+            }
+        };
+
+        if let Err(error) = ensure_cloud_device_registered(
+            &app,
+            &client,
+            &request,
+            &token,
+            &mut registered_key,
+            &mut registered_at,
+        )
+        .await
+        {
+            update_cloud_connection_state(&app, &cloud, generation, false, Some(error)).await;
+            if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_secs(3)).await {
+                break;
+            }
+            continue;
+        }
+
+        let ws_url =
+            match build_cloud_websocket_url(&request.api_origin, &request.device_id, &token) {
+                Ok(url) => url,
+                Err(error) => {
+                    update_cloud_connection_state(&app, &cloud, generation, false, Some(error))
+                        .await;
+                    break;
+                }
+            };
+
+        match connect_async(ws_url.as_str()).await {
+            Ok((stream, _)) => {
+                reconnect_attempt = 0;
+                update_cloud_connection_state(&app, &cloud, generation, true, None).await;
+
+                let (mut writer, mut reader) = stream.split();
+                let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
+                heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+                loop {
+                    tokio::select! {
+                        _ = &mut shutdown_rx => {
+                            break 'outer;
+                        }
+                        _ = heartbeat.tick() => {
+                            if let Err(error) = writer.send(Message::Text("{\"type\":\"heartbeat\"}".into())).await {
+                                update_cloud_connection_state(
+                                    &app,
+                                    &cloud,
+                                    generation,
+                                    false,
+                                    Some(format!("Cloud presence heartbeat failed: {error}")),
+                                ).await;
+                                break;
+                            }
+                        }
+                        message = reader.next() => {
+                            match message {
+                                Some(Ok(message)) => {
+                                    if let Err(error) = handle_cloud_server_message(&app, &cloud, generation, message).await {
+                                        update_cloud_connection_state(&app, &cloud, generation, false, Some(error)).await;
+                                        break;
+                                    }
+                                }
+                                Some(Err(error)) => {
+                                    update_cloud_connection_state(
+                                        &app,
+                                        &cloud,
+                                        generation,
+                                        false,
+                                        Some(format!("Cloud presence websocket failed: {error}")),
+                                    ).await;
+                                    break;
+                                }
+                                None => {
+                                    update_cloud_connection_state(
+                                        &app,
+                                        &cloud,
+                                        generation,
+                                        false,
+                                        Some("Cloud presence websocket closed".to_string()),
+                                    ).await;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                update_cloud_connection_state(
+                    &app,
+                    &cloud,
+                    generation,
+                    false,
+                    Some(format!(
+                        "Failed to connect cloud presence websocket: {error}"
+                    )),
+                )
+                .await;
+            }
+        }
+
+        let delay_ms = (1_000u64 * (1u64 << reconnect_attempt.min(5))).min(30_000);
+        reconnect_attempt = reconnect_attempt.saturating_add(1);
+        if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_millis(delay_ms)).await {
+            break;
+        }
+    }
+
+    let snapshot = {
+        let mut guard = cloud.write().await;
+        if guard.generation != generation {
+            return;
+        }
+        guard.shutdown_tx = None;
+        guard.snapshot.connected = false;
+        guard.snapshot.clone()
+    };
+    emit_cloud_presence_state(&app, snapshot);
+    refresh_android_foreground_notification(&app).await;
+}
+
+async fn set_android_active_receive(
+    app: &AppHandle,
+    active_receive: Option<AndroidForegroundTransfer>,
+) {
+    let state = app.state::<AndroidForegroundState>().inner().clone();
+    {
+        let mut guard = state.write().await;
+        guard.active_receive = active_receive;
+    }
+    refresh_android_foreground_notification(app).await;
+}
+
+#[cfg(target_os = "android")]
+fn build_android_foreground_notification_payload(
+    snapshot: &CloudPresenceSnapshotPayload,
+    active_receive: Option<&AndroidForegroundTransfer>,
+) -> Option<AndroidForegroundNotificationPayload> {
+    if let Some(active_receive) = active_receive {
+        return Some(AndroidForegroundNotificationPayload {
+            title: active_receive.title.clone(),
+            message: active_receive.message.clone(),
+            detail: active_receive.detail.clone(),
+            progress_current: active_receive.progress_current,
+            progress_total: active_receive.progress_total,
+            indeterminate: active_receive.indeterminate,
+        });
+    }
+
+    if !snapshot.active {
+        return None;
+    }
+
+    let title = if snapshot.connected {
+        "Sendme background sync".to_string()
+    } else {
+        "Sendme reconnecting".to_string()
+    };
+    let message = format!(
+        "{} pending ticket{} · {} friend update{}",
+        snapshot.tickets.len(),
+        if snapshot.tickets.len() == 1 { "" } else { "s" },
+        snapshot.friends.len(),
+        if snapshot.friends.len() == 1 { "" } else { "s" },
+    );
+    let detail = if snapshot.connected {
+        "Listening for tickets and friend presence updates.".to_string()
+    } else {
+        snapshot
+            .last_error
+            .clone()
+            .unwrap_or_else(|| "Reconnecting to the Sendme cloud.".to_string())
+    };
+
+    Some(AndroidForegroundNotificationPayload {
+        title,
+        message,
+        detail,
+        progress_current: 0,
+        progress_total: 0,
+        indeterminate: !snapshot.connected,
+    })
+}
+
+#[cfg(target_os = "android")]
+async fn refresh_android_foreground_notification(app: &AppHandle) {
+    let cloud = app.state::<CloudPresenceState>().inner().clone();
+    let android_state = app.state::<AndroidForegroundState>().inner().clone();
+    let snapshot = cloud.read().await.snapshot.clone();
+    let active_receive = android_state.read().await.active_receive.clone();
+    let payload = build_android_foreground_notification_payload(&snapshot, active_receive.as_ref());
+
+    match payload {
+        Some(payload) => match serde_json::to_string(&payload) {
+            Ok(payload_json) => {
+                if let Err(error) = android::upsert_background_service(&payload_json) {
+                    log_warn!("Failed to update Android foreground service: {}", error);
+                }
+            }
+            Err(error) => {
+                log_warn!(
+                    "Failed to serialize Android foreground service payload: {}",
+                    error
+                );
+            }
+        },
+        None => {
+            if let Err(error) = android::stop_background_service() {
+                log_warn!("Failed to stop Android foreground service: {}", error);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+async fn refresh_android_foreground_notification(_app: &AppHandle) {}
+
+fn transfer_label_for_notification(transfer_type: &str, path: Option<&str>) -> String {
+    match transfer_type {
+        "nearby-receive" => {
+            if let Some(path) = path.filter(|value| !value.is_empty()) {
+                format!("Receiving from {path}")
+            } else {
+                "Receiving nearby transfer".to_string()
+            }
+        }
+        _ => "Receiving transfer".to_string(),
+    }
+}
+
+async fn update_android_receive_progress_from_update(
+    app: &AppHandle,
+    transfer_type: &str,
+    path: Option<&str>,
+    update: &ProgressUpdate,
+) {
+    let progress = update
+        .data
+        .get("progress")
+        .and_then(|value| value.as_object())
+        .cloned();
+
+    let Some(progress) = progress else {
+        return;
+    };
+
+    let progress_type = progress
+        .get("type")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+
+    match progress_type {
+        "completed" => {
+            set_android_active_receive(app, None).await;
+        }
+        "downloading" => {
+            let offset = progress
+                .get("offset")
+                .and_then(|value| value.as_u64())
+                .unwrap_or_default();
+            let total = progress
+                .get("total")
+                .and_then(|value| value.as_u64())
+                .unwrap_or_default();
+            let (progress_current, progress_total, indeterminate) = if total > 0 {
+                let current = ((offset as f64 / total as f64) * 1000.0).round() as u32;
+                (current.min(1000), 1000, false)
+            } else {
+                (0, 0, true)
+            };
+            let percent = if total > 0 {
+                format!("{:.0}% received", (offset as f64 / total as f64) * 100.0)
+            } else {
+                "Receiving data".to_string()
+            };
+            let detail = if total > 0 {
+                format!("{offset} / {total} bytes")
+            } else {
+                "Waiting for size information".to_string()
+            };
+            set_android_active_receive(
+                app,
+                Some(AndroidForegroundTransfer {
+                    title: transfer_label_for_notification(transfer_type, path),
+                    message: percent,
+                    detail,
+                    progress_current,
+                    progress_total,
+                    indeterminate,
+                }),
+            )
+            .await;
+        }
+        "connecting" | "getting_sizes" | "metadata" => {
+            set_android_active_receive(
+                app,
+                Some(AndroidForegroundTransfer {
+                    title: transfer_label_for_notification(transfer_type, path),
+                    message: "Preparing incoming transfer".to_string(),
+                    detail: "Setting up the receive session.".to_string(),
+                    progress_current: 0,
+                    progress_total: 0,
+                    indeterminate: true,
+                }),
+            )
+            .await;
+        }
+        _ => {}
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -1548,9 +2501,7 @@ fn spawn_nearby_send_progress_listener(
                 Ok(Some(e)) => e,
                 Ok(None) => break,
                 Err(_) => {
-                    log_warn!(
-                        "[Nearby Send] No progress events for 120s, exiting listener"
-                    );
+                    log_warn!("[Nearby Send] No progress events for 120s, exiting listener");
                     break;
                 }
             };
@@ -1878,34 +2829,32 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
         fapi_client.set_dev_browser_token_id(token);
     }
 
-    let success = match tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        fapi_client.get_client(),
-    )
-    .await
-    {
-        Ok(Ok(Some(client))) => {
-            log_info!(
-                "Clerk client refreshed, sessions={}, last_active_session_id={:?}",
-                client.sessions.len(),
-                client.last_active_session_id
-            );
-            let _ = clerk.set_client(client);
-            true
-        }
-        Ok(Ok(None)) => {
-            log_warn!("Clerk client refreshed but no session found");
-            false
-        }
-        Ok(Err(e)) => {
-            log_error!("Failed to reload Clerk client after deep link: {}", e);
-            false
-        }
-        Err(_) => {
-            log_error!("Clerk get_client timed out after 5 seconds");
-            false
-        }
-    };
+    let success =
+        match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_client())
+            .await
+        {
+            Ok(Ok(Some(client))) => {
+                log_info!(
+                    "Clerk client refreshed, sessions={}, last_active_session_id={:?}",
+                    client.sessions.len(),
+                    client.last_active_session_id
+                );
+                let _ = clerk.set_client(client);
+                true
+            }
+            Ok(Ok(None)) => {
+                log_warn!("Clerk client refreshed but no session found");
+                false
+            }
+            Ok(Err(e)) => {
+                log_error!("Failed to reload Clerk client after deep link: {}", e);
+                false
+            }
+            Err(_) => {
+                log_error!("Clerk get_client timed out after 5 seconds");
+                false
+            }
+        };
 
     if let Err(e) = app.emit(
         "clerk-auth-callback-complete",
@@ -1943,6 +2892,9 @@ pub fn run() {
 
     let transfers: Transfers = Arc::new(RwLock::new(HashMap::new()));
     let nearby: NearbyState = Arc::new(RwLock::new(NearbyRuntime::default()));
+    let cloud_presence: CloudPresenceState = Arc::new(RwLock::new(CloudPresenceRuntime::default()));
+    let android_foreground: AndroidForegroundState =
+        Arc::new(RwLock::new(AndroidForegroundRuntime::default()));
 
     // Use compile-time environment variable for Clerk key
     // This is necessary for Android/iOS where runtime env vars are not available
@@ -2025,6 +2977,8 @@ pub fn run() {
             app.manage(transfers.clone());
             // Store nearby runtime in app state
             app.manage(nearby.clone());
+            app.manage(cloud_presence.clone());
+            app.manage(android_foreground.clone());
 
             #[cfg(all(target_os = "ios", feature = "ios-web-inspector"))]
             enable_ios_web_inspector(app.handle())?;
@@ -2108,6 +3062,9 @@ pub fn run() {
             send_to_device,
             accept_incoming,
             decline_incoming,
+            start_cloud_presence,
+            stop_cloud_presence,
+            get_cloud_presence_state,
             app_ready,
             open_system_browser,
             // Menubar commands
@@ -2230,6 +3187,18 @@ async fn send_file(
     );
     drop(transfers_guard);
     log_info!("✅ Transfer stored with id: {}", transfer_id);
+    set_android_active_receive(
+        &app,
+        Some(AndroidForegroundTransfer {
+            title: "Receiving transfer".to_string(),
+            message: "Preparing incoming transfer".to_string(),
+            detail: "Setting up the receive session.".to_string(),
+            progress_current: 0,
+            progress_total: 0,
+            indeterminate: true,
+        }),
+    )
+    .await;
 
     let app_clone = app.clone();
     let transfers_clone = transfers.inner().clone();
@@ -2257,7 +3226,8 @@ async fn send_file(
                             ProgressEvent::Import(name, _) => format!("Import({})", name),
                             ProgressEvent::Export(name, _) => format!("Export({})", name),
                             ProgressEvent::Download(_) => "Download".to_string(),
-                            ProgressEvent::Connection(status) => format!("Connection({:?})", status),
+                            ProgressEvent::Connection(status) =>
+                                format!("Connection({:?})", status),
                         }
                     );
 
@@ -2295,8 +3265,12 @@ async fn send_file(
                             }
                         }
                         ProgressEvent::Download(progress) => {
-                            update_transfer_status(&transfers_clone, &transfer_id_clone, "downloading")
-                                .await;
+                            update_transfer_status(
+                                &transfers_clone,
+                                &transfer_id_clone,
+                                "downloading",
+                            )
+                            .await;
                             ProgressUpdate {
                                 event_type: "download".to_string(),
                                 data: serde_json::json!({
@@ -2332,9 +3306,7 @@ async fn send_file(
                     break;
                 }
                 Err(_) => {
-                    log_warn!(
-                        "  [Progress Task] No events for 60s, exiting"
-                    );
+                    log_warn!("  [Progress Task] No events for 60s, exiting");
                     break;
                 }
             }
@@ -2342,7 +3314,7 @@ async fn send_file(
 
         log_info!("  [Progress Task] Completed. Total events: {}", event_count);
         // Only mark as complete if not already in an error/cancelled state
-        let mut guard = transfers_clone.write().await;
+        let guard = transfers_clone.write().await;
         if let Some(state) = guard.get(&transfer_id_clone) {
             if state.info.status != "completed"
                 && !state.info.status.starts_with("error:")
@@ -2573,7 +3545,8 @@ async fn receive_file(
                             ProgressEvent::Import(name, _) => format!("Import({})", name),
                             ProgressEvent::Export(name, _) => format!("Export({})", name),
                             ProgressEvent::Download(_) => "Download".to_string(),
-                            ProgressEvent::Connection(status) => format!("Connection({:?})", status),
+                            ProgressEvent::Connection(status) =>
+                                format!("Connection({:?})", status),
                         }
                     );
 
@@ -2611,8 +3584,12 @@ async fn receive_file(
                             }
                         }
                         ProgressEvent::Download(progress) => {
-                            update_transfer_status(&transfers_clone, &transfer_id_clone, "downloading")
-                                .await;
+                            update_transfer_status(
+                                &transfers_clone,
+                                &transfer_id_clone,
+                                "downloading",
+                            )
+                            .await;
                             ProgressUpdate {
                                 event_type: "download".to_string(),
                                 data: serde_json::json!({
@@ -2638,7 +3615,11 @@ async fn receive_file(
                         }
                     };
 
-                    let _ = app_clone.emit("progress", update);
+                    let _ = app_clone.emit("progress", update.clone());
+                    update_android_receive_progress_from_update(
+                        &app_clone, "receive", None, &update,
+                    )
+                    .await;
                 }
                 Ok(None) => {
                     log_info!(
@@ -2648,24 +3629,21 @@ async fn receive_file(
                     break;
                 }
                 Err(_) => {
-                    log_warn!(
-                        "  [Progress Task] No events for 60s, exiting"
-                    );
+                    log_warn!("  [Progress Task] No events for 60s, exiting");
                     break;
                 }
             }
         }
 
         log_info!("  [Progress Task] Completed. Total events: {}", event_count);
-        let mut guard = transfers_clone.write().await;
+        let guard = transfers_clone.write().await;
         if let Some(state) = guard.get(&transfer_id_clone) {
             if state.info.status != "completed"
                 && !state.info.status.starts_with("error:")
                 && !state.info.status.starts_with("cancelled")
             {
                 drop(guard);
-                update_transfer_status(
-                    &transfers_clone, &transfer_id_clone, "completed").await;
+                update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
             }
         }
     });
@@ -2726,6 +3704,7 @@ async fn receive_file(
                             &format!("error: {}", e),
                         )
                         .await;
+                        set_android_active_receive(&app, None).await;
                         return Err(format!(
                             "Failed to copy files to selected directory. The app may not have \
                             write permission for this location. Try selecting a different directory \
@@ -2737,6 +3716,7 @@ async fn receive_file(
             }
 
             update_transfer_status(transfers.inner(), &transfer_id, "completed").await;
+            set_android_active_receive(&app, None).await;
             Ok(format!(
                 "{{\"transfer_id\": \"{}\", \"files\": {}, \"bytes\": {}}}",
                 transfer_id,
@@ -2746,11 +3726,13 @@ async fn receive_file(
         }
         Err(ref e) if e.contains("cancelled by user") => {
             update_transfer_status(transfers.inner(), &transfer_id, e).await;
+            set_android_active_receive(&app, None).await;
             Err(e.clone())
         }
         Err(e) => {
             log_error!("❌ RECEIVE FAILED: {}", e);
             update_transfer_status(transfers.inner(), &transfer_id, &format!("error: {}", e)).await;
+            set_android_active_receive(&app, None).await;
             Err(e)
         }
     }
@@ -3703,11 +4685,7 @@ async fn pick_file(
         .into_iter()
         .map(|f| {
             // Convert file:// URI to filesystem path for the path field
-            let path = f
-                .uri
-                .strip_prefix("file://")
-                .unwrap_or(&f.uri)
-                .to_string();
+            let path = f.uri.strip_prefix("file://").unwrap_or(&f.uri).to_string();
             PickerFileInfo {
                 uri: f.uri,
                 path,

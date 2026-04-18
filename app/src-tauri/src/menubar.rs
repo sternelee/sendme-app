@@ -20,19 +20,17 @@ pub fn create_tray(app_handle: &AppHandle) -> tauri::Result<TrayIcon> {
         .icon_as_template(true)
         .tooltip("Sendme - P2P File Transfer")
         .menu(&menu)
-        .on_menu_event(|app_handle, event| {
-            match event.id.as_ref() {
-                "show" => {
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+        .on_menu_event(|app_handle, event| match event.id.as_ref() {
+            "show" => {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
-                "exit" => {
-                    app_handle.exit(0);
-                }
-                _ => {}
             }
+            "exit" => {
+                app_handle.exit(0);
+            }
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             let app_handle = tray.app_handle();
