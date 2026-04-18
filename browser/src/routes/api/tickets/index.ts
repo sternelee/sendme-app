@@ -113,20 +113,25 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       targetDeviceId = targetDevice.id;
     } else {
       const friendUserId = body.friendUserId!;
-      const friendship = await db.query.friends.findFirst({
-        where: or(
-          and(
-            eq(friends.userId, userId),
-            eq(friends.friendUserId, friendUserId),
-            eq(friends.status, "accepted"),
+      const friendshipRows = await db
+        .select()
+        .from(friends)
+        .where(
+          or(
+            and(
+              eq(friends.userId, userId),
+              eq(friends.friendUserId, friendUserId),
+              eq(friends.status, "accepted"),
+            ),
+            and(
+              eq(friends.userId, friendUserId),
+              eq(friends.friendUserId, userId),
+              eq(friends.status, "accepted"),
+            ),
           ),
-          and(
-            eq(friends.userId, friendUserId),
-            eq(friends.friendUserId, userId),
-            eq(friends.status, "accepted"),
-          ),
-        ),
-      });
+        )
+        .limit(1);
+      const friendship = friendshipRows[0];
 
       if (!friendship) {
         return new Response(

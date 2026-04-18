@@ -78,21 +78,22 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
 
     let userFriends;
     if (filterStatus === "all") {
-      userFriends = await db.query.friends.findMany({
-        where: or(
-          eq(friends.userId, userId),
-          eq(friends.friendUserId, userId),
-        ),
-        orderBy: [desc(friends.updatedAt)],
-      });
+      userFriends = await db
+        .select()
+        .from(friends)
+        .where(or(eq(friends.userId, userId), eq(friends.friendUserId, userId)))
+        .orderBy(desc(friends.updatedAt));
     } else {
-      userFriends = await db.query.friends.findMany({
-        where: or(
-          and(eq(friends.userId, userId), eq(friends.status, filterStatus)),
-          and(eq(friends.friendUserId, userId), eq(friends.status, filterStatus)),
-        ),
-        orderBy: [desc(friends.updatedAt)],
-      });
+      userFriends = await db
+        .select()
+        .from(friends)
+        .where(
+          or(
+            and(eq(friends.userId, userId), eq(friends.status, filterStatus)),
+            and(eq(friends.friendUserId, userId), eq(friends.status, filterStatus)),
+          ),
+        )
+        .orderBy(desc(friends.updatedAt));
     }
 
     const enrichedFriends: FriendWithUser[] = [];
@@ -199,12 +200,17 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       );
     }
 
-    const existingFriendship = await db.query.friends.findFirst({
-      where: or(
-        and(eq(friends.userId, userId), eq(friends.friendUserId, targetUser.id)),
-        and(eq(friends.userId, targetUser.id), eq(friends.friendUserId, userId)),
-      ),
-    });
+    const existingFriendshipRows = await db
+      .select()
+      .from(friends)
+      .where(
+        or(
+          and(eq(friends.userId, userId), eq(friends.friendUserId, targetUser.id)),
+          and(eq(friends.userId, targetUser.id), eq(friends.friendUserId, userId)),
+        ),
+      )
+      .limit(1);
+    const existingFriendship = existingFriendshipRows[0] || undefined;
 
     if (existingFriendship) {
       if (existingFriendship.status === "accepted") {
@@ -253,6 +259,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       .get();
 
     await broadcastFriendUpdate(env, targetUser.id);
+    await broadcastFriendUpdate(env, userId);
 
     return new Response(JSON.stringify({ ...newFriendship, action: "request_sent" }), {
       status: 201,

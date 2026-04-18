@@ -283,16 +283,15 @@ export class UserDO extends DurableObject<Env> {
 
   private async notifyAcceptedFriends(userId: string): Promise<void> {
     const db = drizzle(this.env.DB, { schema });
-    const acceptedFriendships = await db.query.friends.findMany({
-      where: or(
-        and(eq(friends.userId, userId), eq(friends.status, "accepted")),
-        and(eq(friends.friendUserId, userId), eq(friends.status, "accepted")),
-      ),
-      columns: {
-        userId: true,
-        friendUserId: true,
-      },
-    });
+    const acceptedFriendships = await db
+      .select({ userId: friends.userId, friendUserId: friends.friendUserId })
+      .from(friends)
+      .where(
+        or(
+          and(eq(friends.userId, userId), eq(friends.status, "accepted")),
+          and(eq(friends.friendUserId, userId), eq(friends.status, "accepted")),
+        ),
+      );
 
     const friendIds = [...new Set(
       acceptedFriendships.map((friendship) =>
@@ -394,10 +393,19 @@ export class UserDO extends DurableObject<Env> {
 
   async sendFriends(userId: string, ws?: WebSocket): Promise<void> {
     const db = drizzle(this.env.DB, { schema });
-    const userFriendships = await db.query.friends.findMany({
-      where: or(eq(friends.userId, userId), eq(friends.friendUserId, userId)),
-      orderBy: [desc(schema.friends.updatedAt)],
-    });
+
+    console.log("[UserDO] sendFriends called for userId:", userId);
+
+    const userFriendships = await db
+      .select()
+      .from(friends)
+      .where(or(eq(friends.userId, userId), eq(friends.friendUserId, userId)))
+      .orderBy(desc(friends.updatedAt));
+
+    console.log("[UserDO] Found friendships:", userFriendships.length, "for userId:", userId);
+    if (userFriendships.length > 0) {
+      console.log("[UserDO] Friendship rows:", JSON.stringify(userFriendships.map((f) => ({ id: f.id, userId: f.userId, friendUserId: f.friendUserId, status: f.status }))));
+    }
 
     const enrichedFriends = (
       await Promise.all(
@@ -405,12 +413,15 @@ export class UserDO extends DurableObject<Env> {
           const friendUserId =
             friendship.userId === userId ? friendship.friendUserId : friendship.userId;
 
-          const friendUser = await db.query.users.findFirst({
-            where: eq(users.id, friendUserId),
-            columns: { id: true, name: true, email: true, image: true },
-          });
+          const friendUserRows = await db
+            .select({ id: users.id, name: users.name, email: users.email, image: users.image })
+            .from(users)
+            .where(eq(users.id, friendUserId))
+            .limit(1);
+          const friendUser = friendUserRows[0];
 
           if (!friendUser) {
+            console.warn("[UserDO] Friend user not found:", friendUserId);
             return null;
           }
 
@@ -433,6 +444,8 @@ export class UserDO extends DurableObject<Env> {
         }),
       )
     ).filter((friend): friend is EnrichedFriend => friend !== null);
+
+    console.log("[UserDO] Enriched friends:", enrichedFriends.length, "for userId:", userId);
 
     const message: WebSocketMessage = {
       type: "friends",
