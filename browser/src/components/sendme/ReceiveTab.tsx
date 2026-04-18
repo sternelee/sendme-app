@@ -101,7 +101,10 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
    * @param incomingTicketId - DB UUID of the incoming ticket; when provided the
    *   ticket is marked as received in the backend on successful download.
    */
-  async function handleReceive(overrideTicket?: string, incomingTicketId?: string) {
+  async function handleReceive(
+    overrideTicket?: string,
+    incomingTicketId?: string,
+  ) {
     const ticketValue = (overrideTicket ?? ticket()).trim();
     if (!ticketValue) {
       toast.error(t("receive.invalidTicket"));
@@ -198,19 +201,27 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
                   class="flex items-center gap-3 p-3 rounded-xl bg-base-300/50 hover:bg-base-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors w-full text-left"
                   onClick={() => handleIncomingTicketClick(incomingTicket)}
                 >
-                  <div class={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    isFromFriend ? "bg-secondary/20 text-secondary" : "bg-primary/20 text-primary"
-                  }`}>
-                    {isFromFriend ? <TbOutlineUsers size={16} /> : <TbOutlineDeviceMobile size={16} />}
+                  <div
+                    class={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                      isFromFriend
+                        ? "bg-secondary/20 text-secondary"
+                        : "bg-primary/20 text-primary"
+                    }`}
+                  >
+                    {isFromFriend ? (
+                      <TbOutlineUsers size={16} />
+                    ) : (
+                      <TbOutlineDeviceMobile size={16} />
+                    )}
                   </div>
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium truncate">
-                      {incomingTicket.filename || t("receive.unnamedFile") || "Unnamed file"}
+                      {incomingTicket.filename ||
+                        t("receive.unnamedFile") ||
+                        "Unnamed file"}
                     </p>
                     <p class="text-xs text-base-content/50">
-                      {isFromFriend
-                        ? `From ${senderName}`
-                        : "From your device"}
+                      {isFromFriend ? `From ${senderName}` : "From your device"}
                       {" • "}
                       {incomingTicket.fileSize
                         ? `${(incomingTicket.fileSize / 1024 / 1024).toFixed(2)} MB`
@@ -232,7 +243,9 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
           <input
             type="text"
             value={ticket()}
-            onInput={(e) => globalStore.receive.setTicket(e.currentTarget.value)}
+            onInput={(e) =>
+              globalStore.receive.setTicket(e.currentTarget.value)
+            }
             placeholder={t("receive.pasteTicket")}
             class="grow font-mono text-sm"
             disabled={isReceiving()}
@@ -251,11 +264,9 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
       <button
         onClick={() => void handleReceive()}
         disabled={!ticket().trim() || isReceiving()}
-        class={`btn btn-primary btn-block ${isReceiving() ? "loading" : ""}`}
+        class={`btn btn-primary btn-block`}
       >
-        <Show when={!isReceiving()}>
-          <TbOutlineDownload size={18} /> {t("receive.receiveFile")}
-        </Show>
+        <TbOutlineDownload size={18} /> {t("receive.receiveFile")}
       </button>
 
       {/* Error Alert */}
