@@ -1,7 +1,6 @@
 use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -138,24 +137,27 @@ async fn handle_content_uri(
     filename: &str,
 ) -> Result<(std::path::PathBuf, String), String> {
     use std::str::FromStr;
-    use tauri_plugin_fs::FilePath;
+    use tauri_plugin_fs::{FilePath, OpenOptions};
 
     // Check if this is a content URI (Android)
     if path.starts_with("content://") {
         log_info!("Detected content URI, using tauri_plugin_fs to read file");
         log_info!("Original filename from picker: {}", filename);
 
-        // Use tauri_plugin_fs to read the file content
+        // Use tauri_plugin_fs to open the content URI for streaming read
         let fs = app.fs(); // From FsExt trait
 
         // Parse the path as a FilePath (which handles content:// URIs)
         let file_path =
             FilePath::from_str(path).map_err(|e| format!("Failed to parse file path: {:?}", e))?;
 
-        // Read the file content using the fs plugin which can handle content URIs
-        let content = fs
-            .read(file_path)
-            .map_err(|e| format!("Failed to read content URI: {}", e))?;
+        // Open the content URI as a File and stream-copy to a temp file
+        // (avoids loading large files into memory)
+        let mut open_opts = OpenOptions::new();
+        open_opts.read(true);
+        let mut src = fs
+            .open(file_path, open_opts)
+            .map_err(|e| format!("Failed to open content URI: {}", e))?;
 
         // Create a temporary file to store the content
         let temp_dir = app
@@ -174,11 +176,10 @@ async fn handle_content_uri(
 
         let temp_file_path = temp_dir.join(&temp_filename);
 
-        // Write the content to the temporary file
-        let mut file = std::fs::File::create(&temp_file_path)
+        let mut dst = std::fs::File::create(&temp_file_path)
             .map_err(|e| format!("Failed to create temp file: {}", e))?;
-        file.write_all(&content)
-            .map_err(|e| format!("Failed to write to temp file: {}", e))?;
+        std::io::copy(&mut src, &mut dst)
+            .map_err(|e| format!("Failed to copy content URI to temp file: {}", e))?;
 
         log_info!("Copied content URI to temporary file: {:?}", temp_file_path);
 
@@ -304,14 +305,6 @@ async fn copy_files_to_content_uri(
     for (name, source_path) in &files_to_copy {
         log_info!("Copying {} ({:?}) to content URI", name, source_path);
 
-        // Read the file content from temp directory
-        let content = std::fs::read(source_path).map_err(|e| {
-            log_error!("Failed to read file {:?}: {}", source_path, e);
-            anyhow::anyhow!("Failed to read file {:?}: {}", source_path, e)
-        })?;
-
-        log_info!("Read {} bytes from {:?}", content.len(), source_path);
-
         // Create the file in the target directory using the plugin API
         // create_new_file automatically creates parent directories for nested paths
         let file_uri = api
@@ -333,9 +326,20 @@ async fn copy_files_to_content_uri(
 
         log_info!("Created file URI: {:?}", file_uri);
 
-        // Write content to the created file
-        api.write(&file_uri, &content).await.map_err(|e| {
-            log_error!("❌ Failed to write to file '{}': {:?}", name, e);
+        // Stream-copy from temp file to content URI to avoid loading large files into memory
+        let mut dest = api
+            .open_file_writable(&file_uri)
+            .await
+            .map_err(|e| {
+                log_error!("❌ Failed to open file '{}' for writing: {:?}", name, e);
+                anyhow::anyhow!("Failed to open file '{}' for writing: {:?}", name, e)
+            })?;
+        let mut src = std::fs::File::open(source_path).map_err(|e| {
+            log_error!("Failed to open temp file {:?}: {}", source_path, e);
+            anyhow::anyhow!("Failed to open temp file {:?}: {}", source_path, e)
+        })?;
+        let copied = std::io::copy(&mut src, &mut dest).map_err(|e| {
+            log_error!("❌ Failed to copy to file '{}': {:?}", name, e);
             anyhow::anyhow!(
                 "Failed to write to file '{}': {:?}. \
                      Check device storage space and directory permissions.",
@@ -344,11 +348,7 @@ async fn copy_files_to_content_uri(
             )
         })?;
 
-        log_info!(
-            "✅ Copied {} ({} bytes) to content URI",
-            name,
-            content.len()
-        );
+        log_info!("✅ Copied {} ({} bytes) to content URI", name, copied);
 
         // Clean up the temp file
         if let Err(e) = std::fs::remove_file(source_path) {
