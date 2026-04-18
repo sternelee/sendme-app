@@ -273,6 +273,32 @@ function createWebSocketStore(getToken: () => Promise<string | null>) {
     }
   };
 
+  /**
+   * Delete a ticket from the server (receiver-initiated dismiss).
+   * Removes from local state on success.
+   */
+  const deleteTicket = async (ticketString: string): Promise<boolean> => {
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/tickets", {
+        method: "DELETE",
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            }
+          : { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticket: ticketString }),
+      });
+      if (!res.ok) throw new Error("Failed to delete ticket");
+      setTickets((prev) => prev.filter((t) => t.ticket !== ticketString));
+      return true;
+    } catch (err) {
+      console.error("[useWebSocket] deleteTicket failed:", err);
+      return false;
+    }
+  };
+
   return {
     devices,
     tickets,
@@ -281,6 +307,7 @@ function createWebSocketStore(getToken: () => Promise<string | null>) {
     connect,
     destroy,
     markTicketReceived,
+    deleteTicket,
   };
 }
 
@@ -316,5 +343,6 @@ export function useWebSocket() {
     friends: instance.friends,
     isConnected: instance.isConnected,
     markTicketReceived: instance.markTicketReceived,
+    deleteTicket: instance.deleteTicket,
   };
 }

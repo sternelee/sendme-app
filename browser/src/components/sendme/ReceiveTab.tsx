@@ -1,4 +1,4 @@
-import { Show, For, createMemo, onCleanup } from "solid-js";
+import { Show, For, createMemo, onCleanup, createSignal } from "solid-js";
 import toast from "solid-toast";
 import { receiveFile, downloadFile } from "../../lib/commands";
 import { i18n } from "../../lib/i18n";
@@ -12,10 +12,8 @@ import {
   TbOutlineShieldLock,
   TbOutlineSparkles,
   TbOutlineDeviceMobile,
-  TbOutlineFile,
-  TbOutlinePhoto,
-  TbOutlineVideo,
   TbOutlineUsers,
+  TbOutlineX,
 } from "solid-icons/tb";
 import type { Ticket, EnrichedFriend } from "~/lib/composables/useWebSocket";
 
@@ -45,7 +43,12 @@ function isPreviewable(filename: string): boolean {
 export default function ReceiveTab(props: { isActive?: boolean }) {
   const globalStore = useGlobalStore();
   // P2-1: Use WebSocket directly — no intermediate useTicketPolling wrapper
-  const { friends, tickets: allTickets, markTicketReceived } = useWebSocket();
+  const {
+    friends,
+    tickets: allTickets,
+    markTicketReceived,
+    deleteTicket,
+  } = useWebSocket();
 
   const ticket = () => globalStore.receive.state().ticket;
   const isReceiving = () => globalStore.receive.state().isReceiving;
@@ -53,7 +56,42 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
   const error = () => globalStore.receive.state().error;
 
   // Only surface incoming tickets when this tab is active
-  const tickets = createMemo(() => (props.isActive ? allTickets() : []));
+  const rawTickets = createMemo(() => (props.isActive ? allTickets() : []));
+
+  // Dismissed ticket IDs — local only; survives re-render but not page refresh
+  const [dismissedIds, setDismissedIds] = createSignal<Set<string>>(new Set());
+
+  async function dismissTicket(ticketItem: Ticket) {
+    const ok = await deleteTicket(ticketItem.ticket);
+    if (ok) {
+      setDismissedIds((prev) => new Set([...prev, ticketItem.id]));
+    } else {
+      toast.error(t("receive.dismissFailed") || "Failed to dismiss ticket");
+    }
+  }
+
+  async function dismissAllTickets() {
+    const list = rawTickets();
+    const results = await Promise.allSettled(
+      list.map((t) => deleteTicket(t.ticket)),
+    );
+    const failed = results.filter((r) => r.status === "rejected" || !r.value)
+      .length;
+    setDismissedIds(
+      (prev) => new Set([...prev, ...list.map((t) => t.id)]),
+    );
+    if (failed > 0) {
+      toast.error(
+        (t("receive.dismissFailed") || "Failed to dismiss") +
+          ` ${failed} ticket${failed > 1 ? "s" : ""}`,
+      );
+    }
+  }
+
+  const tickets = createMemo(() => {
+    const dismissed = dismissedIds();
+    return rawTickets().filter((t) => !dismissed.has(t.id));
+  });
 
   // Create a map of friend's actual user ID → EnrichedFriend for sender lookup.
   // Must use f.friend.id (always the other person's ID), NOT f.friendUserId which
@@ -187,6 +225,14 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
               Click a ticket below to download it automatically.
             </p>
           </div>
+          <button
+            type="button"
+            onClick={dismissAllTickets}
+            class="btn btn-ghost btn-xs btn-circle shrink-0"
+            title={t("common.close") || "Close"}
+          >
+            <TbOutlineX size={16} />
+          </button>
         </div>
         <div class="space-y-2 max-h-40 overflow-y-auto">
           <For each={tickets()}>
@@ -198,7 +244,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
                 <button
                   type="button"
                   disabled={isReceiving()}
-                  class="flex items-center gap-3 p-3 rounded-xl bg-base-300/50 hover:bg-base-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors w-full text-left"
+                  class="flex items-center gap-3 p-3 rounded-xl bg-base-300/50 hover:bg-base-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors w-full text-left group"
                   onClick={() => handleIncomingTicketClick(incomingTicket)}
                 >
                   <div
@@ -229,6 +275,17 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
                     </p>
                   </div>
                   <TbOutlineDownload size={16} class="text-primary shrink-0" />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      dismissTicket(incomingTicket);
+                    }}
+                    class="btn btn-ghost btn-xs btn-circle shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title={t("common.cancel") || "Cancel"}
+                  >
+                    <TbOutlineX size={14} />
+                  </button>
                 </button>
               );
             }}

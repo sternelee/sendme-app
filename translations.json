@@ -147,6 +147,7 @@
       "incomingTickets": "Incoming Ticket",
       "unnamedFile": "Unnamed file",
       "unknownSize": "Unknown size",
+      "dismissFailed": "Failed to dismiss ticket",
       "pasteFromClipboard": "Paste from clipboard",
       "readyToDownload": "Ready to download",
       "clipboardError": "Failed to read clipboard"
@@ -414,6 +415,7 @@
       "incomingTickets": "待接收票据",
       "unnamedFile": "未命名文件",
       "unknownSize": "大小未知",
+      "dismissFailed": "忽略票据失败",
       "pasteFromClipboard": "从剪贴板粘贴",
       "readyToDownload": "准备下载",
       "clipboardError": "读取剪贴板失败"
