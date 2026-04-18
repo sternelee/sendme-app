@@ -271,69 +271,6 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
 }
 
 /**
- * DELETE /api/friends/:friendUserId - Remove a friend
- */
-export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
-  try {
-    const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const { userId, status: authStatus } = await authenticateRequest(requestEvent.request, env);
-
-    if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized", status: authStatus }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    const url = new URL(requestEvent.request.url);
-    const pathParts = url.pathname.split("/");
-    const friendUserId = pathParts[pathParts.length - 1];
-
-    if (!friendUserId) {
-      return new Response(
-        JSON.stringify({ error: "Missing friendUserId" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    const db = drizzle(env.DB!, { schema });
-
-    const result = await db
-      .delete(friends)
-      .where(
-        or(
-          and(eq(friends.userId, userId), eq(friends.friendUserId, friendUserId)),
-          and(eq(friends.userId, friendUserId), eq(friends.friendUserId, userId)),
-        ),
-      );
-
-    if ((result as any).changes === 0) {
-      return new Response(
-        JSON.stringify({ error: "Friendship not found" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    await broadcastFriendUpdate(env, userId);
-    await broadcastFriendUpdate(env, friendUserId);
-
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (error) {
-    console.error("[Friends API] DELETE error:", error);
-    return new Response(
-      JSON.stringify({
-        error: "Failed to remove friend",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-}
-
-/**
  * Broadcast friend list update to a user's WebSocket sessions
  */
 async function broadcastFriendUpdate(env: Env, userId: string): Promise<void> {
