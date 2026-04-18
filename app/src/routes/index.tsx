@@ -1011,14 +1011,12 @@ export default function MainPage() {
                             (!isTextMode() && !sendPath()) ||
                             (isTextMode() && !textContent().trim())
                           }
-                          class={`btn btn-primary btn-lg w-full rounded-2xl shadow-sm ${isSending() ? "loading" : ""}`}
+                          class={`btn btn-primary btn-lg w-full rounded-2xl shadow-sm`}
                         >
-                          <Show when={!isSending()}>
-                            <Zap size={18} />{" "}
-                            {isTextMode()
-                              ? t("text.generateTicket")
-                              : t("send.generateTicket")}
-                          </Show>
+                          <Zap size={18} />{" "}
+                          {isTextMode()
+                            ? t("text.generateTicket")
+                            : t("send.generateTicket")}
                         </button>
 
                         <Show when={sendTicket()}>
