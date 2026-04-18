@@ -14,6 +14,8 @@ import {
   Smartphone,
   Laptop,
   RefreshCw,
+  Check,
+  X,
 } from "lucide-solid";
 
 const t = i18n.t;
@@ -139,9 +141,33 @@ export default function FriendsPage() {
     }
   }
 
+  async function handleAcceptRequest(friend: Friend) {
+    try {
+      const result = await friendsService.addFriend(friend.friend.email);
+      if (result.action === "accepted") {
+        toast.success(t("friends.friendAdded"));
+      }
+      await loadFriends();
+    } catch (error) {
+      console.error("Failed to accept friend request:", error);
+      toast.error(t("friends.addFailed"));
+    }
+  }
+
+  async function handleDeclineRequest(friend: Friend) {
+    try {
+      await friendsService.removeFriend(friend.friend.id);
+      setFriends((prev) => prev.filter((f) => f.id !== friend.id));
+      toast.success(t("friends.declined"));
+    } catch (error) {
+      console.error("Failed to decline friend request:", error);
+      toast.error(t("friends.declineFailed"));
+    }
+  }
+
   async function handleRemoveFriend(friend: Friend) {
     try {
-      await friendsService.removeFriend(friend.friendUserId);
+      await friendsService.removeFriend(friend.friend.id);
       setFriends((prev) => prev.filter((f) => f.id !== friend.id));
       toast.success(t("friends.friendRemoved"));
     } catch (error) {
@@ -286,7 +312,7 @@ export default function FriendsPage() {
                         <div class="flex items-center gap-3">
                           {/* Avatar */}
                           <div class="avatar placeholder">
-                            <div class="bg-primary text-primary-content rounded-full w-12 h-12">
+                            <div class="bg-primary text-primary-content rounded-full w-12 h-12 flex items-center justify-center">
                               <Show
                                 when={friend.friend.image}
                                 fallback={
@@ -298,6 +324,7 @@ export default function FriendsPage() {
                                 <img
                                   src={friend.friend.image!}
                                   alt={friend.friend.name}
+                                  class="w-full h-full object-cover rounded-full"
                                 />
                               </Show>
                             </div>
@@ -383,39 +410,88 @@ export default function FriendsPage() {
           >
             <div class="space-y-3">
               <For each={pendingFriends()}>
-                {(friend) => (
-                  <div class="card bg-base-200 shadow-sm">
-                    <div class="card-body p-4">
-                      <div class="flex items-center gap-3">
-                        <div class="avatar placeholder">
-                          <div class="bg-warning text-warning-content rounded-full w-12 h-12">
-                            <span class="text-lg">
-                              {friend.friend.name?.charAt(0).toUpperCase() || "?"}
-                            </span>
+                {(friend) => {
+                  const isIncoming = friend.friendUserId === auth.user()?.id;
+
+                  return (
+                    <div class="card bg-base-200 shadow-sm">
+                      <div class="card-body p-4">
+                        <div class="flex items-center gap-3">
+                          {/* Avatar */}
+                          <div class="avatar placeholder">
+                            <div class={`rounded-full w-12 h-12 flex items-center justify-center ${
+                              isIncoming
+                                ? "bg-secondary text-secondary-content"
+                                : "bg-warning text-warning-content"
+                            }`}>
+                              <Show
+                                when={friend.friend.image}
+                                fallback={
+                                  <span class="text-lg">
+                                    {friend.friend.name?.charAt(0).toUpperCase() || "?"}
+                                  </span>
+                                }
+                              >
+                                <img
+                                  src={friend.friend.image!}
+                                  alt={friend.friend.name}
+                                  class="w-full h-full object-cover rounded-full"
+                                />
+                              </Show>
+                            </div>
                           </div>
-                        </div>
-                        <div class="flex-1 min-w-0">
-                          <h4 class="font-semibold truncate">
-                            {friend.friend.name || "Unknown"}
-                          </h4>
-                          <p class="text-xs text-base-content/60 truncate">
-                            {friend.friend.email || ""}
-                          </p>
-                          <div class="badge badge-sm badge-warning gap-1 mt-1">
-                            <Clock size={12} />
-                            {t("friends.outgoingRequest")}
+
+                          {/* Info */}
+                          <div class="flex-1 min-w-0">
+                            <h4 class="font-semibold truncate">
+                              {friend.friend.name || "Unknown"}
+                            </h4>
+                            <p class="text-xs text-base-content/60 truncate">
+                              {friend.friend.email || ""}
+                            </p>
+                            <div class={`badge badge-sm gap-1 mt-1 ${
+                              isIncoming ? "badge-secondary" : "badge-warning"
+                            }`}>
+                              <Clock size={12} />
+                              {isIncoming
+                                ? t("friends.incomingRequest")
+                                : t("friends.outgoingRequest")}
+                            </div>
                           </div>
+
+                          {/* Actions */}
+                          <Show when={isIncoming}>
+                            <div class="flex gap-2">
+                              <button
+                                onClick={() => handleAcceptRequest(friend)}
+                                class="btn btn-success btn-sm"
+                                title={t("friends.accept")}
+                              >
+                                <Check size={16} /> {t("friends.accept")}
+                              </button>
+                              <button
+                                onClick={() => handleDeclineRequest(friend)}
+                                class="btn btn-ghost btn-sm text-error"
+                                title={t("friends.decline")}
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </Show>
+                          <Show when={!isIncoming}>
+                            <button
+                              onClick={() => handleRemoveFriend(friend)}
+                              class="btn btn-ghost btn-sm text-error"
+                              title={t("friends.remove")}
+                            >
+                              <UserX size={16} />
+                            </button>
+                          </Show>
                         </div>
-                        <button
-                          onClick={() => handleRemoveFriend(friend)}
-                          class="btn btn-ghost btn-sm text-error"
-                        >
-                          <UserX size={16} />
-                        </button>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                }}
               </For>
             </div>
           </Show>

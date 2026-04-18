@@ -355,7 +355,7 @@ export default function FriendsTab(props: FriendsTabProps) {
                       <div class="flex items-center gap-3">
                         {/* Avatar */}
                         <div class="avatar placeholder">
-                          <div class="bg-primary text-primary-content rounded-full w-12 h-12">
+                          <div class="bg-primary text-primary-content rounded-full w-12 h-12 flex items-center justify-center">
                             <Show
                               when={friend.friend.image}
                               fallback={
@@ -467,7 +467,7 @@ export default function FriendsTab(props: FriendsTabProps) {
                       <div class="flex items-center gap-3">
                         {/* Avatar */}
                         <div class="avatar placeholder">
-                          <div class={`rounded-full w-12 h-12 ${
+                          <div class={`rounded-full w-12 h-12 flex items-center justify-center ${
                             isIncoming
                               ? "bg-secondary text-secondary-content"
                               : "bg-warning text-warning-content"
