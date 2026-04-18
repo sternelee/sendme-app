@@ -472,9 +472,20 @@ export default function FriendsTab(props: FriendsTabProps) {
                               ? "bg-secondary text-secondary-content"
                               : "bg-warning text-warning-content"
                           }`}>
-                            <span class="text-lg">
-                              {friend.friend.name.charAt(0).toUpperCase()}
-                            </span>
+                            <Show
+                              when={friend.friend.image}
+                              fallback={
+                                <span class="text-lg">
+                                  {friend.friend.name.charAt(0).toUpperCase()}
+                                </span>
+                              }
+                            >
+                              <img
+                                src={friend.friend.image!}
+                                alt={friend.friend.name}
+                                class="w-full h-full object-cover rounded-full"
+                              />
+                            </Show>
                           </div>
                         </div>
 
