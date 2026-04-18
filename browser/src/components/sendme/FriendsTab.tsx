@@ -90,9 +90,10 @@ export default function FriendsTab(props: FriendsTabProps) {
   );
 
   // Separate incoming (I received) vs outgoing (I sent)
+  // friendUserId is the receiver; userId is the sender
   const incomingRequests = createMemo(() =>
     pendingFriends().filter(
-      (f) => f.friend.id === clerkUserId()
+      (f) => f.friendUserId === clerkUserId()
     )
   );
   const outgoingRequests = createMemo(() =>
@@ -458,7 +459,7 @@ export default function FriendsTab(props: FriendsTabProps) {
           <div class="space-y-3">
             <For each={pendingFriends()}>
               {(friend) => {
-                const isIncoming = friend.friend.id === clerkUserId();
+                const isIncoming = friend.friendUserId === clerkUserId();
 
                 return (
                   <div class="card bg-base-200 shadow-sm">
