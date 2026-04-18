@@ -64,6 +64,7 @@ import {
   LogOut,
   Radio,
   ChevronDown,
+  Folder,
 } from "lucide-solid";
 
 import { Toaster, toast } from "solid-sonner";
@@ -156,6 +157,7 @@ export default function MainPage() {
   const isSending = () => globalStore.send.state().isSending;
   const isTextMode = () => transferMode() === "text";
   const textContent = () => globalStore.send.state().textContent;
+  const sendIsFolder = () => globalStore.send.state().isFolder;
 
   const receiveTicket = () => globalStore.receive.state().ticket;
   const receiveOutputDir = () => globalStore.receive.state().outputDir;
@@ -244,6 +246,7 @@ export default function MainPage() {
           globalStore.send.setPath(selected[0].path);
           globalStore.send.setTicket("");
           globalStore.send.setIsTextMode(false);
+          globalStore.send.setIsFolder(false);
         }
       } else {
         const selected = await open({ multiple: false, directory: false });
@@ -251,6 +254,27 @@ export default function MainPage() {
           globalStore.send.setPath(selected);
           globalStore.send.setTicket("");
           globalStore.send.setIsTextMode(false);
+          globalStore.send.setIsFolder(false);
+        }
+      }
+    } catch (e) {}
+  }
+
+  async function selectDirectory() {
+    try {
+      if (isMobile()) {
+        const result = await pick_directory();
+        globalStore.send.setPath(result.uri);
+        globalStore.send.setTicket("");
+        globalStore.send.setIsTextMode(false);
+        globalStore.send.setIsFolder(true);
+      } else {
+        const selected = await open({ multiple: false, directory: true });
+        if (selected && typeof selected === "string") {
+          globalStore.send.setPath(selected);
+          globalStore.send.setTicket("");
+          globalStore.send.setIsTextMode(false);
+          globalStore.send.setIsFolder(true);
         }
       }
     } catch (e) {}
@@ -886,24 +910,62 @@ export default function MainPage() {
                           when={isTextMode()}
                           fallback={
                             <div class="grid min-w-0 gap-3">
-                              <button
-                                onClick={selectFile}
-                                class="border-base-300 bg-base-100/75 hover:border-primary/60 hover:bg-primary/5 flex min-h-48 w-full min-w-0 flex-col items-start justify-between overflow-hidden rounded-3xl border border-dashed p-5 text-left transition"
+                              <Show
+                                when={sendPath()}
+                                fallback={
+                                  <div class="border-base-300 bg-base-100/75 flex min-h-48 w-full min-w-0 flex-col items-center justify-center gap-4 overflow-hidden rounded-3xl border border-dashed p-5 transition">
+                                    <div class="bg-primary/10 text-primary rounded-2xl p-3">
+                                      <SendIcon size={24} />
+                                    </div>
+                                    <p class="text-base-content/60 text-sm">
+                                      {t("send.dragDrop")}
+                                    </p>
+                                    <div class="flex gap-2">
+                                      <button
+                                        onClick={selectFile}
+                                        class="btn btn-primary btn-sm rounded-xl"
+                                      >
+                                        <FileText size={16} />
+                                        {t("send.selectFile")}
+                                      </button>
+                                      <button
+                                        onClick={selectDirectory}
+                                        class="btn btn-outline btn-sm rounded-xl"
+                                      >
+                                        <Folder size={16} />
+                                        {t("send.selectFolder")}
+                                      </button>
+                                    </div>
+                                  </div>
+                                }
                               >
-                                <div class="bg-primary/10 text-primary rounded-2xl p-3">
-                                  <SendIcon size={24} />
-                                </div>
-                                <div class="w-full min-w-0 space-y-2">
-                                  <p class="max-w-full truncate text-sm font-medium">
-                                    {sendPath()
-                                      ? getDisplayName(sendPath())
-                                      : t("common.selectFileOrFolder")}
-                                  </p>
-                                  <p class="text-base-content/60 text-xs leading-5">
-                                    {t("send.dragDrop")}
-                                  </p>
-                                </div>
-                              </button>
+                                <button
+                                  onClick={
+                                    sendIsFolder()
+                                      ? selectDirectory
+                                      : selectFile
+                                  }
+                                  class="border-base-300 bg-base-100/75 hover:border-primary/60 hover:bg-primary/5 flex min-h-48 w-full min-w-0 flex-col items-start justify-between overflow-hidden rounded-3xl border border-dashed p-5 text-left transition"
+                                >
+                                  <div class="bg-primary/10 text-primary rounded-2xl p-3">
+                                    {sendIsFolder() ? (
+                                      <Folder size={24} />
+                                    ) : (
+                                      <SendIcon size={24} />
+                                    )}
+                                  </div>
+                                  <div class="w-full min-w-0 space-y-2">
+                                    <p class="max-w-full truncate text-sm font-medium">
+                                      {getDisplayName(sendPath())}
+                                    </p>
+                                    <p class="text-base-content/60 text-xs leading-5">
+                                      {sendIsFolder()
+                                        ? t("send.folderSelected")
+                                        : t("send.fileSelected")}
+                                    </p>
+                                  </div>
+                                </button>
+                              </Show>
                             </div>
                           }
                         >

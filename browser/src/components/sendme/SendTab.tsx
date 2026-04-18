@@ -183,6 +183,46 @@ export default function SendTab() {
     fileInputRef?.click();
   }
 
+  async function selectFolder() {
+    // Prefer File System Access API for better cross-browser support
+    if ("showDirectoryPicker" in window) {
+      try {
+        const dirHandle = await (window as any).showDirectoryPicker();
+        const files: File[] = [];
+
+        async function traverseDir(handle: any, path: string) {
+          for await (const [name, entry] of handle.entries()) {
+            if (entry.kind === "file") {
+              const fileHandle = entry;
+              const file = await fileHandle.getFile();
+              // Attach webkitRelativePath for compatibility with existing logic
+              Object.defineProperty(file, "webkitRelativePath", {
+                value: path ? `${path}/${name}` : name,
+                writable: false,
+              });
+              files.push(file);
+            } else if (entry.kind === "directory") {
+              await traverseDir(entry, path ? `${path}/${name}` : name);
+            }
+          }
+        }
+
+        await traverseDir(dirHandle, "");
+        if (files.length > 0) {
+          globalStore.send.setFiles(files);
+          globalStore.send.setFile(null);
+          globalStore.send.setIsFolder(true);
+        }
+      } catch (e) {
+        // User cancelled or API not available
+        console.warn("Directory picker failed, falling back:", e);
+        folderInputRef?.click();
+      }
+    } else {
+      folderInputRef?.click();
+    }
+  }
+
   function resetFile() {
     globalStore.send.setFile(null);
     globalStore.send.setFiles([]);
@@ -323,7 +363,7 @@ export default function SendTab() {
                 class="btn btn-outline btn-sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  folderInputRef?.click();
+                  selectFolder();
                 }}
               >
                 <TbOutlineFolder size={16} />

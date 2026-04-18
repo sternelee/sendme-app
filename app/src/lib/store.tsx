@@ -21,6 +21,7 @@ export interface SendState {
   isTextMode: boolean;
   textContent: string;
   showReshareModal: boolean;
+  isFolder: boolean;
 }
 
 export interface ReceiveState {
@@ -77,6 +78,7 @@ interface GlobalStore {
     setIsTextMode: (isTextMode: boolean) => void;
     setTextContent: (textContent: string) => void;
     setShowReshareModal: (show: boolean) => void;
+    setIsFolder: (isFolder: boolean) => void;
     prepareReshare: (path: string) => void;
     reset: () => void;
   };
@@ -115,6 +117,7 @@ const defaultSendState: SendState = {
   isTextMode: false,
   textContent: "",
   showReshareModal: false,
+  isFolder: false,
 };
 
 const defaultReceiveState: ReceiveState = {
@@ -168,12 +171,14 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
       setIsTextMode: (isTextMode) => setSendState("isTextMode", isTextMode),
       setTextContent: (textContent) => setSendState("textContent", textContent),
       setShowReshareModal: (show) => setSendState("showReshareModal", show),
+      setIsFolder: (isFolder) => setSendState("isFolder", isFolder),
       prepareReshare: (path: string) => {
         setSendState("path", path);
         setSendState("ticket", "");
         setSendState("ticketQrCode", "");
         setSendState("isTextMode", false);
         setSendState("textContent", "");
+        setSendState("isFolder", false);
       },
       reset: () => setSendState(defaultSendState),
     },

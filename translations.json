@@ -126,6 +126,8 @@
       "selectFile": "Select File",
       "selectFolder": "Select Folder",
       "folder": "folder",
+      "folderSelected": "Folder selected",
+      "fileSelected": "File selected",
       "sending": "Generating...",
       "sendToMyDevices": "Send to My Devices",
       "sendToFriend": "Send to Friend",
