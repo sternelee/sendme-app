@@ -294,8 +294,22 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
       </Show>
 
       {/* Ticket Input */}
-      <div class="form-control">
-        <label class="input input-bordered flex items-center gap-2 w-full">
+      <div class="space-y-2">
+        <div class="flex items-center justify-between gap-3">
+          <label class="text-sm font-medium">
+            {t("receive.pasteTicket")}
+          </label>
+          <button
+            onClick={pasteTicket}
+            class="btn btn-ghost btn-xs"
+            disabled={isReceiving()}
+            title={t("receive.pasteFromClipboard") || "Paste from clipboard"}
+          >
+            <TbOutlineClipboard size={14} />
+            {t("common.paste") || "Paste"}
+          </button>
+        </div>
+        <label class="input input-bordered flex w-full items-center gap-2">
           <TbOutlineShieldLock size={18} class="opacity-50" />
           <input
             type="text"
@@ -303,18 +317,10 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
             onInput={(e) =>
               globalStore.receive.setTicket(e.currentTarget.value)
             }
-            placeholder={t("receive.pasteTicket")}
+            placeholder={t("receive.ticketPlaceholder") || "Paste ticket here..."}
             class="grow font-mono text-sm"
             disabled={isReceiving()}
           />
-          <button
-            onClick={pasteTicket}
-            class="btn btn-ghost btn-sm"
-            disabled={isReceiving()}
-            title={t("receive.pasteFromClipboard") || "Paste from clipboard"}
-          >
-            <TbOutlineClipboard size={16} />
-          </button>
         </label>
       </div>
 

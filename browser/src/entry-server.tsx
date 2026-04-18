@@ -17,6 +17,17 @@ export default createHandler(() => (
             content="black-translucent"
           />
           <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+          {/* Apply saved theme & locale before first paint to prevent FOUC */}
+          <script>
+            {`(function(){
+  try{
+    var th=localStorage.getItem('theme');
+    if(th)document.documentElement.setAttribute('data-theme',th);
+    var lc=localStorage.getItem('sendme.locale');
+    if(lc)document.documentElement.lang=lc;
+  }catch(e){}
+})();`}
+          </script>
           {assets}
         </head>
         <body>

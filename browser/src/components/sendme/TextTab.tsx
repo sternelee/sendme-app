@@ -145,14 +145,36 @@ export default function TextTab() {
       {/* Receive Text */}
       <Show when={activeTextTab() === "receive"}>
         <div class="space-y-4">
-          <div class="form-control">
-            <label class="input input-bordered flex items-center gap-2">
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <label class="text-sm font-medium">
+                {t("text.pasteText")}
+              </label>
+              <button
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    globalStore.text.setReceiveTextTicket(text);
+                    toast.success(t("receive.pasteTicket") + "!");
+                  } catch {
+                    toast.error(t("receive.clipboardError") || "Failed to read clipboard.");
+                  }
+                }}
+                class="btn btn-ghost btn-xs"
+                disabled={isReceivingText()}
+                title={t("receive.pasteFromClipboard") || "Paste from clipboard"}
+              >
+                <TbOutlineCopy size={14} />
+                {t("common.paste") || "Paste"}
+              </button>
+            </div>
+            <label class="input input-bordered flex w-full items-center gap-2">
               <TbOutlineShieldLock size={18} class="opacity-50" />
               <input
                 type="text"
                 value={receiveTextTicket()}
                 onInput={(e) => globalStore.text.setReceiveTextTicket(e.currentTarget.value)}
-                placeholder={t("text.pasteText")}
+                placeholder={t("text.ticketPlaceholder") || "Paste ticket here..."}
                 class="grow font-mono text-sm"
                 disabled={isReceivingText()}
               />
