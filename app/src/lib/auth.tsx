@@ -193,7 +193,17 @@ export function AuthProvider(props: { children: JSX.Element }) {
       // Listen to Tauri auth events from Rust. These fire whenever the Rust
       // Clerk state changes (including during the deep-link OAuth callback).
       tauriUnlisten = await listen<ClerkAuthEventData>("plugin-clerk-auth-cb", (event) => {
-        const user = extractUserFromPayload(event.payload.payload);
+        const p = event.payload.payload;
+        console.log("[auth] plugin-clerk-auth-cb: payload=", {
+          hasUser: !!p.user,
+          hasSession: !!p.session,
+          sessionHasUser: !!p.session?.user,
+          sessionHasPublicData: !!p.session?.public_user_data,
+          sessionCount: p.client?.sessions?.length,
+          firstSessionHasUser: !!p.client?.sessions?.[0]?.user,
+          firstSessionHasPublicData: !!p.client?.sessions?.[0]?.public_user_data,
+        });
+        const user = extractUserFromPayload(p);
         if (user) {
           console.log("[auth] plugin-clerk-auth-cb: user found, updating UI");
           setUserFromRust(user);
@@ -223,7 +233,17 @@ export function AuthProvider(props: { children: JSX.Element }) {
         console.log("[auth] callback-complete: no user in payload, will async reload Clerk JS");
         window.setTimeout(async () => {
           try {
-            console.log("[auth] Async reloading Clerk JS...");
+            console.log("[auth] Fetching fresh init args from Rust...");
+            const freshInit = await invoke<any>("plugin:clerk|initialize");
+            console.log("[auth] Fresh init args received, sessions=", freshInit.client?.sessions?.length);
+
+            // Update Clerk's cached resources so load() picks up the new session
+            (clerk as any).__internal_getCachedResources = async () => ({
+              client: freshInit.client,
+              environment: freshInit.environment,
+            });
+
+            console.log("[auth] Async reloading Clerk JS with fresh cache...");
             await clerk.load();
             console.log("[auth] Clerk JS reload done, user=", clerk.user ? clerk.user.id : null);
             syncFromClerk();
