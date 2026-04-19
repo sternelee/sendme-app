@@ -208,8 +208,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
           and(eq(friends.userId, userId), eq(friends.friendUserId, targetUser.id)),
           and(eq(friends.userId, targetUser.id), eq(friends.friendUserId, userId)),
         ),
-      )
-      .limit(1);
+      );
     const existingFriendship = existingFriendshipRows[0] || undefined;
 
     if (existingFriendship) {
