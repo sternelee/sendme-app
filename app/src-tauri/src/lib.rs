@@ -2840,6 +2840,17 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
     let mut success = false;
     let mut user_json = serde_json::Value::Null;
 
+    // OAuth completes in the system browser; the resulting session lives in
+    // the browser's cookies, not in our native HTTP client. Clerk's handshake
+    // endpoint refreshes the session token and returns it in the response
+    // Authorization header so that subsequent /v1/client calls can see the
+    // newly created session.
+    log_info!("Initiating Clerk handshake after OAuth callback");
+    match fapi_client.handshake_client(None, None, Some(&url_str), None, None, None).await {
+        Ok(_) => log_info!("Clerk handshake succeeded"),
+        Err(e) => log_warn!("Clerk handshake failed (non-fatal): {}", e),
+    }
+
     match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_client())
         .await
     {
