@@ -175,7 +175,7 @@ export interface CloudFriendDevice {
   name: string;
   platform: string;
   online: boolean;
-  last_seen_at: string;
+  lastSeenAt: string;
 }
 
 export interface CloudFriend {

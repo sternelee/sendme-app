@@ -1,4 +1,4 @@
-import { createSignal, createMemo, onMount, onCleanup, Show, For } from "solid-js";
+import { createSignal, createMemo, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "solid-sonner";
 import { get_cloud_presence_state, type CloudFriend } from "~/bindings";
@@ -20,6 +20,59 @@ import {
 } from "lucide-solid";
 
 const t = i18n.t;
+
+// Use sessionStorage so toast notifications survive tab switches but reset on new page session
+function getNotifiedIds(): Set<string> {
+  try {
+    const stored = sessionStorage.getItem("sendme_friend_notified");
+    return new Set(stored ? JSON.parse(stored) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function addNotifiedId(id: string) {
+  try {
+    const ids = getNotifiedIds();
+    ids.add(id);
+    sessionStorage.setItem("sendme_friend_notified", JSON.stringify([...ids]));
+  } catch {}
+}
+
+function clearNotifiedIds() {
+  try {
+    sessionStorage.removeItem("sendme_friend_notified");
+  } catch {}
+}
+
+/**
+ * Inline toast with Accept / Decline action buttons for incoming friend requests
+ */
+function FriendRequestToast(props: {
+  name: string;
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  return (
+    <div class="flex flex-col gap-2 min-w-[280px]">
+      <p class="font-medium text-sm">{t("friends.incomingRequestTitle", { name: props.name })}</p>
+      <div class="flex gap-2">
+        <button
+          onClick={props.onAccept}
+          class="btn btn-success btn-xs flex-1"
+        >
+          <Check size={14} /> {t("friends.accept")}
+        </button>
+        <button
+          onClick={props.onDecline}
+          class="btn btn-ghost btn-xs flex-1"
+        >
+          <X size={14} /> {t("friends.decline")}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function FriendsPage() {
   const auth = useAuth();
@@ -44,6 +97,43 @@ export default function FriendsPage() {
     friends().filter((f) => f.status === "pending")
   );
 
+  // Reset toast notification state on fresh mount
+  clearNotifiedIds();
+
+  // --- Toast notification on new incoming request ---
+  createEffect(() => {
+    const currentFriends = friends();
+    const myUserId = auth.user()?.id;
+    if (!myUserId) return;
+
+    const incoming = currentFriends.filter(
+      (f) => f.status === "pending" && f.friendUserId === myUserId,
+    );
+
+    const notified = getNotifiedIds();
+    const newRequests = incoming.filter((f) => !notified.has(f.id));
+
+    newRequests.forEach((req) => {
+      addNotifiedId(req.id);
+      toast.custom(
+        (tid) => (
+          <FriendRequestToast
+            name={req.friend.name}
+            onAccept={() => {
+              toast.dismiss(tid);
+              handleAcceptRequest(req);
+            }}
+            onDecline={() => {
+              toast.dismiss(tid);
+              handleDeclineRequest(req);
+            }}
+          />
+        ),
+        { duration: Number.POSITIVE_INFINITY },
+      );
+    });
+  });
+
   // Load friends from API
   async function loadFriends() {
     if (!isLoggedIn()) return;
@@ -66,9 +156,14 @@ export default function FriendsPage() {
   function normalizeCloudFriend(friend: CloudFriend): Friend {
     return {
       ...friend,
+      status: friend.status as "pending" | "accepted",
       createdAt: new Date(friend.createdAt),
       updatedAt: new Date(friend.updatedAt),
       acceptedAt: friend.acceptedAt ? new Date(friend.acceptedAt) : null,
+      friend: {
+        ...friend.friend,
+        image: friend.friend.image ?? null,
+      },
       friendDevices: friend.friendDevices.map((device) => ({
         ...device,
         lastSeenAt: new Date(device.lastSeenAt),
