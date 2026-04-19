@@ -307,6 +307,10 @@ export default function FriendsPage(props: FriendsPageProps) {
       } else {
         await loadFriends();
       }
+    } catch (error) {
+      console.error("Failed to refresh friends:", error);
+      toast.error(t("friends.loadFailed"));
+      await loadFriends();
     } finally {
       setIsRefreshing(false);
     }

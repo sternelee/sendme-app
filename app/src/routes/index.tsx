@@ -1169,7 +1169,9 @@ export default function MainPage() {
                   </Show>
                   <Show when={shareSubTab() === "friends"}>
                     <FriendsPage
-                      onSendToFriend={(friendUserId, friendName) => {
+                      onSendToFriend={(_friendUserId, friendName) => {
+                        setActiveTab("transfer");
+                        setShareSubTab("friends");
                         toast.success(
                           t("friends.goToSendTab", { name: friendName }),
                         );
