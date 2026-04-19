@@ -7,7 +7,7 @@
  *   const { devices, tickets, isConnected, markTicketReceived } = useWebSocket();
  */
 
-import { createSignal, batch, createRoot } from "solid-js";
+import { createSignal, createRoot } from "solid-js";
 import { useAuth } from "clerk-solidjs";
 import toast from "solid-toast";
 import type { Device, Ticket, Friend } from "~/lib/db/schema";
@@ -183,7 +183,6 @@ function createWebSocketStore(getToken: () => Promise<string | null>) {
         setTickets(msg.data);
         break;
       case "friends":
-        console.log("[useWebSocket] Received friends:", msg.data?.length, msg.data);
         setFriends(msg.data);
         break;
       case "device_update":

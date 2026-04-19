@@ -9,6 +9,17 @@ import { friends, users } from "~/lib/db/schema";
 import { eq, and, or, desc } from "drizzle-orm";
 import { getOnlineDevices } from "~/lib/api/devices";
 import { authenticateRequest, type Env } from "~/lib/auth";
+import { createClerkClient } from "@clerk/backend";
+
+/**
+ * D1 may return snake_case or camelCase field names depending on the adapter version.
+ * This helper reads both variants safely.
+ */
+function getField<T>(obj: Record<string, unknown>, camel: string, snake: string): T | undefined {
+  if (obj[camel] !== undefined) return obj[camel] as T;
+  if (obj[snake] !== undefined) return obj[snake] as T;
+  return undefined;
+}
 
 /**
  * Cloudflare context interface
@@ -98,31 +109,47 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
 
     const enrichedFriends: FriendWithUser[] = [];
     for (const friendship of userFriends) {
-      const friendUserId = friendship.userId === userId
-        ? friendship.friendUserId
-        : friendship.userId;
+      const fUserId = getField<string>(friendship, "userId", "user_id");
+      const fFriendUserId = getField<string>(friendship, "friendUserId", "friend_user_id");
+      const friendUserId = fUserId === userId ? fFriendUserId : fUserId;
 
-      const friendUser = await db.query.users.findFirst({
-        where: eq(users.id, friendUserId),
-        columns: { id: true, name: true, email: true, image: true },
-      });
+      if (!friendUserId) {
+        console.warn("[Friends API GET] Could not determine friendUserId for friendship");
+        continue;
+      }
 
-      if (!friendUser) continue;
+      const friendUserRows = await db
+        .select({ id: users.id, name: users.name, email: users.email, image: users.image })
+        .from(users)
+        .where(eq(users.id, friendUserId))
+        .limit(1);
+      const friendUser = friendUserRows[0];
 
-      const friendDevicesList = (await getOnlineDevices(db, friendUserId))
-        .slice(0, 10)
-        .map((device) => ({
-          id: device.id,
-          name: device.name,
-          platform: device.platform,
-          online: device.online,
-          lastSeenAt: device.lastSeenAt,
-        }));
+      // Use placeholder if user record is missing (Clerk sync may have failed)
+      const resolvedFriend = friendUser ?? {
+        id: friendUserId,
+        name: "Unknown User",
+        email: "",
+        image: null as string | null,
+      };
 
+      const friendDevicesList = friendUser
+        ? (await getOnlineDevices(db, friendUserId))
+            .slice(0, 10)
+            .map((device) => ({
+              id: device.id,
+              name: device.name,
+              platform: device.platform,
+              online: device.online,
+              lastSeenAt: device.lastSeenAt,
+            }))
+        : [];
+
+      const fStatus = getField<string>(friendship, "status", "status");
       enrichedFriends.push({
         ...friendship,
-        status: friendship.status as "pending" | "accepted",
-        friend: friendUser,
+        status: (fStatus ?? "pending") as "pending" | "accepted",
+        friend: resolvedFriend,
         friendDevices: friendDevicesList,
       });
     }
@@ -177,13 +204,72 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
 
     let targetUser;
     if (body.userId) {
-      targetUser = await db.query.users.findFirst({
-        where: eq(users.id, body.userId),
-      });
+      const rows = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, body.userId))
+        .limit(1);
+      targetUser = rows[0];
     } else if (body.email) {
-      targetUser = await db.query.users.findFirst({
-        where: eq(users.email, body.email),
-      });
+      const rows = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, body.email))
+        .limit(1);
+      targetUser = rows[0];
+    }
+
+    // Fallback: if target user is not in local DB, try to fetch from Clerk and create
+    if (!targetUser && body.email && env.CLERK_SECRET_KEY) {
+      try {
+        const clerk = createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
+        const clerkUsers = await clerk.users.getUserList({ emailAddress: [body.email] });
+        const clerkUser = clerkUsers.data[0];
+        if (clerkUser) {
+          const primaryEmail = clerkUser.emailAddresses[0]?.emailAddress ?? "";
+          const displayName =
+            [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+            clerkUser.username ||
+            primaryEmail;
+
+          const existingRows = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.id, clerkUser.id))
+            .limit(1);
+
+          if (existingRows.length === 0) {
+            await db.insert(users).values({
+              id: clerkUser.id,
+              name: displayName,
+              email: primaryEmail,
+              emailVerified: true,
+              image: clerkUser.imageUrl,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          } else {
+            await db
+              .update(users)
+              .set({
+                name: displayName,
+                email: primaryEmail,
+                image: clerkUser.imageUrl,
+                updatedAt: new Date(),
+              })
+              .where(eq(users.id, clerkUser.id));
+          }
+
+          targetUser = {
+            id: clerkUser.id,
+            name: displayName,
+            email: primaryEmail,
+            image: clerkUser.imageUrl,
+          };
+        }
+      } catch (clerkErr) {
+        console.warn("[Friends API] Clerk fallback failed:", clerkErr);
+      }
     }
 
     if (!targetUser) {
@@ -209,40 +295,52 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
           and(eq(friends.userId, targetUser.id), eq(friends.friendUserId, userId)),
         ),
       );
+
     const existingFriendship = existingFriendshipRows[0] || undefined;
 
     if (existingFriendship) {
-      if (existingFriendship.status === "accepted") {
+      const status = getField(existingFriendship, "status", "status");
+
+      if (status === "accepted") {
         return new Response(
           JSON.stringify({ error: "Already friends" }),
           { status: 400, headers: { "Content-Type": "application/json" } }
         );
       }
 
-      // Find any pending request from the target user to me (incoming direction)
-      const incomingRequest = existingFriendshipRows.find(
-        (r) => r.userId === targetUser.id && r.friendUserId === userId && r.status === "pending"
-      );
+      // Defensive field access for D1 snake_case quirk
+      const incomingRequest = existingFriendshipRows.find((r) => {
+        const rUserId = getField(r, "userId", "user_id");
+        const rFriendUserId = getField(r, "friendUserId", "friend_user_id");
+        const rStatus = getField(r, "status", "status");
+        return rUserId === targetUser.id && rFriendUserId === userId && rStatus === "pending";
+      });
 
       if (incomingRequest) {
+        const incomingId = getField<string>(incomingRequest, "id", "id");
+
         // Accept the incoming request
         const now = new Date();
-        const updated = await db
+        const updatedRows = await db
           .update(friends)
           .set({ status: "accepted", updatedAt: now, acceptedAt: now })
-          .where(eq(friends.id, incomingRequest.id))
-          .returning()
-          .get();
+          .where(eq(friends.id, incomingId!))
+          .returning();
+        const updated = updatedRows[0];
 
         // Also accept/clean up any reverse pending request (my request to them)
-        const reverseRequest = existingFriendshipRows.find(
-          (r) => r.userId === userId && r.friendUserId === targetUser.id && r.status === "pending"
-        );
+        const reverseRequest = existingFriendshipRows.find((r) => {
+          const rUserId = getField<string>(r, "userId", "user_id");
+          const rFriendUserId = getField<string>(r, "friendUserId", "friend_user_id");
+          const rStatus = getField<string>(r, "status", "status");
+          return rUserId === userId && rFriendUserId === targetUser.id && rStatus === "pending";
+        });
         if (reverseRequest) {
+          const reverseId = getField<string>(reverseRequest, "id", "id");
           await db
             .update(friends)
             .set({ status: "accepted", updatedAt: now, acceptedAt: now })
-            .where(eq(friends.id, reverseRequest.id));
+            .where(eq(friends.id, reverseId!));
         }
 
         await broadcastFriendUpdate(env, userId);
@@ -261,7 +359,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     }
 
     const now = new Date();
-    const newFriendship = await db
+    const newFriendshipRows = await db
       .insert(friends)
       .values({
         id: crypto.randomUUID(),
@@ -271,8 +369,8 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         createdAt: now,
         updatedAt: now,
       })
-      .returning()
-      .get();
+      .returning();
+    const newFriendship = newFriendshipRows[0];
 
     await broadcastFriendUpdate(env, targetUser.id);
     await broadcastFriendUpdate(env, userId);

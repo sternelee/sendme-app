@@ -3,6 +3,7 @@
  * DELETE /api/devices/[id] - Remove a device.
  */
 
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { deleteDevice as deleteDeviceFromDb } from "~/lib/api/devices";
 import { authenticateRequest, type Env } from "~/lib/auth";
@@ -57,10 +58,12 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
     const deviceId = requestEvent.params.id;
     const db = drizzle(env.DB!, { schema });
 
-    const device = await db.query.devices.findFirst({
-      where: (devices, { and, eq }) =>
-        and(eq(devices.id, deviceId), eq(devices.userId, userId)),
-    });
+    const deviceRows = await db
+      .select()
+      .from(schema.devices)
+      .where(and(eq(schema.devices.id, deviceId), eq(schema.devices.userId, userId)))
+      .limit(1);
+    const device = deviceRows[0];
 
     if (!device) {
       return new Response(

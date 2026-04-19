@@ -19,8 +19,29 @@ import {
 
 const t = i18n.t;
 
-// Module-level set so Tab remounts don't re-notify the same pending requests
-const _notifiedFriendRequestIds = new Set<string>();
+// Use sessionStorage so toast notifications survive tab switches but reset on new page session
+function getNotifiedIds(): Set<string> {
+  try {
+    const stored = sessionStorage.getItem("sendme_friend_notified");
+    return new Set(stored ? JSON.parse(stored) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function addNotifiedId(id: string) {
+  try {
+    const ids = getNotifiedIds();
+    ids.add(id);
+    sessionStorage.setItem("sendme_friend_notified", JSON.stringify([...ids]));
+  } catch {}
+}
+
+function clearNotifiedIds() {
+  try {
+    sessionStorage.removeItem("sendme_friend_notified");
+  } catch {}
+}
 
 interface FriendsTabProps {
   onSendToFriend?: (friend: EnrichedFriend) => void;
@@ -81,6 +102,9 @@ export default function FriendsTab(props: FriendsTabProps) {
   const [isAdding, setIsAdding] = createSignal(false);
   const [activeTab, setActiveTab] = createSignal<"accepted" | "pending">("accepted");
 
+  // Reset toast notification state on fresh mount (re-login / new session)
+  clearNotifiedIds();
+
   // Accepted / Pending splits
   const acceptedFriends = createMemo(() =>
     friends().filter((f) => f.status === "accepted")
@@ -104,18 +128,16 @@ export default function FriendsTab(props: FriendsTabProps) {
 
   // --- Toast notification on new incoming request ---
   createEffect(() => {
-    const id = clerkUserId();
     const incoming = incomingRequests();
-    console.log("[FriendsTab] clerkUserId:", id, "incomingRequests:", incoming.length, "pendingFriends:", pendingFriends().length);
 
+    const notified = getNotifiedIds();
     const newRequests = incoming.filter(
-      (f) => !_notifiedFriendRequestIds.has(f.id)
+      (f) => !notified.has(f.id)
     );
-    console.log("[FriendsTab] newRequests for toast:", newRequests.length, newRequests.map((r) => r.id));
 
     if (newRequests.length > 0) {
       newRequests.forEach((req) => {
-        _notifiedFriendRequestIds.add(req.id);
+        addNotifiedId(req.id);
         toast.custom(
           (t2) => (
             <FriendRequestToast

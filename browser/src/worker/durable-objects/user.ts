@@ -403,24 +403,35 @@ export class UserDO extends DurableObject<Env> {
     }
     const db = drizzle(this.env.DB, { schema });
 
-    console.log("[UserDO] sendFriends called for userId:", userId);
-
     const userFriendships = await db
       .select()
       .from(friends)
       .where(or(eq(friends.userId, userId), eq(friends.friendUserId, userId)))
       .orderBy(desc(friends.updatedAt));
 
-    console.log("[UserDO] Found friendships:", userFriendships.length, "for userId:", userId);
-    if (userFriendships.length > 0) {
-      console.log("[UserDO] Friendship rows:", JSON.stringify(userFriendships.map((f) => ({ id: f.id, userId: f.userId, friendUserId: f.friendUserId, status: f.status }))));
-    }
-
     const enrichedFriends = (
       await Promise.all(
         userFriendships.map(async (friendship) => {
-          const friendUserId =
-            friendship.userId === userId ? friendship.friendUserId : friendship.userId;
+          // Defensive: handle both camelCase and snake_case field names (D1 adapter quirk)
+          const getField = (obj: any, camel: string, snake: string): any => {
+            if (obj[camel] !== undefined) return obj[camel];
+            if (obj[snake] !== undefined) return obj[snake];
+            return undefined;
+          };
+
+          const fId = getField(friendship, 'id', 'id');
+          const fUserId = getField(friendship, 'userId', 'user_id');
+          const fFriendUserId = getField(friendship, 'friendUserId', 'friend_user_id');
+          const fStatus = getField(friendship, 'status', 'status');
+          const fCreatedAt = getField(friendship, 'createdAt', 'created_at');
+          const fUpdatedAt = getField(friendship, 'updatedAt', 'updated_at');
+          const fAcceptedAt = getField(friendship, 'acceptedAt', 'accepted_at');
+
+          const friendUserId = fUserId === userId ? fFriendUserId : fUserId;
+
+          if (!friendUserId) {
+            return null;
+          }
 
           const friendUserRows = await db
             .select({ id: users.id, name: users.name, email: users.email, image: users.image })
@@ -429,32 +440,41 @@ export class UserDO extends DurableObject<Env> {
             .limit(1);
           const friendUser = friendUserRows[0];
 
-          if (!friendUser) {
-            console.warn("[UserDO] Friend user not found:", friendUserId);
-            return null;
-          }
+          // If friend user record is missing (e.g. Clerk sync failed), use placeholder
+          // so the friendship is still visible in the UI.
+          const resolvedFriend = friendUser ?? {
+            id: friendUserId,
+            name: "Unknown User",
+            email: "",
+            image: null as string | null,
+          };
 
-          const friendDevices = (await getOnlineDevices(db, friendUserId))
-            .slice(0, 10)
-            .map((device) => ({
-              id: device.id,
-              name: device.name,
-              platform: device.platform,
-              online: device.online,
-              lastSeenAt: device.lastSeenAt,
-            }));
+          const friendDevices = friendUser
+            ? (await getOnlineDevices(db, friendUserId))
+                .slice(0, 10)
+                .map((device) => ({
+                  id: device.id,
+                  name: device.name,
+                  platform: device.platform,
+                  online: device.online,
+                  lastSeenAt: device.lastSeenAt,
+                }))
+            : [];
 
           return {
-            ...friendship,
-            status: friendship.status as "pending" | "accepted",
-            friend: friendUser,
+            id: fId,
+            userId: fUserId,
+            friendUserId: fFriendUserId,
+            status: fStatus as "pending" | "accepted",
+            createdAt: fCreatedAt,
+            updatedAt: fUpdatedAt,
+            acceptedAt: fAcceptedAt,
+            friend: resolvedFriend,
             friendDevices,
           } satisfies EnrichedFriend;
         }),
       )
     ).filter((friend): friend is EnrichedFriend => friend !== null);
-
-    console.log("[UserDO] Enriched friends:", enrichedFriends.length, "for userId:", userId);
 
     const message: WebSocketMessage = {
       type: "friends",

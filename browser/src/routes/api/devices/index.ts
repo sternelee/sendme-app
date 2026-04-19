@@ -4,6 +4,7 @@
  * POST /api/devices - Register/update current device
  */
 
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
 import { users } from "~/lib/db/schema";
@@ -131,26 +132,50 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         clerkUser.username ||
         primaryEmail;
 
-      await db
-        .insert(users)
-        .values({
-          id: userId,
-          name: displayName,
-          email: primaryEmail,
-          emailVerified: true,
-          image: clerkUser.imageUrl,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: users.id,
-          set: {
+      // D1 does not support table-qualified column targets in ON CONFLICT (e.g.
+      // `on conflict ("user"."id")`).  Use a plain SELECT + INSERT/UPDATE dance
+      // instead so the query never contains an `on conflict` clause.
+      const existingRows = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (existingRows.length === 0) {
+        try {
+          await db.insert(users).values({
+            id: userId,
+            name: displayName,
+            email: primaryEmail,
+            emailVerified: true,
+            image: clerkUser.imageUrl,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        } catch {
+          // If the record already exists (same email but different id), fall
+          // back to UPDATE by email so we don't block the flow.
+          await db
+            .update(users)
+            .set({
+              id: userId,
+              name: displayName,
+              image: clerkUser.imageUrl,
+              updatedAt: new Date(),
+            })
+            .where(eq(users.email, primaryEmail));
+        }
+      } else {
+        await db
+          .update(users)
+          .set({
             name: displayName,
             email: primaryEmail,
             image: clerkUser.imageUrl,
             updatedAt: new Date(),
-          },
-        });
+          })
+          .where(eq(users.id, userId));
+      }
     } catch (clerkErr) {
       console.warn(
         "[Devices API] Could not sync user from Clerk:",
