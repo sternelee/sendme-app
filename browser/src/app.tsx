@@ -5,8 +5,6 @@ import { Toaster } from "solid-toast";
 import { AuthProvider } from "./lib/contexts/user-clerk";
 import { ClerkProvider } from "clerk-solidjs";
 import { Title, Meta, MetaProvider } from "@solidjs/meta";
-import PWAInstallPrompt from "./components/pwa/PWAInstallPrompt";
-import PWAUpdateNotification from "./components/pwa/PWAUpdateNotification";
 import { GlobalStoreProvider } from "./lib/store";
 import "./app.css";
 
@@ -51,17 +49,15 @@ export default function App() {
             <Meta name="apple-mobile-web-app-title" content="Sendme" />
             <Meta
               name="viewport"
-              content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+              content="width=device-width, initial-scale=1.0"
             />
             <Router
               root={(props) => (
                 <>
-                  <Suspense fallback={<div>Loading...</div>}>
+                  <Suspense fallback={<div class="min-h-screen flex items-center justify-center"><span class="loading loading-spinner loading-lg text-primary"></span></div>}>
                     {props.children}
                   </Suspense>
                   <Toaster position="bottom-center" />
-                  <PWAInstallPrompt />
-                  <PWAUpdateNotification />
                 </>
               )}
             >

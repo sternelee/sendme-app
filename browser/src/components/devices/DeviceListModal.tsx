@@ -20,6 +20,9 @@ import {
 import { useAuth } from "clerk-solidjs";
 import { useWebSocket, getDeviceId } from "~/lib/composables/useWebSocket";
 import type { Device } from "~/lib/composables/useWebSocket";
+import { i18n } from "~/lib/i18n";
+
+const t = i18n.t;
 
 /**
  * Props
@@ -54,10 +57,10 @@ function formatLastSeen(lastSeenAt: Date | string): string {
   const lastSeen = new Date(lastSeenAt).getTime();
   const diff = now - lastSeen;
 
-  if (diff < 60_000) return "Just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
+  if (diff < 60_000) return t("devices.justNow") || "Just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}${t("devices.minutesAgo") || "m ago"}`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}${t("devices.hoursAgo") || "h ago"}`;
+  return `${Math.floor(diff / 86_400_000)}${t("devices.daysAgo") || "d ago"}`;
 }
 
 export default function DeviceListModal(props: DeviceListModalProps) {
@@ -79,6 +82,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
       if (!response.ok) {
         throw new Error("Failed to delete device");
       }
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete device");
       console.error("Failed to delete device:", err);
@@ -113,16 +117,22 @@ export default function DeviceListModal(props: DeviceListModalProps) {
           >
             <div class="flex items-center justify-between mb-6">
               <div>
-                <h2 class="text-xl font-semibold">Your Devices</h2>
+                <h2 class="text-xl font-semibold">{t("devices.yourDevices") || "Your Devices"}</h2>
                 <p class="text-sm text-white/50 mt-1">
-                  {devices().length} device{devices().length !== 1 ? "s" : ""} connected
+                  {devices().length} {devices().length !== 1 ? (t("devices.connectedPlural") || "devices") : (t("devices.connectedSingular") || "device")} {t("devices.connected") || "connected"}
                 </p>
               </div>
               <div class="flex items-center gap-2">
                 <Motion.button
                   hover={{ scale: 1.05 }}
                   press={{ scale: 0.95 }}
-                  onClick={() => {}}
+                  onClick={() => {
+                    // WS auto-reconnects; force a reconnect to refresh data
+                    const { destroy } = useWebSocket();
+                    destroy();
+                    // Re-init will happen on next component mount
+                    window.location.reload();
+                  }}
                   disabled={isLoading()}
                   class="p-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
                   title="Refresh"
@@ -152,7 +162,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                 fallback={
                   <div class="text-center py-12 text-white/50">
                     <TbOutlineDeviceDesktop size={48} class="mx-auto mb-3 opacity-50" />
-                    <p class="text-sm">No devices found</p>
+                    <p class="text-sm">{t("devices.noDevices") || "No devices found"}</p>
                   </div>
                 }
               >
@@ -186,7 +196,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                                 </h3>
                                 <Show when={isCurrentDevice}>
                                   <span class="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                                    Current
+                                    {t("devices.current") || "Current"}
                                   </span>
                                 </Show>
                               </div>
@@ -197,7 +207,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                                   }`}>
                                   <div class={`w-1.5 h-1.5 rounded-full ${device.online ? "bg-green-400" : "bg-white/40"
                                     }`} />
-                                  <span>{device.online ? "Online" : "Offline"}</span>
+                                  <span>{device.online ? (t("devices.online") || "Online") : (t("devices.offline") || "Offline")}</span>
                                 </div>
                                 <span>•</span>
                                 <span class="flex items-center gap-1">
@@ -219,7 +229,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                                   press={{ scale: 0.95 }}
                                   onClick={() => sendToDevice(device)}
                                   class="p-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors"
-                                  title="Send ticket to this device"
+                                  title={t("devices.sendToThisDevice") || "Send ticket to this device"}
                                 >
                                   <TbOutlineSend size={16} />
                                 </Motion.button>
@@ -230,7 +240,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                                   press={{ scale: 0.95 }}
                                   onClick={() => deleteDevice(device.id)}
                                   class="p-2 rounded-lg bg-white/5 text-white/40 hover:text-red-400 transition-colors"
-                                  title="Remove device"
+                                  title={t("devices.removeDevice") || "Remove device"}
                                 >
                                   <TbOutlineTrash size={16} />
                                 </Motion.button>
@@ -247,7 +257,7 @@ export default function DeviceListModal(props: DeviceListModalProps) {
 
             <Show when={props.ticket}>
               <div class="mt-4 pt-4 border-t border-white/10 text-xs text-white/40 text-center">
-                Click the send button to transfer your ticket to another device
+                {t("devices.sendTicketHint") || "Click the send button to transfer your ticket to another device"}
               </div>
             </Show>
           </Motion.div>

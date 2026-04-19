@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, ParentComponent, createSignal, createEffect } from "solid-js";
-import { useAuth as useClerkAuth, useClerk, SignedIn, SignedOut, SignInButton, UserButton, ClerkLoading, ClerkLoaded } from "clerk-solidjs";
+import { useAuth as useClerkAuth, useClerk, useUser, SignedIn, SignedOut, SignInButton, UserButton, ClerkLoading, ClerkLoaded } from "clerk-solidjs";
 
 export interface UserInfo {
   id: string;
@@ -36,18 +36,24 @@ export const AuthProvider: ParentComponent = (props) => {
   // Use clerk-solidjs hook — these are already reactive signals
   const { userId, isLoaded: clerkIsLoaded, isSignedIn: clerkIsSignedIn } = useClerkAuth();
   const clerk = useClerk();
+  const { user: clerkUser } = useUser();
 
-  // Sync local signals with Clerk's reactive state — no polling needed
+  // Sync local signals with Clerk's reactive state
   createEffect(() => {
     setIsLoaded(clerkIsLoaded());
     const signedIn = clerkIsSignedIn();
     setIsSignedIn(!!signedIn);
 
     if (signedIn && userId()) {
+      const cu = clerkUser();
+      const primaryEmail =
+        cu?.emailAddresses?.find((e) => e.id === cu?.primaryEmailAddressId)?.emailAddress ?? "";
+      const displayName = cu?.fullName || cu?.username || "";
       setUser({
         id: userId() || "",
-        email: "",
-        name: "",
+        email: primaryEmail,
+        name: displayName,
+        imageUrl: cu?.imageUrl,
       });
     } else {
       setUser(null);

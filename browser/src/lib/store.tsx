@@ -48,6 +48,26 @@ export interface HistoryState {
 }
 
 const HISTORY_MAX_ENTRIES = 50;
+const HISTORY_STORAGE_KEY = "sendme_history";
+
+function loadHistory(): HistoryEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as HistoryEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(entries: HistoryEntry[]): void {
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // localStorage full or unavailable — silently ignore
+  }
+}
 interface GlobalStoreValue {
   send: SendState;
   receive: ReceiveState;
@@ -137,7 +157,7 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
     ...defaultTextState,
   });
   const [historyState, setHistoryState] = createStore<HistoryState>({
-    entries: [],
+    entries: loadHistory(),
   });
 
   const store: GlobalStore = {
@@ -192,13 +212,16 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
           HISTORY_MAX_ENTRIES,
         );
         setHistoryState("entries", updated);
+        saveHistory(updated);
       },
       removeEntry: (id) => {
         const updated = historyState.entries.filter((e) => e.id !== id);
         setHistoryState("entries", updated);
+        saveHistory(updated);
       },
       clear: () => {
         setHistoryState("entries", []);
+        saveHistory([]);
       },
     },
   };

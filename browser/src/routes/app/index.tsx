@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show, For } from "solid-js";
+import { createSignal, onMount, onCleanup, Show, For } from "solid-js";
 import { initWasm } from "../../lib/commands";
 import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
@@ -37,17 +37,27 @@ type ActiveTab =
 export default function AppPage() {
   const [activeTab, setActiveTab] = createSignal<ActiveTab>("send");
   const [isInitializing, setIsInitializing] = createSignal(true);
+  const [initError, setInitError] = createSignal<string | null>(null);
   const auth = useAuth();
   const { user: clerkUser } = useUser();
 
-  onMount(async () => {
+  const initApp = async () => {
+    setIsInitializing(true);
+    setInitError(null);
     try {
       await initWasm();
     } catch (error) {
       console.error("Failed to initialize WASM:", error);
+      setInitError(
+        error instanceof Error ? error.message : "Failed to initialize P2P engine",
+      );
     } finally {
       setIsInitializing(false);
     }
+  };
+
+  onMount(() => {
+    initApp();
   });
 
   const tabs = () => {
@@ -111,7 +121,7 @@ export default function AppPage() {
                 )?.emailAddress ?? u().emailAddresses[0]?.emailAddress ?? "";
               return (
                 <div class="dropdown dropdown-end">
-                  <div tabindex="0" role="button" class="tooltip tooltip-bottom" data-tip={primaryEmail}>
+                  <div tabindex="0" role="button" class="tooltip tooltip-bottom" data-tip={primaryEmail} onKeyDown={(e) => { if (e.key === "Escape") (e.currentTarget as HTMLElement).blur(); }}>
                     <div class="avatar cursor-pointer">
                       <div class="w-8 h-8 rounded-full">
                         <Show
@@ -162,14 +172,51 @@ export default function AppPage() {
               </div>
             }
           >
+            <Show
+              when={!initError()}
+              fallback={
+                <div class="card bg-base-200">
+                  <div class="card-body items-center text-center py-16 space-y-4">
+                    <div class="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center">
+                      <TbOutlineSparkles size={28} class="text-error" />
+                    </div>
+                    <p class="text-error font-semibold">{t("common.initFailed") || "Initialization Failed"}</p>
+                    <p class="text-base-content/60 text-sm max-w-sm">{initError()}</p>
+                    <button class="btn btn-primary btn-sm" onClick={initApp}>
+                      {t("common.retry") || "Retry"}
+                    </button>
+                  </div>
+                </div>
+              }
+            >
             {/* Tab Navigation */}
-            <div class="tabs tabs-boxed bg-base-200 flex">
+            <div class="tabs tabs-boxed bg-base-200 flex" role="tablist" aria-label={t("common.navigation") || "Navigation"}>
               {tabs().map((tab) => (
                 <button
+                  role="tab"
+                  aria-selected={activeTab() === tab.id}
+                  aria-controls={`panel-${tab.id}`}
+                  id={`tab-${tab.id}`}
+                  tabindex={activeTab() === tab.id ? 0 : -1}
                   class={`tab gap-2 flex-1 ${activeTab() === tab.id ? "tab-active" : ""}`}
                   onClick={() => setActiveTab(tab.id)}
+                  onKeyDown={(e) => {
+                    const tabEls = (e.currentTarget.parentElement?.querySelectorAll('[role="tab"]') as NodeListOf<HTMLButtonElement>) || [];
+                    const list = Array.from(tabEls);
+                    const idx = list.indexOf(e.currentTarget);
+                    let next = idx;
+                    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (idx + 1) % list.length;
+                    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (idx - 1 + list.length) % list.length;
+                    else if (e.key === "Home") next = 0;
+                    else if (e.key === "End") next = list.length - 1;
+                    else return;
+                    e.preventDefault();
+                    list[next].focus();
+                    setActiveTab(tabs()[next].id);
+                  }}
+                  title={tab.label}
                 >
-                  <tab.icon size={16} />
+                  <tab.icon size={16} aria-hidden="true" />
                   <span class="hidden sm:inline">{tab.label}</span>
                 </button>
               ))}
@@ -180,21 +227,32 @@ export default function AppPage() {
               <div class="card-body">
                 <Presence>
                   <Show when={activeTab() === "send"}>
-                    <SendTab />
+                    <div role="tabpanel" id="panel-send" aria-labelledby="tab-send">
+                      <SendTab />
+                    </div>
                   </Show>
                   <Show when={activeTab() === "receive"}>
-                    <ReceiveTab isActive={true} />
+                    <div role="tabpanel" id="panel-receive" aria-labelledby="tab-receive">
+                      <ReceiveTab isActive={true} />
+                    </div>
                   </Show>
                   <Show when={activeTab() === "friends"}>
-                    <FriendsTab />
+                    <div role="tabpanel" id="panel-friends" aria-labelledby="tab-friends">
+                      <FriendsTab />
+                    </div>
                   </Show>
                   <Show when={activeTab() === "text"}>
-                    <TextTab />
+                    <div role="tabpanel" id="panel-text" aria-labelledby="tab-text">
+                      <TextTab />
+                    </div>
                   </Show>
                   <Show when={activeTab() === "history"}>
-                    <HistoryTab />
+                    <div role="tabpanel" id="panel-history" aria-labelledby="tab-history">
+                      <HistoryTab />
+                    </div>
                   </Show>
                   <Show when={activeTab() === "settings"}>
+                    <div role="tabpanel" id="panel-settings" aria-labelledby="tab-settings">
                     <div class="space-y-4">
                       <div class="flex items-center justify-between">
                         <span class="font-bold">{t("settings.title")}</span>
@@ -266,10 +324,12 @@ export default function AppPage() {
                         </span>
                       </div>
                     </div>
+                    </div>
                   </Show>
                 </Presence>
               </div>
             </div>
+          </Show>
           </Show>
         </div>
 

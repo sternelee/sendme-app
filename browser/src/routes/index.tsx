@@ -2,6 +2,7 @@ import { Motion } from "solid-motionone";
 import { createSignal, Show } from "solid-js";
 import { SignedIn, SignedOut, SignInButton, SignUpButton } from "clerk-solidjs";
 import { useAuth } from "~/lib/contexts/user-clerk";
+import toast from "solid-toast";
 import {
   TbOutlineSparkles,
   TbOutlineUpload,
@@ -25,7 +26,10 @@ const t = i18n.t;
 export default function HomePage() {
   const auth = useAuth();
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(text).then(
+      () => toast.success(t("common.copied") || "Copied!"),
+      () => toast.error(t("common.copyFailed") || "Failed to copy"),
+    );
   };
 
   return (
@@ -48,7 +52,11 @@ export default function HomePage() {
               <div
                 tabindex="0"
                 role="button"
+                aria-haspopup="menu"
                 class="btn btn-ghost btn-sm cursor-pointer"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") (e.currentTarget as HTMLElement).blur();
+                }}
               >
                 Menu
               </div>
@@ -101,7 +109,7 @@ export default function HomePage() {
           >
             <div class="badge badge-primary gap-2 mb-8">
               <span class="w-2 h-2 rounded-full bg-primary-content animate-pulse" />
-              P2P File Transfer
+              {t("landing.hero.badge") || "P2P File Transfer"}
             </div>
             <h1 class="text-5xl md:text-7xl font-bold mb-6 leading-tight">
               <span class="text-base-content">
@@ -162,7 +170,7 @@ export default function HomePage() {
                 description: t("landing.features.syncDesc"),
               },
             ].map((feature) => (
-              <div class="card bg-base-100 shadow-lg">
+              <div class="card bg-base-100 shadow-lg" key={feature.title}>
                 <div class="card-body">
                   <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                     <feature.icon size={24} class="text-primary" />
@@ -309,6 +317,7 @@ export default function HomePage() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.15 }}
                 class="flex items-start gap-6"
+                key={item.step}
               >
                 <div class="w-16 h-16 rounded-2xl bg-primary text-primary-content flex items-center justify-center flex-shrink-0">
                   <item.icon size={28} />
