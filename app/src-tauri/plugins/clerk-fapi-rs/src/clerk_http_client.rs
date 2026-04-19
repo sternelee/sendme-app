@@ -84,6 +84,15 @@ impl ClerkHttpClient {
                     } else {
                         error!("ClerkHttpClient: Failed to parse authorization header");
                     }
+
+                    // Clerk's /v1/client endpoint (and several others) authenticate via the
+                    // __dev_session query parameter, not the Authorization header.
+                    // Extract the raw token (strip a Bearer prefix if present) and inject it
+                    // so every authenticated request carries both mechanisms.
+                    let token = auth.strip_prefix("Bearer ").unwrap_or(&auth);
+                    req.url_mut()
+                        .query_pairs_mut()
+                        .append_pair("__dev_session", token);
                 }
                 None => {
                     debug!("ClerkHttpClient: No authorization header available");
