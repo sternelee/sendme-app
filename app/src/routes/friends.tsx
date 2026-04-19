@@ -260,6 +260,8 @@ export default function FriendsPage(props: FriendsPageProps) {
       const result = await friendsService.addFriend(friend.friend.email);
       if (result.action === "accepted") {
         toast.success(t("friends.friendAdded"));
+      } else {
+        toast.success(t("friends.requestSent"));
       }
       await loadFriends();
     } catch (error) {
