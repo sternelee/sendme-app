@@ -12,7 +12,7 @@ import {
 } from "~/lib/api/devices";
 import { authenticateRequest, type Env } from "~/lib/auth";
 import * as schema from "~/lib/db/schema";
-import { devices, friends, tickets } from "~/lib/db/schema";
+import { friends, tickets } from "~/lib/db/schema";
 
 interface CloudflareContext {
   env: Env;
@@ -220,19 +220,17 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
 
     const db = drizzle(env.DB!, { schema });
 
-    // Delete all DB records where the sender (fromUserId) or recipient (userId)
-    // matches the current user and the ticket string matches.
+    // D1 workaround: split OR into two separate deletes to avoid
+    // SQLite limitation with OR conditions in DELETE WHERE.
     await db
       .delete(schema.tickets)
-      .where(
-        and(
-          eq(tickets.ticket, body.ticket),
-          or(
-            eq(tickets.userId, userId),
-            eq(tickets.fromUserId, userId),
-          ),
-        ),
-      );
+      .where(and(eq(tickets.ticket, body.ticket), eq(tickets.userId, userId)))
+      .run();
+
+    await db
+      .delete(schema.tickets)
+      .where(and(eq(tickets.ticket, body.ticket), eq(tickets.fromUserId, userId)))
+      .run();
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
