@@ -2829,6 +2829,14 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
         fapi_client.set_dev_browser_token_id(token);
     }
 
+    // Make sure Clerk is loaded and listeners are registered before we
+    // fetch the new client. Otherwise set_client may fail with NotLoaded
+    // and the plugin-clerk-auth-cb listener that pushes state to the
+    // frontend won't fire.
+    if let Err(e) = app.ensure_clerk_initialized().await {
+        log_error!("Clerk ensure_clerk_initialized failed before auth callback: {}", e);
+    }
+
     let success =
         match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_client())
             .await
@@ -2841,7 +2849,7 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
                 );
                 match clerk.set_client(client) {
                     Ok(_) => log_info!("Clerk set_client succeeded"),
-                    Err(e) => log_warn!("Clerk set_client failed (not loaded yet): {}", e),
+                    Err(e) => log_warn!("Clerk set_client failed: {}", e),
                 }
                 true
             }
@@ -2859,11 +2867,11 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
             }
         };
 
-    // Defer the emit to avoid deadlocking when the WebView is still waking
-    // up from the deep-link activation on the main thread.
+    // Defer the emit so the frontend has time to process the
+    // plugin-clerk-auth-cb event that was fired by set_client.
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if let Err(e) = app_clone.emit(
             "clerk-auth-callback-complete",
             serde_json::json!({ "success": success }),

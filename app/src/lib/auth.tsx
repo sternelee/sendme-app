@@ -110,57 +110,51 @@ export function AuthProvider(props: { children: JSX.Element }) {
         }
       });
 
-      // Fallback: listen to Tauri auth events from Rust and re-sync
-      tauriUnlisten = await listen("plugin-clerk-auth-cb", () => {
-        syncFromClerk();
+      interface ClerkAuthEventPayload {
+        source: string;
+        payload: {
+          user: {
+            id: string;
+            first_name?: string | null;
+            last_name?: string | null;
+            username?: string | null;
+            image_url?: string | null;
+            email_addresses?: Array<{ email_address: string }>;
+          } | null;
+        };
+      }
+
+      // Fallback: listen to Tauri auth events from Rust and re-sync.
+      // When the deep-link callback finishes, Rust updates its Clerk state and
+      // emits this event. We pull the user directly from the Rust payload so we
+      // don't need to call reloadInitialResources, which can block the JS main
+      // thread and freeze the WebView.
+      tauriUnlisten = await listen<ClerkAuthEventPayload>("plugin-clerk-auth-cb", (event) => {
+        const rustUser = event.payload.payload.user;
+        if (rustUser) {
+          setIsSignedIn(true);
+          setUser({
+            id: rustUser.id,
+            email: rustUser.email_addresses?.[0]?.email_address || "",
+            name:
+              [rustUser.first_name, rustUser.last_name]
+                .filter(Boolean)
+                .join(" ") ||
+              rustUser.username ||
+              "",
+            imageUrl: rustUser.image_url || undefined,
+          });
+        } else {
+          syncFromClerk();
+        }
       });
 
-      // Listen for Rust to finish processing the browser auth deep link,
-      // then force Clerk JS to reload its initial resources so the new session is picked up.
-      callbackUnlisten = await listen("clerk-auth-callback-complete", async () => {
-        console.log("[auth] Clerk auth callback complete, reloading resources");
-        try {
-          // Fetch the latest client/environment from Rust so we can inject the new
-          // session directly into the JS Clerk instance (bypassing the stale cache).
-          const fresh = await invoke<{
-            client: any;
-            environment: any;
-            publishableKey: string;
-          }>("plugin:clerk|initialize");
-          console.log(
-            "[auth] Re-initialized clerk, sessions:",
-            fresh.client?.sessions?.length,
-            "lastActiveSessionId:",
-            fresh.client?.last_active_session_id,
-          );
-
-          // Replace the cached resources so reloadInitialResources picks up the new session
-          (clerk as any).__internal_getCachedResources = async () => ({
-            client: fresh.client,
-            environment: fresh.environment,
-          });
-
-          // First: try a lightweight sync — Rust may have already pushed the new
-          // client state via the plugin-clerk-auth-cb listener.
-          syncFromClerk();
-
-          // If Clerk JS still doesn't see the user, try reloadInitialResources
-          // with a short timeout to avoid deadlocking the WebView.
-          if (!clerk.user) {
-            console.log("[auth] Clerk user not visible yet, triggering reloadInitialResources");
-            await Promise.race([
-              (clerk as any).__internal_reloadInitialResources?.(),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("reload timeout")), 1500),
-              ),
-            ]);
-            syncFromClerk();
-          }
-        } catch (err: unknown) {
-          console.error("[auth] Failed to reload Clerk resources:", err);
-          // Fallback: hard reload the page so Clerk re-initializes from Rust cache.
-          window.location.reload();
-        }
+      // Listen for Rust to finish processing the browser auth deep link.
+      // The actual state update happens via plugin-clerk-auth-cb above; this
+      // event just confirms the callback finished so we can do a lightweight sync.
+      callbackUnlisten = await listen("clerk-auth-callback-complete", () => {
+        console.log("[auth] Clerk auth callback complete");
+        syncFromClerk();
       });
 
       // Listen for deep link callbacks from system browser auth
