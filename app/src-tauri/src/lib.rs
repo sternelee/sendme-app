@@ -2839,7 +2839,10 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
                     client.sessions.len(),
                     client.last_active_session_id
                 );
-                let _ = clerk.set_client(client);
+                match clerk.set_client(client) {
+                    Ok(_) => log_info!("Clerk set_client succeeded"),
+                    Err(e) => log_warn!("Clerk set_client failed (not loaded yet): {}", e),
+                }
                 true
             }
             Ok(Ok(None)) => {
@@ -2856,12 +2859,18 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
             }
         };
 
-    if let Err(e) = app.emit(
-        "clerk-auth-callback-complete",
-        serde_json::json!({ "success": success }),
-    ) {
-        log_error!("Failed to emit clerk-auth-callback-complete event: {}", e);
-    }
+    // Defer the emit to avoid deadlocking when the WebView is still waking
+    // up from the deep-link activation on the main thread.
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        if let Err(e) = app_clone.emit(
+            "clerk-auth-callback-complete",
+            serde_json::json!({ "success": success }),
+        ) {
+            log_error!("Failed to emit clerk-auth-callback-complete event: {}", e);
+        }
+    });
 }
 
 #[tauri::command]

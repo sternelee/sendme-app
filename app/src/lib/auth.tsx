@@ -38,8 +38,6 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue>();
 
-const CLERK_PUBLISHABLE_KEY =
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_placeholder";
 const AUTH_STARTUP_TIMEOUT_MS = 2200;
 
 const getAuthRedirectUrl = () => `${getCloudApiOrigin()}/auth/callback`;
@@ -74,9 +72,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
     try {
       // Initialize clerk using tauri-plugin-clerk
       // initClerk returns a Promise<Clerk> that resolves when clerk is ready
-      const clerk = await initClerk({
-        publishableKey: CLERK_PUBLISHABLE_KEY,
-      });
+      const clerk = await initClerk();
       setClerkInstance(clerk);
 
       const syncFromClerk = () => {
@@ -144,14 +140,22 @@ export function AuthProvider(props: { children: JSX.Element }) {
             environment: fresh.environment,
           });
 
-          // Guard against a hanging reload by enforcing a 2-second timeout.
-          await Promise.race([
-            (clerk as any).__internal_reloadInitialResources?.(),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("reload timeout")), 2000),
-            ),
-          ]);
+          // First: try a lightweight sync — Rust may have already pushed the new
+          // client state via the plugin-clerk-auth-cb listener.
           syncFromClerk();
+
+          // If Clerk JS still doesn't see the user, try reloadInitialResources
+          // with a short timeout to avoid deadlocking the WebView.
+          if (!clerk.user) {
+            console.log("[auth] Clerk user not visible yet, triggering reloadInitialResources");
+            await Promise.race([
+              (clerk as any).__internal_reloadInitialResources?.(),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("reload timeout")), 1500),
+              ),
+            ]);
+            syncFromClerk();
+          }
         } catch (err: unknown) {
           console.error("[auth] Failed to reload Clerk resources:", err);
           // Fallback: hard reload the page so Clerk re-initializes from Rust cache.
