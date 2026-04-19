@@ -172,26 +172,20 @@ export function AuthProvider(props: { children: JSX.Element }) {
         }
       });
 
-      // After the deep-link callback finishes, Rust emits this event. We use it
-      // as a final opportunity to pull the latest auth state directly from Rust
-      // (bypassing any stale Clerk JS cache) and update the UI.
-      callbackUnlisten = await listen("clerk-auth-callback-complete", async () => {
-        console.log("[auth] Clerk auth callback complete, pulling fresh state from Rust");
-        try {
-          const fresh = await invoke<{
-            client: { sessions?: RustSession[] } | null;
-          }>("plugin:clerk|initialize");
-          const sessions = fresh.client?.sessions;
-          const rustUser = sessions && sessions.length > 0 ? sessions[0].user : null;
-          if (rustUser) {
-            console.log("[auth] callback-complete: user found in fresh state, updating UI");
-            setUserFromRust(rustUser);
-          } else {
-            console.log("[auth] callback-complete: no user in fresh state, syncing from Clerk JS");
-            syncFromClerk();
-          }
-        } catch (err) {
-          console.error("[auth] Failed to pull fresh state from Rust:", err);
+      // After the deep-link callback finishes, Rust emits this event with the
+      // user profile fetched from /v1/me. We update the UI directly from this
+      // payload so we don't depend on Clerk JS cache or session.user.
+      callbackUnlisten = await listen<{
+        success: boolean;
+        user: RustUser | null;
+      }>("clerk-auth-callback-complete", (event) => {
+        const payload = event.payload;
+        console.log("[auth] Clerk auth callback complete, success=", payload.success);
+        if (payload.user) {
+          console.log("[auth] callback-complete: user provided by Rust, updating UI");
+          setUserFromRust(payload.user);
+        } else {
+          console.log("[auth] callback-complete: no user in payload, syncing from Clerk JS");
           syncFromClerk();
         }
       });

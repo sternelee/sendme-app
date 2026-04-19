@@ -2837,35 +2837,69 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
         log_error!("Clerk ensure_clerk_initialized failed before auth callback: {}", e);
     }
 
-    let success =
-        match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_client())
-            .await
-        {
-            Ok(Ok(Some(client))) => {
-                log_info!(
-                    "Clerk client refreshed, sessions={}, last_active_session_id={:?}",
-                    client.sessions.len(),
-                    client.last_active_session_id
-                );
-                match clerk.set_client(client) {
-                    Ok(_) => log_info!("Clerk set_client succeeded"),
-                    Err(e) => log_warn!("Clerk set_client failed: {}", e),
+    let mut success = false;
+    let mut user_json = serde_json::Value::Null;
+
+    match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_client())
+        .await
+    {
+        Ok(Ok(Some(client))) => {
+            log_info!(
+                "Clerk client refreshed, sessions={}, last_active_session_id={:?}",
+                client.sessions.len(),
+                client.last_active_session_id
+            );
+            match clerk.set_client(client) {
+                Ok(_) => {
+                    log_info!("Clerk set_client succeeded");
+                    success = true;
                 }
-                true
+                Err(e) => log_warn!("Clerk set_client failed: {}", e),
             }
-            Ok(Ok(None)) => {
-                log_warn!("Clerk client refreshed but no session found");
-                false
+        }
+        Ok(Ok(None)) => {
+            log_warn!("Clerk client refreshed but no session found");
+        }
+        Ok(Err(e)) => {
+            log_error!("Failed to reload Clerk client after deep link: {}", e);
+        }
+        Err(_) => {
+            log_error!("Clerk get_client timed out after 5 seconds");
+        }
+    }
+
+    // The /v1/client endpoint may not include user data inside sessions.
+    // Explicitly fetch /v1/me so we always have the user profile for the UI.
+    if success {
+        match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_user()).await {
+            Ok(Ok(user)) => {
+                log_info!("Clerk get_user succeeded, id={}", user.id);
+                let email = user
+                    .email_addresses
+                    .first()
+                    .map(|e| e.email_address.clone())
+                    .unwrap_or_default();
+                let name = match (&user.first_name, &user.last_name) {
+                    (Some(f), Some(l)) => format!("{} {}", f, l),
+                    (Some(f), None) => f.clone(),
+                    (None, Some(l)) => l.clone(),
+                    (None, None) => user.username.clone().unwrap_or_default(),
+                };
+                user_json = serde_json::json!({
+                    "id": user.id,
+                    "email": email,
+                    "name": name,
+                    "imageUrl": user.image_url,
+                });
             }
             Ok(Err(e)) => {
-                log_error!("Failed to reload Clerk client after deep link: {}", e);
-                false
+                log_warn!("Clerk get_user failed: {}", e);
             }
             Err(_) => {
-                log_error!("Clerk get_client timed out after 5 seconds");
-                false
+                log_warn!("Clerk get_user timed out after 5 seconds");
             }
-        };
+        }
+    }
 
     // Defer the emit so the frontend has time to process the
     // plugin-clerk-auth-cb event that was fired by set_client.
@@ -2874,7 +2908,10 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if let Err(e) = app_clone.emit(
             "clerk-auth-callback-complete",
-            serde_json::json!({ "success": success }),
+            serde_json::json!({
+                "success": success,
+                "user": user_json,
+            }),
         ) {
             log_error!("Failed to emit clerk-auth-callback-complete event: {}", e);
         }
