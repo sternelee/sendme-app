@@ -173,6 +173,12 @@ impl ClerkState {
 
         if let Some(active_session) = active_session {
             self.session = Some(active_session.clone());
+
+            // Extract the session JWT so subsequent authenticated requests work.
+            if let Some(Some(token)) = active_session.last_active_token.as_ref() {
+                self.set_authorization_header(Some(token.jwt.clone()));
+            }
+
             if let Some(user) = active_session.user {
                 self.user = Some(*user.clone());
 

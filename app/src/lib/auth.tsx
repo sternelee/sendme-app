@@ -122,13 +122,22 @@ export function AuthProvider(props: { children: JSX.Element }) {
         image_url?: string | null;
         email_addresses?: Array<{ email_address: string }>;
       }
+      interface PublicUserData {
+        user_id?: string;
+        first_name?: string | null;
+        last_name?: string | null;
+        image_url?: string | null;
+        identifier?: string | null;
+      }
       interface RustSession {
         user?: RustUser | null;
+        public_user_data?: PublicUserData | null;
       }
       interface ClerkAuthEventData {
         source: string;
         payload: {
           user: RustUser | null;
+          session?: RustSession | null;
           client?: { sessions?: RustSession[] } | null;
         };
       }
@@ -148,13 +157,35 @@ export function AuthProvider(props: { children: JSX.Element }) {
         });
       };
 
+      const userFromPublicData = (data: PublicUserData): RustUser | null => {
+        if (!data.user_id && !data.identifier) return null;
+        return {
+          id: data.user_id || "unknown",
+          first_name: data.first_name,
+          last_name: data.last_name,
+          image_url: data.image_url,
+          email_addresses: data.identifier
+            ? [{ email_address: data.identifier }]
+            : [],
+        };
+      };
+
       const extractUserFromPayload = (
         payload: ClerkAuthEventData["payload"],
       ): RustUser | null => {
         if (payload.user) return payload.user;
+        // Clerk's /v1/client often returns public_user_data instead of the full user object
+        if (payload.session?.public_user_data) {
+          const user = userFromPublicData(payload.session.public_user_data);
+          if (user) return user;
+        }
         const sessions = payload.client?.sessions;
         if (sessions && sessions.length > 0) {
-          return sessions[0].user || null;
+          if (sessions[0].user) return sessions[0].user;
+          if (sessions[0].public_user_data) {
+            const user = userFromPublicData(sessions[0].public_user_data);
+            if (user) return user;
+          }
         }
         return null;
       };
@@ -172,9 +203,12 @@ export function AuthProvider(props: { children: JSX.Element }) {
         }
       });
 
-      // After the deep-link callback finishes, Rust emits this event with the
-      // user profile fetched from /v1/me. We update the UI directly from this
-      // payload so we don't depend on Clerk JS cache or session.user.
+      // After the deep-link callback finishes, Rust emits this event.
+      // The Rust-side get_user() may fail because the Authorization header
+      // hasn't been propagated yet. Instead, we asynchronously reload Clerk JS
+      // so it picks up the new session from its internal cache (which was
+      // updated by the plugin-clerk-auth-cb event). Using setTimeout avoids
+      // blocking the JS main thread if clerk.load() triggers synchronous work.
       callbackUnlisten = await listen<{
         success: boolean;
         user: RustUser | null;
@@ -184,10 +218,20 @@ export function AuthProvider(props: { children: JSX.Element }) {
         if (payload.user) {
           console.log("[auth] callback-complete: user provided by Rust, updating UI");
           setUserFromRust(payload.user);
-        } else {
-          console.log("[auth] callback-complete: no user in payload, syncing from Clerk JS");
-          syncFromClerk();
+          return;
         }
+        console.log("[auth] callback-complete: no user in payload, will async reload Clerk JS");
+        window.setTimeout(async () => {
+          try {
+            console.log("[auth] Async reloading Clerk JS...");
+            await clerk.load();
+            console.log("[auth] Clerk JS reload done, user=", clerk.user ? clerk.user.id : null);
+            syncFromClerk();
+          } catch (err) {
+            console.error("[auth] Async clerk.load() failed:", err);
+            syncFromClerk();
+          }
+        }, 100);
       });
 
       // Listen for deep link callbacks from system browser auth
