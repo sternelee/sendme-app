@@ -2814,15 +2814,22 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
     };
 
     let mut db_jwt: Option<String> = None;
+    let mut clerk_token: Option<String> = None;
     for (k, v) in parsed.query_pairs() {
         if k == "__clerk_db_jwt" {
             db_jwt = Some(v.into_owned());
-            break;
+        } else if k == "__clerk_token" {
+            clerk_token = Some(v.into_owned());
         }
     }
 
     let clerk = app.clerk();
     let fapi_client = clerk.get_fapi_client();
+
+    if let Some(token) = clerk_token {
+        log_info!("Setting Clerk authorization header from OAuth callback token");
+        clerk.set_client_authorization_header(Some(format!("Bearer {}", token)));
+    }
 
     if let Some(token) = db_jwt {
         log_info!("Setting Clerk dev browser token from deep link");
