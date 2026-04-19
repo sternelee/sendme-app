@@ -110,51 +110,90 @@ export function AuthProvider(props: { children: JSX.Element }) {
         }
       });
 
-      interface ClerkAuthEventPayload {
+      // Rust-side ClerkState extracts user from client.sessions via
+      // last_active_session_id. If the API response doesn't set that field,
+      // payload.user can be null even though sessions exist. We fall back to
+      // pulling user info directly from the first session in client.sessions.
+      interface RustUser {
+        id: string;
+        first_name?: string | null;
+        last_name?: string | null;
+        username?: string | null;
+        image_url?: string | null;
+        email_addresses?: Array<{ email_address: string }>;
+      }
+      interface RustSession {
+        user?: RustUser | null;
+      }
+      interface ClerkAuthEventData {
         source: string;
         payload: {
-          user: {
-            id: string;
-            first_name?: string | null;
-            last_name?: string | null;
-            username?: string | null;
-            image_url?: string | null;
-            email_addresses?: Array<{ email_address: string }>;
-          } | null;
+          user: RustUser | null;
+          client?: { sessions?: RustSession[] } | null;
         };
       }
 
-      // Fallback: listen to Tauri auth events from Rust and re-sync.
-      // When the deep-link callback finishes, Rust updates its Clerk state and
-      // emits this event. We pull the user directly from the Rust payload so we
-      // don't need to call reloadInitialResources, which can block the JS main
-      // thread and freeze the WebView.
-      tauriUnlisten = await listen<ClerkAuthEventPayload>("plugin-clerk-auth-cb", (event) => {
-        const rustUser = event.payload.payload.user;
-        if (rustUser) {
-          setIsSignedIn(true);
-          setUser({
-            id: rustUser.id,
-            email: rustUser.email_addresses?.[0]?.email_address || "",
-            name:
-              [rustUser.first_name, rustUser.last_name]
-                .filter(Boolean)
-                .join(" ") ||
-              rustUser.username ||
-              "",
-            imageUrl: rustUser.image_url || undefined,
-          });
+      const setUserFromRust = (rustUser: RustUser) => {
+        setIsSignedIn(true);
+        setUser({
+          id: rustUser.id,
+          email: rustUser.email_addresses?.[0]?.email_address || "",
+          name:
+            [rustUser.first_name, rustUser.last_name]
+              .filter(Boolean)
+              .join(" ") ||
+            rustUser.username ||
+            "",
+          imageUrl: rustUser.image_url || undefined,
+        });
+      };
+
+      const extractUserFromPayload = (
+        payload: ClerkAuthEventData["payload"],
+      ): RustUser | null => {
+        if (payload.user) return payload.user;
+        const sessions = payload.client?.sessions;
+        if (sessions && sessions.length > 0) {
+          return sessions[0].user || null;
+        }
+        return null;
+      };
+
+      // Listen to Tauri auth events from Rust. These fire whenever the Rust
+      // Clerk state changes (including during the deep-link OAuth callback).
+      tauriUnlisten = await listen<ClerkAuthEventData>("plugin-clerk-auth-cb", (event) => {
+        const user = extractUserFromPayload(event.payload.payload);
+        if (user) {
+          console.log("[auth] plugin-clerk-auth-cb: user found, updating UI");
+          setUserFromRust(user);
         } else {
+          console.log("[auth] plugin-clerk-auth-cb: no user in payload, syncing from Clerk JS");
           syncFromClerk();
         }
       });
 
-      // Listen for Rust to finish processing the browser auth deep link.
-      // The actual state update happens via plugin-clerk-auth-cb above; this
-      // event just confirms the callback finished so we can do a lightweight sync.
-      callbackUnlisten = await listen("clerk-auth-callback-complete", () => {
-        console.log("[auth] Clerk auth callback complete");
-        syncFromClerk();
+      // After the deep-link callback finishes, Rust emits this event. We use it
+      // as a final opportunity to pull the latest auth state directly from Rust
+      // (bypassing any stale Clerk JS cache) and update the UI.
+      callbackUnlisten = await listen("clerk-auth-callback-complete", async () => {
+        console.log("[auth] Clerk auth callback complete, pulling fresh state from Rust");
+        try {
+          const fresh = await invoke<{
+            client: { sessions?: RustSession[] } | null;
+          }>("plugin:clerk|initialize");
+          const sessions = fresh.client?.sessions;
+          const rustUser = sessions && sessions.length > 0 ? sessions[0].user : null;
+          if (rustUser) {
+            console.log("[auth] callback-complete: user found in fresh state, updating UI");
+            setUserFromRust(rustUser);
+          } else {
+            console.log("[auth] callback-complete: no user in fresh state, syncing from Clerk JS");
+            syncFromClerk();
+          }
+        } catch (err) {
+          console.error("[auth] Failed to pull fresh state from Rust:", err);
+          syncFromClerk();
+        }
       });
 
       // Listen for deep link callbacks from system browser auth
