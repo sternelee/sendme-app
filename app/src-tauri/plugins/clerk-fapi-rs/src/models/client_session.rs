@@ -103,19 +103,23 @@ impl ClientSession {
 
 impl From<models::schemas_client_session::SchemasClientSession> for ClientSession {
     fn from(schemas_client_session: models::schemas_client_session::SchemasClientSession) -> Self {
-        ClientSession::new(
-            schemas_client_session.id,
-            Object::from(schemas_client_session.object),
-            Status::from(schemas_client_session.status),
-            schemas_client_session.expire_at,
-            schemas_client_session.abandon_at,
-            schemas_client_session.last_active_at,
-            schemas_client_session.last_active_organization_id,
-            schemas_client_session.public_user_data,
-            schemas_client_session.factor_verification_age,
-            schemas_client_session.created_at,
-            schemas_client_session.updated_at,
-        )
+        ClientSession {
+            id: schemas_client_session.id,
+            object: Object::from(schemas_client_session.object),
+            status: Status::from(schemas_client_session.status),
+            expire_at: schemas_client_session.expire_at,
+            abandon_at: schemas_client_session.abandon_at,
+            last_active_at: schemas_client_session.last_active_at,
+            last_active_token: schemas_client_session.last_active_token,
+            actor: schemas_client_session.actor,
+            tasks: None,
+            last_active_organization_id: schemas_client_session.last_active_organization_id,
+            user: schemas_client_session.user,
+            public_user_data: schemas_client_session.public_user_data,
+            factor_verification_age: schemas_client_session.factor_verification_age,
+            created_at: schemas_client_session.created_at,
+            updated_at: schemas_client_session.updated_at,
+        }
     }
 }
 
