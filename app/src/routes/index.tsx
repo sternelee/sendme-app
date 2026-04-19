@@ -1168,7 +1168,13 @@ export default function MainPage() {
                     <NearbyPage />
                   </Show>
                   <Show when={shareSubTab() === "friends"}>
-                    <FriendsPage />
+                    <FriendsPage
+                      onSendToFriend={(friendUserId, friendName) => {
+                        toast.success(
+                          t("friends.goToSendTab", { name: friendName }),
+                        );
+                      }}
+                    />
                   </Show>
                 </section>
 

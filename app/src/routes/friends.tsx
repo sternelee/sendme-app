@@ -74,7 +74,11 @@ function FriendRequestToast(props: {
   );
 }
 
-export default function FriendsPage() {
+export interface FriendsPageProps {
+  onSendToFriend?: (friendUserId: string, friendName: string) => void;
+}
+
+export default function FriendsPage(props: FriendsPageProps) {
   const auth = useAuth();
   const friendsService = useFriends();
 
@@ -147,7 +151,7 @@ export default function FriendsPage() {
       setFriends([...accepted, ...pending]);
     } catch (error) {
       console.error("Failed to load friends:", error);
-      toast.error(t("friends.addFailed"));
+      toast.error(t("friends.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -191,7 +195,7 @@ export default function FriendsPage() {
 
     try {
       const snapshot = await get_cloud_presence_state();
-      if (snapshot.friends.length > 0 || snapshot.active) {
+      if (snapshot.friends.length > 0 || snapshot.connected) {
         setFriends(snapshot.friends.map(normalizeCloudFriend));
       } else {
         await loadFriends();
@@ -287,9 +291,11 @@ export default function FriendsPage() {
   }
 
   async function handleSendToFriend(friend: Friend) {
-    // Navigate to send tab with friend's device selected
-    // For now, just show a toast
-    toast.success(`Selected ${friend.friend.name} for file transfer. Go to Send tab to select files.`);
+    if (props.onSendToFriend) {
+      props.onSendToFriend(friend.friend.id, friend.friend.name);
+    } else {
+      toast.success(t("friends.goToSendTab", { name: friend.friend.name }));
+    }
   }
 
   async function handleRefresh() {
