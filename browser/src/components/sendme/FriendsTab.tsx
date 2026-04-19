@@ -104,13 +104,18 @@ export default function FriendsTab(props: FriendsTabProps) {
 
   // --- Toast notification on new incoming request ---
   createEffect(() => {
+    const id = clerkUserId();
     const incoming = incomingRequests();
+    console.log("[FriendsTab] clerkUserId:", id, "incomingRequests:", incoming.length, "pendingFriends:", pendingFriends().length);
+
     const newRequests = incoming.filter(
       (f) => !_notifiedFriendRequestIds.has(f.id)
     );
+    console.log("[FriendsTab] newRequests for toast:", newRequests.length, newRequests.map((r) => r.id));
 
     if (newRequests.length > 0) {
       newRequests.forEach((req) => {
+        _notifiedFriendRequestIds.add(req.id);
         toast.custom(
           (t2) => (
             <FriendRequestToast
@@ -125,9 +130,8 @@ export default function FriendsTab(props: FriendsTabProps) {
               }}
             />
           ),
-          { duration: 15_000 }
+          { duration: Infinity }
         );
-        _notifiedFriendRequestIds.add(req.id);
       });
     }
   });

@@ -183,6 +183,7 @@ function createWebSocketStore(getToken: () => Promise<string | null>) {
         setTickets(msg.data);
         break;
       case "friends":
+        console.log("[useWebSocket] Received friends:", msg.data?.length, msg.data);
         setFriends(msg.data);
         break;
       case "device_update":

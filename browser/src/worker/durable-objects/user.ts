@@ -178,11 +178,16 @@ export class UserDO extends DurableObject<Env> {
   }
 
   private async sendInitialState(userId: string, ws: WebSocket): Promise<void> {
-    await Promise.all([
+    const results = await Promise.allSettled([
       this.sendDevices(userId, ws),
       this.sendTickets(userId, ws),
       this.sendFriends(userId, ws),
     ]);
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.error(`[UserDO] sendInitialState [${i}] failed:`, r.reason);
+      }
+    });
   }
 
   private async handleDisconnect(
@@ -392,6 +397,10 @@ export class UserDO extends DurableObject<Env> {
   }
 
   async sendFriends(userId: string, ws?: WebSocket): Promise<void> {
+    if (!this.env.DB) {
+      console.error("[UserDO] DB binding missing, cannot send friends");
+      return;
+    }
     const db = drizzle(this.env.DB, { schema });
 
     console.log("[UserDO] sendFriends called for userId:", userId);
