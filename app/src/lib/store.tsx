@@ -10,6 +10,7 @@ import type {
   NearbyDevice,
   IncomingRequest,
   TransferProgress,
+  CloudTicket,
 } from "~/bindings";
 
 export interface SendState {
@@ -60,11 +61,20 @@ export interface NearbyReceiveState {
   error: string | null;
 }
 
+export interface CloudReceiveState {
+  tickets: CloudTicket[];
+  currentTicket: CloudTicket | null;
+  transferState: "idle" | "review" | "receiving" | "done" | "error";
+  transferProgress: TransferProgress | null;
+  error: string | null;
+}
+
 interface GlobalStoreValue {
   send: SendState;
   receive: ReceiveState;
   nearbySend: NearbySendState;
   nearbyReceive: NearbyReceiveState;
+  cloudReceive: CloudReceiveState;
 }
 
 interface GlobalStore {
@@ -106,6 +116,15 @@ interface GlobalStore {
     setTransferProgress: (progress: TransferProgress | null) => void;
     setError: (error: string | null) => void;
   };
+  cloudReceive: {
+    state: Accessor<CloudReceiveState>;
+    setTickets: (tickets: CloudTicket[]) => void;
+    setCurrentTicket: (ticket: CloudTicket | null) => void;
+    setTransferState: (state: CloudReceiveState["transferState"]) => void;
+    setTransferProgress: (progress: TransferProgress | null) => void;
+    setError: (error: string | null) => void;
+    reset: () => void;
+  };
 }
 
 const defaultSendState: SendState = {
@@ -143,6 +162,14 @@ const defaultNearbyReceiveState: NearbyReceiveState = {
   error: null,
 };
 
+const defaultCloudReceiveState: CloudReceiveState = {
+  tickets: [],
+  currentTicket: null,
+  transferState: "idle",
+  transferProgress: null,
+  error: null,
+};
+
 const GlobalStoreContext = createContext<GlobalStore>();
 
 export const GlobalStoreProvider: ParentComponent = (props) => {
@@ -158,6 +185,10 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
   const [nearbyReceiveState, setNearbyReceiveState] =
     createStore<NearbyReceiveState>({
       ...defaultNearbyReceiveState,
+    });
+  const [cloudReceiveState, setCloudReceiveState] =
+    createStore<CloudReceiveState>({
+      ...defaultCloudReceiveState,
     });
 
   const store: GlobalStore = {
@@ -214,6 +245,18 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
       setTransferProgress: (progress) =>
         setNearbyReceiveState("transferProgress", progress),
       setError: (error) => setNearbyReceiveState("error", error),
+    },
+    cloudReceive: {
+      state: () => cloudReceiveState,
+      setTickets: (tickets) => setCloudReceiveState("tickets", tickets),
+      setCurrentTicket: (ticket) =>
+        setCloudReceiveState("currentTicket", ticket),
+      setTransferState: (transferState) =>
+        setCloudReceiveState("transferState", transferState),
+      setTransferProgress: (progress) =>
+        setCloudReceiveState("transferProgress", progress),
+      setError: (error) => setCloudReceiveState("error", error),
+      reset: () => setCloudReceiveState(defaultCloudReceiveState),
     },
   };
 

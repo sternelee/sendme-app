@@ -1,9 +1,11 @@
-import { createEffect } from "solid-js";
+import { createEffect, onCleanup } from "solid-js";
 import { Router, Route } from "@solidjs/router";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { GlobalStoreProvider } from "./lib/store";
-import { start_cloud_presence, stop_cloud_presence } from "./bindings";
-import { getCloudApiOrigin, getPersistentDeviceId } from "./lib/cloud-api";
+import {
+  connectCloudWebSocket,
+  disconnectCloudWebSocket,
+} from "./lib/cloud-ws";
 import Home from "./routes/index";
 import "./styles.css";
 
@@ -16,17 +18,18 @@ function PresenceConnector() {
     }
 
     if (auth.isSignedIn()) {
-      start_cloud_presence({
-        deviceId: getPersistentDeviceId(),
-        apiOrigin: getCloudApiOrigin(),
-      }).catch((e) =>
-        console.error("[PresenceConnector] backend presence start failed:", e),
+      connectCloudWebSocket().catch((e) =>
+        console.error("[PresenceConnector] WebSocket connect failed:", e),
       );
     } else {
-      stop_cloud_presence().catch((e) =>
-        console.error("[PresenceConnector] backend presence stop failed:", e),
+      disconnectCloudWebSocket().catch((e) =>
+        console.error("[PresenceConnector] WebSocket disconnect failed:", e),
       );
     }
+  });
+
+  onCleanup(() => {
+    disconnectCloudWebSocket().catch(() => {});
   });
 
   return null;

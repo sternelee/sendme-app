@@ -1,4 +1,3 @@
-use futures_util::{SinkExt, StreamExt};
 use reqwest::Client;
 use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
@@ -10,12 +9,12 @@ use std::time::{Duration, Instant};
 use tauri::WebviewWindowBuilder;
 use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_clerk::ClerkExt;
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_fs::FsExt;
 use tauri_plugin_opener::OpenerExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{mpsc, oneshot, RwLock};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
 
 use iroh::{endpoint::Incoming, Endpoint, RelayMode};
@@ -511,12 +510,6 @@ struct NearbyProfilePayload {
     device_type: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StartCloudPresenceRequest {
-    device_id: String,
-    api_origin: String,
-}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -621,7 +614,6 @@ struct CloudPresenceRuntime {
     generation: u64,
     api_origin: Option<String>,
     snapshot: CloudPresenceSnapshotPayload,
-    shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 impl Default for CloudPresenceRuntime {
@@ -630,7 +622,6 @@ impl Default for CloudPresenceRuntime {
             generation: 0,
             api_origin: None,
             snapshot: CloudPresenceSnapshotPayload::default(),
-            shutdown_tx: None,
         }
     }
 }
@@ -723,54 +714,100 @@ async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyState>) -> Result<
 }
 
 #[tauri::command]
-async fn start_cloud_presence(
+async fn register_cloud_device(
+    app: AppHandle,
+    device_id: String,
+    api_origin: String,
+) -> Result<(), String> {
+    let authorization = current_cloud_authorization_header(&app)?;
+    let token = extract_bearer_token(&authorization)
+        .ok_or_else(|| "Missing bearer token".to_string())?
+        .to_string();
+    let (device_name, _) = current_nearby_profile(&app)?;
+    let url = build_cloud_api_url(&api_origin, "/api/devices")?;
+    let client = Client::builder()
+        .user_agent(cloud_user_agent())
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+    let response = client
+        .post(url)
+        .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
+        .json(&serde_json::json!({
+            "deviceId": device_id,
+            "name": device_name,
+            "hostname": device_name,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to register cloud device: {e}"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to register device".to_string());
+        return Err(format!(
+            "Failed to register cloud device ({status}): {body}"
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_cloud_connected(
     app: AppHandle,
     cloud: tauri::State<'_, CloudPresenceState>,
-    request: StartCloudPresenceRequest,
-) -> Result<CloudPresenceSnapshotPayload, String> {
-    let request = normalize_cloud_presence_request(request)?;
-    let (shutdown_tx, snapshot) = {
+    connected: bool,
+    device_id: Option<String>,
+    api_origin: Option<String>,
+    error: Option<String>,
+) -> Result<(), String> {
+    let snapshot = {
         let mut guard = cloud.write().await;
-        let same_config = guard.snapshot.active
-            && guard.snapshot.device_id.as_deref() == Some(request.device_id.as_str())
-            && guard.api_origin.as_deref() == Some(request.api_origin.as_str());
-        if same_config {
-            return Ok(guard.snapshot.clone());
+        guard.snapshot.active = connected || device_id.is_some();
+        guard.snapshot.connected = connected;
+        if let Some(id) = device_id {
+            guard.snapshot.device_id = Some(id);
         }
-
-        guard.generation += 1;
-        let generation = guard.generation;
-        let previous_shutdown = guard.shutdown_tx.take();
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
-        guard.shutdown_tx = Some(shutdown_tx);
-        guard.api_origin = Some(request.api_origin.clone());
-        guard.snapshot = CloudPresenceSnapshotPayload {
-            active: true,
-            connected: false,
-            device_id: Some(request.device_id.clone()),
-            last_error: None,
-            friends: Vec::new(),
-            devices: Vec::new(),
-            tickets: Vec::new(),
-        };
-        let snapshot = guard.snapshot.clone();
-        tauri::async_runtime::spawn(run_cloud_presence_loop(
-            app.clone(),
-            cloud.inner().clone(),
-            generation,
-            request,
-            shutdown_rx,
-        ));
-        (previous_shutdown, snapshot)
+        if let Some(origin) = api_origin {
+            guard.api_origin = Some(origin);
+        }
+        guard.snapshot.last_error = error;
+        guard.snapshot.clone()
     };
-
-    if let Some(tx) = shutdown_tx {
-        let _ = tx.send(());
-    }
-
-    emit_cloud_presence_state(&app, snapshot.clone());
+    emit_cloud_presence_state(&app, snapshot);
     refresh_android_foreground_notification(&app).await;
-    Ok(snapshot)
+    Ok(())
+}
+
+#[tauri::command]
+async fn update_cloud_state(
+    app: AppHandle,
+    cloud: tauri::State<'_, CloudPresenceState>,
+    message_json: String,
+) -> Result<(), String> {
+    let generation = cloud.read().await.generation;
+    let message: CloudServerMessage = serde_json::from_str(&message_json)
+        .map_err(|e| format!("Failed to parse cloud message: {e}"))?;
+    match message {
+        CloudServerMessage::Friends(friends) => {
+            update_cloud_friends(&app, &cloud, generation, friends).await;
+        }
+        CloudServerMessage::Devices(devices) => {
+            update_cloud_devices(&app, &cloud, generation, devices).await;
+        }
+        CloudServerMessage::Tickets(tickets) => {
+            update_cloud_tickets(&app, &cloud, generation, tickets).await;
+        }
+        CloudServerMessage::Error(message) => {
+            update_cloud_server_error(&app, &cloud, generation, message).await;
+        }
+        CloudServerMessage::Pong => {}
+        CloudServerMessage::TransferReceived(payload) => {
+            let _ = app.emit("cloud_transfer_received", payload);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -778,18 +815,13 @@ async fn stop_cloud_presence(
     app: AppHandle,
     cloud: tauri::State<'_, CloudPresenceState>,
 ) -> Result<(), String> {
-    let (shutdown_tx, snapshot) = {
+    let snapshot = {
         let mut guard = cloud.write().await;
         guard.generation += 1;
-        let shutdown_tx = guard.shutdown_tx.take();
         guard.api_origin = None;
         guard.snapshot = CloudPresenceSnapshotPayload::default();
-        (shutdown_tx, guard.snapshot.clone())
+        guard.snapshot.clone()
     };
-
-    if let Some(tx) = shutdown_tx {
-        let _ = tx.send(());
-    }
 
     emit_cloud_presence_state(&app, snapshot);
     let _ = app.emit("cloud_friends_updated", Vec::<CloudFriendPayload>::new());
@@ -1699,25 +1731,6 @@ fn emit_cloud_presence_state(app: &AppHandle, payload: CloudPresenceSnapshotPayl
     let _ = app.emit("cloud_presence_state", payload);
 }
 
-fn normalize_cloud_presence_request(
-    request: StartCloudPresenceRequest,
-) -> Result<StartCloudPresenceRequest, String> {
-    let device_id = request.device_id.trim().to_string();
-    let api_origin = request.api_origin.trim().trim_end_matches('/').to_string();
-
-    if device_id.is_empty() {
-        return Err("Device ID is required".to_string());
-    }
-
-    if api_origin.is_empty() {
-        return Err("API origin is required".to_string());
-    }
-
-    Ok(StartCloudPresenceRequest {
-        device_id,
-        api_origin,
-    })
-}
 
 fn extract_bearer_token(header: &str) -> Option<&str> {
     let mut parts = header.split_whitespace();
@@ -1772,56 +1785,6 @@ fn build_cloud_api_url(api_origin: &str, path: &str) -> Result<String, String> {
         .map_err(|e| format!("Invalid cloud API path: {e}"))
 }
 
-fn build_cloud_websocket_url(
-    api_origin: &str,
-    device_id: &str,
-    token: &str,
-) -> Result<Url, String> {
-    let mut url = Url::parse(&format!("{}/", api_origin.trim_end_matches('/')))
-        .map_err(|e| format!("Invalid cloud API origin: {e}"))?;
-    match url.scheme() {
-        "http" => {
-            url.set_scheme("ws")
-                .map_err(|_| "Failed to convert http origin to ws".to_string())?;
-        }
-        "https" => {
-            url.set_scheme("wss")
-                .map_err(|_| "Failed to convert https origin to wss".to_string())?;
-        }
-        "ws" | "wss" => {}
-        other => {
-            return Err(format!("Unsupported cloud API origin scheme: {other}"));
-        }
-    }
-    url.set_path("api/ws");
-    {
-        let mut query = url.query_pairs_mut();
-        query.append_pair("deviceId", device_id);
-        query.append_pair("token", token);
-    }
-    Ok(url)
-}
-
-async fn update_cloud_connection_state(
-    app: &AppHandle,
-    cloud: &CloudPresenceState,
-    generation: u64,
-    connected: bool,
-    last_error: Option<String>,
-) {
-    let snapshot = {
-        let mut guard = cloud.write().await;
-        if guard.generation != generation {
-            return;
-        }
-        guard.snapshot.connected = connected;
-        guard.snapshot.last_error = last_error;
-        guard.snapshot.clone()
-    };
-
-    emit_cloud_presence_state(app, snapshot);
-    refresh_android_foreground_notification(app).await;
-}
 
 async fn update_cloud_friends(
     app: &AppHandle,
@@ -1871,6 +1834,12 @@ async fn update_cloud_tickets(
     generation: u64,
     tickets: Vec<CloudTicketPayload>,
 ) {
+    // Determine new pending tickets for notification
+    let previous_ticket_ids: std::collections::HashSet<String> = {
+        let guard = cloud.read().await;
+        guard.snapshot.tickets.iter().map(|t| t.id.clone()).collect()
+    };
+
     let snapshot = {
         let mut guard = cloud.write().await;
         if guard.generation != generation {
@@ -1880,6 +1849,37 @@ async fn update_cloud_tickets(
         guard.snapshot.last_error = None;
         guard.snapshot.clone()
     };
+
+    // Send system notification for new pending tickets
+    let new_pending: Vec<&CloudTicketPayload> = tickets
+        .iter()
+        .filter(|t| {
+            !previous_ticket_ids.contains(&t.id)
+                && t.status.as_deref().unwrap_or("pending") == "pending"
+        })
+        .collect();
+
+    for ticket in &new_pending {
+        let sender = ticket
+            .sender_name
+            .as_deref()
+            .unwrap_or("Someone");
+        let filename = ticket
+            .filename
+            .as_deref()
+            .unwrap_or("a file");
+        let title = format!("{} wants to send you a file", sender);
+        let body = format!("File: {}", filename);
+        if let Err(e) = app
+            .notification()
+            .builder()
+            .title(&title)
+            .body(&body)
+            .show()
+        {
+            tracing::warn!("Failed to send cloud ticket notification: {}", e);
+        }
+    }
 
     let _ = app.emit("cloud_tickets_updated", tickets);
     emit_cloud_presence_state(app, snapshot);
@@ -1906,282 +1906,6 @@ async fn update_cloud_server_error(
     refresh_android_foreground_notification(app).await;
 }
 
-async fn wait_for_shutdown_or_timeout(
-    shutdown_rx: &mut oneshot::Receiver<()>,
-    delay: Duration,
-) -> bool {
-    tokio::select! {
-        _ = shutdown_rx => true,
-        _ = tokio::time::sleep(delay) => false,
-    }
-}
-
-async fn ensure_cloud_device_registered(
-    app: &AppHandle,
-    client: &Client,
-    request: &StartCloudPresenceRequest,
-    token: &str,
-    registered_key: &mut Option<String>,
-    registered_at: &mut Option<Instant>,
-) -> Result<(), String> {
-    let registration_key = format!("{token}:{}", request.device_id);
-    let registration_fresh = registered_key.as_deref() == Some(registration_key.as_str())
-        && registered_at
-            .as_ref()
-            .is_some_and(|instant| instant.elapsed() < Duration::from_secs(60));
-    if registration_fresh {
-        return Ok(());
-    }
-
-    let (device_name, _) = current_nearby_profile(app)?;
-    let url = build_cloud_api_url(&request.api_origin, "/api/devices")?;
-    let response = client
-        .post(url)
-        .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
-        .json(&serde_json::json!({
-            "deviceId": request.device_id,
-            "name": device_name,
-            "hostname": device_name,
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to register cloud device: {e}"))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Failed to register device".to_string());
-        return Err(format!(
-            "Failed to register cloud device ({status}): {body}"
-        ));
-    }
-
-    *registered_key = Some(registration_key);
-    *registered_at = Some(Instant::now());
-    Ok(())
-}
-
-async fn handle_cloud_server_message(
-    app: &AppHandle,
-    cloud: &CloudPresenceState,
-    generation: u64,
-    message: Message,
-) -> Result<(), String> {
-    let payload = match message {
-        Message::Text(text) => text.to_string(),
-        Message::Binary(bytes) => String::from_utf8(bytes.to_vec())
-            .map_err(|e| format!("Invalid binary cloud presence message: {e}"))?,
-        Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => return Ok(()),
-        Message::Close(frame) => {
-            let reason = frame
-                .map(|value| value.reason.to_string())
-                .unwrap_or_else(|| "Cloud presence websocket closed".to_string());
-            return Err(reason);
-        }
-    };
-
-    let message: CloudServerMessage = serde_json::from_str(&payload)
-        .map_err(|e| format!("Failed to parse cloud presence message: {e}"))?;
-
-    match message {
-        CloudServerMessage::Friends(friends) => {
-            update_cloud_friends(app, cloud, generation, friends).await;
-        }
-        CloudServerMessage::Devices(devices) => {
-            update_cloud_devices(app, cloud, generation, devices).await;
-        }
-        CloudServerMessage::Tickets(tickets) => {
-            update_cloud_tickets(app, cloud, generation, tickets).await;
-        }
-        CloudServerMessage::Error(message) => {
-            update_cloud_server_error(app, cloud, generation, message).await;
-        }
-        CloudServerMessage::Pong => {}
-        CloudServerMessage::TransferReceived(payload) => {
-            let _ = app.emit("cloud_transfer_received", payload);
-        }
-    }
-
-    Ok(())
-}
-
-async fn run_cloud_presence_loop(
-    app: AppHandle,
-    cloud: CloudPresenceState,
-    generation: u64,
-    request: StartCloudPresenceRequest,
-    mut shutdown_rx: oneshot::Receiver<()>,
-) {
-    let client = match Client::builder().user_agent(cloud_user_agent()).build() {
-        Ok(client) => client,
-        Err(error) => {
-            update_cloud_connection_state(
-                &app,
-                &cloud,
-                generation,
-                false,
-                Some(format!("Failed to initialize cloud client: {error}")),
-            )
-            .await;
-            return;
-        }
-    };
-
-    let mut reconnect_attempt = 0u32;
-    let mut registered_key: Option<String> = None;
-    let mut registered_at: Option<Instant> = None;
-
-    'outer: loop {
-        let authorization = match current_cloud_authorization_header(&app) {
-            Ok(value) => value,
-            Err(error) => {
-                update_cloud_connection_state(&app, &cloud, generation, false, Some(error)).await;
-                if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_secs(3)).await {
-                    break;
-                }
-                continue;
-            }
-        };
-
-        let token = match extract_bearer_token(&authorization) {
-            Some(token) => token.to_string(),
-            None => {
-                update_cloud_connection_state(
-                    &app,
-                    &cloud,
-                    generation,
-                    false,
-                    Some("Cloud presence authorization is missing a bearer token".to_string()),
-                )
-                .await;
-                if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_secs(3)).await {
-                    break;
-                }
-                continue;
-            }
-        };
-
-        if let Err(error) = ensure_cloud_device_registered(
-            &app,
-            &client,
-            &request,
-            &token,
-            &mut registered_key,
-            &mut registered_at,
-        )
-        .await
-        {
-            update_cloud_connection_state(&app, &cloud, generation, false, Some(error)).await;
-            if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_secs(3)).await {
-                break;
-            }
-            continue;
-        }
-
-        let ws_url =
-            match build_cloud_websocket_url(&request.api_origin, &request.device_id, &token) {
-                Ok(url) => url,
-                Err(error) => {
-                    update_cloud_connection_state(&app, &cloud, generation, false, Some(error))
-                        .await;
-                    break;
-                }
-            };
-
-        match connect_async(ws_url.as_str()).await {
-            Ok((stream, _)) => {
-                reconnect_attempt = 0;
-                update_cloud_connection_state(&app, &cloud, generation, true, None).await;
-
-                let (mut writer, mut reader) = stream.split();
-                let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
-                heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-
-                loop {
-                    tokio::select! {
-                        _ = &mut shutdown_rx => {
-                            break 'outer;
-                        }
-                        _ = heartbeat.tick() => {
-                            if let Err(error) = writer.send(Message::Text("{\"type\":\"heartbeat\"}".into())).await {
-                                update_cloud_connection_state(
-                                    &app,
-                                    &cloud,
-                                    generation,
-                                    false,
-                                    Some(format!("Cloud presence heartbeat failed: {error}")),
-                                ).await;
-                                break;
-                            }
-                        }
-                        message = reader.next() => {
-                            match message {
-                                Some(Ok(message)) => {
-                                    if let Err(error) = handle_cloud_server_message(&app, &cloud, generation, message).await {
-                                        update_cloud_connection_state(&app, &cloud, generation, false, Some(error)).await;
-                                        break;
-                                    }
-                                }
-                                Some(Err(error)) => {
-                                    update_cloud_connection_state(
-                                        &app,
-                                        &cloud,
-                                        generation,
-                                        false,
-                                        Some(format!("Cloud presence websocket failed: {error}")),
-                                    ).await;
-                                    break;
-                                }
-                                None => {
-                                    update_cloud_connection_state(
-                                        &app,
-                                        &cloud,
-                                        generation,
-                                        false,
-                                        Some("Cloud presence websocket closed".to_string()),
-                                    ).await;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Err(error) => {
-                update_cloud_connection_state(
-                    &app,
-                    &cloud,
-                    generation,
-                    false,
-                    Some(format!(
-                        "Failed to connect cloud presence websocket: {error}"
-                    )),
-                )
-                .await;
-            }
-        }
-
-        let delay_ms = (1_000u64 * (1u64 << reconnect_attempt.min(5))).min(30_000);
-        reconnect_attempt = reconnect_attempt.saturating_add(1);
-        if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_millis(delay_ms)).await {
-            break;
-        }
-    }
-
-    let snapshot = {
-        let mut guard = cloud.write().await;
-        if guard.generation != generation {
-            return;
-        }
-        guard.shutdown_tx = None;
-        guard.snapshot.connected = false;
-        guard.snapshot.clone()
-    };
-    emit_cloud_presence_state(&app, snapshot);
-    refresh_android_foreground_notification(&app).await;
-}
 
 async fn set_android_active_receive(
     app: &AppHandle,
@@ -3178,6 +2902,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_websocket::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_clerk::ClerkPluginBuilder::new()
@@ -3331,9 +3056,13 @@ pub fn run() {
             send_to_device,
             accept_incoming,
             decline_incoming,
-            start_cloud_presence,
+            register_cloud_device,
+            set_cloud_connected,
+            update_cloud_state,
             stop_cloud_presence,
             get_cloud_presence_state,
+            accept_cloud_ticket,
+            decline_cloud_ticket,
             app_ready,
             open_system_browser,
             // Menubar commands
@@ -3346,6 +3075,78 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+async fn accept_cloud_ticket(
+    app: AppHandle,
+    cloud: tauri::State<'_, CloudPresenceState>,
+    transfers: tauri::State<'_, Transfers>,
+    ticket_id: String,
+    output_dir: Option<String>,
+) -> Result<String, String> {
+    log_info!("☁️ ACCEPT_CLOUD_TICKET: {}", ticket_id);
+
+    // Find the ticket in the current snapshot
+    let (ticket_str, api_origin) = {
+        let guard = cloud.read().await;
+        let ticket = guard
+            .snapshot
+            .tickets
+            .iter()
+            .find(|t| t.id == ticket_id)
+            .ok_or_else(|| format!("Cloud ticket not found: {}", ticket_id))?;
+        let origin = guard
+            .api_origin
+            .clone()
+            .ok_or_else(|| "Cloud API origin not configured".to_string())?;
+        (ticket.ticket.clone(), origin)
+    };
+
+    // Start the file receive using the existing receive_file logic
+    let request = ReceiveFileRequest {
+        ticket: ticket_str,
+        output_dir,
+    };
+    let transfer_id = receive_file(app.clone(), transfers, request).await?;
+
+    // Mark ticket as received on the server (best-effort)
+    let mark_url = build_cloud_api_url(&api_origin, &format!("/api/tickets/{}/receive", ticket_id))?;
+    let authorization = current_cloud_authorization_header(&app).ok();
+    tokio::spawn(async move {
+        if let Some(auth) = authorization {
+            let client = reqwest::Client::new();
+            let _ = client
+                .post(&mark_url)
+                .header(reqwest::header::AUTHORIZATION, auth)
+                .send()
+                .await;
+        }
+    });
+
+    Ok(transfer_id)
+}
+
+#[tauri::command]
+async fn decline_cloud_ticket(
+    app: AppHandle,
+    cloud: tauri::State<'_, CloudPresenceState>,
+    ticket_id: String,
+) -> Result<(), String> {
+    log_info!("☁️ DECLINE_CLOUD_TICKET: {}", ticket_id);
+
+    // Remove from local snapshot
+    let snapshot = {
+        let mut guard = cloud.write().await;
+        guard
+            .snapshot
+            .tickets
+            .retain(|t| t.id != ticket_id);
+        guard.snapshot.clone()
+    };
+
+    emit_cloud_presence_state(&app, snapshot);
+    Ok(())
 }
 
 #[tauri::command]

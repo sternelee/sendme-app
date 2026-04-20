@@ -149,10 +149,6 @@ export interface DirectoryInfo {
   name: string;
 }
 
-export interface StartCloudPresenceRequest {
-  deviceId: string;
-  apiOrigin: string;
-}
 
 export interface CloudDevice {
   id: string;
@@ -253,10 +249,31 @@ export async function pick_directory(options?: {
   });
 }
 
-export async function start_cloud_presence(
-  request: StartCloudPresenceRequest,
-): Promise<CloudPresenceState> {
-  return await invoke("start_cloud_presence", { request });
+export async function register_cloud_device(
+  deviceId: string,
+  apiOrigin: string,
+): Promise<void> {
+  return await invoke("register_cloud_device", { deviceId, apiOrigin });
+}
+
+export async function set_cloud_connected(
+  connected: boolean,
+  deviceId?: string | null,
+  apiOrigin?: string | null,
+  error?: string | null,
+): Promise<void> {
+  return await invoke("set_cloud_connected", {
+    connected,
+    deviceId: deviceId ?? null,
+    apiOrigin: apiOrigin ?? null,
+    error: error ?? null,
+  });
+}
+
+export async function update_cloud_state(
+  messageJson: string,
+): Promise<void> {
+  return await invoke("update_cloud_state", { messageJson });
 }
 
 export async function stop_cloud_presence(): Promise<void> {
@@ -374,4 +391,22 @@ export async function accept_incoming(
 
 export async function decline_incoming(requestId: string): Promise<void> {
   return await invoke("decline_incoming", { requestId });
+}
+
+/**
+ * Accept a cloud ticket and start receiving the file
+ * @returns The transfer ID
+ */
+export async function accept_cloud_ticket(
+  ticketId: string,
+  outputDir?: string,
+): Promise<string> {
+  return await invoke("accept_cloud_ticket", { ticketId, outputDir });
+}
+
+/**
+ * Decline a cloud ticket
+ */
+export async function decline_cloud_ticket(ticketId: string): Promise<void> {
+  return await invoke("decline_cloud_ticket", { ticketId });
 }

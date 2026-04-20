@@ -19,6 +19,7 @@
     {
       "identifier": "http:default",
       "allow": [{ "url": "https://*.leeapp.dev/**" }]
-    }
+    },
+    "websocket:default"
   ]
 }

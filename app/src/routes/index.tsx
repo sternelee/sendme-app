@@ -24,8 +24,11 @@ import {
   stop_nearby_discovery,
   accept_incoming,
   decline_incoming,
+  accept_cloud_ticket,
+  decline_cloud_ticket,
   type IncomingRequest,
   type NearbyTransferState,
+  type CloudTicket,
 } from "~/bindings";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -386,6 +389,46 @@ export default function MainPage() {
     }
   }
 
+  async function handleAcceptCloudTicket() {
+    const ticket = globalStore.cloudReceive.state().currentTicket;
+    if (!ticket) return;
+
+    try {
+      globalStore.cloudReceive.setTransferState("receiving");
+      await accept_cloud_ticket(ticket.id, receiveOutputDir() || undefined);
+      globalStore.cloudReceive.setCurrentTicket(null);
+      globalStore.cloudReceive.setTransferState("idle");
+      setTransferView("receive");
+      setActiveTab("transfer");
+      toast.success(t("nearby.transferComplete"));
+    } catch (e) {
+      globalStore.cloudReceive.setError(String(e));
+      globalStore.cloudReceive.setTransferState("idle");
+      toast.error(`Failed to receive file: ${e}`);
+    }
+  }
+
+  async function handleDeclineCloudTicket() {
+    const ticket = globalStore.cloudReceive.state().currentTicket;
+    if (!ticket) return;
+
+    try {
+      await decline_cloud_ticket(ticket.id);
+      globalStore.cloudReceive.setCurrentTicket(null);
+      globalStore.cloudReceive.setTransferState("idle");
+      // Show next pending ticket if any
+      const remaining = globalStore.cloudReceive
+        .state()
+        .tickets.filter((t) => t.id !== ticket.id);
+      if (remaining.length > 0) {
+        globalStore.cloudReceive.setCurrentTicket(remaining[0]);
+        globalStore.cloudReceive.setTransferState("review");
+      }
+    } catch (e) {
+      toast.error(`Failed to decline: ${e}`);
+    }
+  }
+
   async function handleClearTransfers() {
     try {
       await clear_transfers();
@@ -659,12 +702,31 @@ export default function MainPage() {
       },
     );
 
+    const unlistenCloudTickets = await listen<CloudTicket[]>(
+      "cloud_tickets_updated",
+      (event) => {
+        const tickets = event.payload.filter(
+          (t) => (t.status ?? "pending") === "pending",
+        );
+        globalStore.cloudReceive.setTickets(tickets);
+        // Auto-show first pending ticket if idle
+        if (
+          tickets.length > 0 &&
+          globalStore.cloudReceive.state().transferState === "idle"
+        ) {
+          globalStore.cloudReceive.setCurrentTicket(tickets[0]);
+          globalStore.cloudReceive.setTransferState("review");
+        }
+      },
+    );
+
     onCleanup(() => {
       unlisten();
       unlistenNearby();
       unlistenNearbyCancel();
       unlistenNearbyDecline();
       unlistenNearbyReceive();
+      unlistenCloudTickets();
       stop_nearby_discovery().catch(() => {});
     });
     setIsInitializing(false);
@@ -1587,6 +1649,54 @@ export default function MainPage() {
                 state={
                   globalStore.nearbyReceive.state().transferState ===
                   "receiving"
+                    ? "accepting"
+                    : "pending"
+                }
+              />
+            </div>
+          </div>
+        </div>
+      </Show>
+
+      <Show when={globalStore.cloudReceive.state().currentTicket}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div class="card bg-base-100 w-full max-w-md shadow-2xl">
+            <div class="card-body gap-3">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h3 class="text-base font-bold">
+                    ☁️ {t("nearby.transferRequest")}
+                  </h3>
+                  <p class="text-sm opacity-60">
+                    {globalStore.cloudReceive.state().currentTicket?.senderName || "Someone"}{" "}
+                    wants to send you a file
+                  </p>
+                </div>
+              </div>
+
+              <IncomingRequestCard
+                request={{
+                  id: globalStore.cloudReceive.state().currentTicket!.id,
+                  senderName:
+                    globalStore.cloudReceive.state().currentTicket?.senderName || "Unknown",
+                  files: [
+                    {
+                      name:
+                        globalStore.cloudReceive.state().currentTicket?.filename || "file",
+                      size:
+                        globalStore.cloudReceive.state().currentTicket?.fileSize || 0,
+                    },
+                  ],
+                  totalSize:
+                    globalStore.cloudReceive.state().currentTicket?.fileSize || 0,
+                }}
+                onAccept={handleAcceptCloudTicket}
+                onDecline={handleDeclineCloudTicket}
+                disabled={
+                  globalStore.cloudReceive.state().transferState !== "review"
+                }
+                state={
+                  globalStore.cloudReceive.state().transferState === "receiving"
                     ? "accepting"
                     : "pending"
                 }
