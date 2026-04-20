@@ -133,7 +133,9 @@
       "sendToMyDevices": "Send to My Devices",
       "sendToFriend": "Send to Friend",
       "ticketReady": "Your ticket is ready",
-      "chooseFriend": "Choose a friend"
+      "chooseFriend": "Choose a friend",
+      "shareViaTicket": "Share via Ticket Link",
+      "shareViaTicketHint": "Generate a ticket link to share with anyone — paste in forums, chats, or anywhere."
     },
     "receive": {
       "title": "Receive Files",
@@ -198,10 +200,15 @@
       "stepWorkspace": "Opening transfer workspace"
     },
     "devices": {
-      "title": "Select Device",
-      "subtitle": "Choose a device to send the ticket to",
-      "noDevices": "No devices found",
-      "refresh": "Refresh"
+      "title": "Devices",
+      "subtitle": "Sign in on other devices to send files between them",
+      "noDevices": "No other devices found",
+      "refresh": "Refresh",
+      "sendTo": "Send to {{name}}",
+      "ticketSent": "Ticket sent to {{name}}",
+      "sendFailed": "Failed to send to device",
+      "online": "Online",
+      "offline": "Offline"
     },
     "friends": {
       "title": "Friends",
@@ -404,7 +411,9 @@
       "sendToMyDevices": "发送到我的设备",
       "sendToFriend": "发送给好友",
       "ticketReady": "票据已就绪",
-      "chooseFriend": "选择好友"
+      "chooseFriend": "选择好友",
+      "shareViaTicket": "通过票据链接分享",
+      "shareViaTicketHint": "生成一个票据链接，可分享到论坛、群聊等任何地方。"
     },
     "receive": {
       "title": "接收文件",
@@ -469,10 +478,15 @@
       "stepWorkspace": "打开传输工作区"
     },
     "devices": {
-      "title": "选择设备",
-      "subtitle": "选择要发送票据的设备",
-      "noDevices": "未找到设备",
-      "refresh": "刷新"
+      "title": "设备",
+      "subtitle": "在其他设备上登录以在设备间传输文件",
+      "noDevices": "未找到其他设备",
+      "refresh": "刷新",
+      "sendTo": "发送到 {{name}}",
+      "ticketSent": "票据已发送到 {{name}}",
+      "sendFailed": "发送到设备失败",
+      "online": "在线",
+      "offline": "离线"
     },
     "friends": {
       "title": "好友",

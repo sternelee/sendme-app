@@ -11,14 +11,13 @@ import {
 } from "solid-js";
 import {
   send_file,
-  receive_file,
   send_text,
+  receive_file,
   cancel_transfer,
   delete_transfer,
   get_transfers,
   clear_transfers,
   open_received_file,
-  pick_file,
   pick_directory,
   start_nearby_discovery,
   stop_nearby_discovery,
@@ -66,8 +65,10 @@ import {
   User,
   LogOut,
   Radio,
+  Smartphone,
   ChevronDown,
   Folder,
+  Link2,
 } from "lucide-solid";
 
 import { Toaster, toast } from "solid-sonner";
@@ -88,6 +89,9 @@ import { SplashScreen } from "~/lib/components/SplashScreen";
 import { TransferProgress } from "~/lib/components/TransferProgress";
 import NearbyPage from "~/routes/nearby";
 import FriendsPage from "~/routes/friends";
+import DevicesPage from "~/routes/devices";
+import { DropZone } from "~/lib/components/DropZone";
+
 
 const t = i18n.t;
 
@@ -112,7 +116,7 @@ interface ProgressUpdate {
 
 type Theme = "light" | "dark" | "system";
 type Tab = "transfer" | "history" | "settings";
-type ShareSubTab = "nearby" | "friends";
+type ShareSubTab = "nearby" | "devices" | "friends";
 type TransferMode = "send" | "receive" | "text";
 
 const ticketTypes = [
@@ -121,6 +125,7 @@ const ticketTypes = [
   { value: "addresses", label: "Addresses" },
   { value: "relay_and_addresses", label: "Relay + Addresses" },
 ];
+
 
 function ProgressBorder(props: { percent: () => number; children: any }) {
   let barRef: HTMLDivElement | undefined;
@@ -241,60 +246,6 @@ export default function MainPage() {
     } catch (e) {}
   }
 
-  async function selectFile() {
-    try {
-      if (isMobile()) {
-        const selected = await pick_file({ allowMultiple: false });
-        if (selected.length > 0) {
-          globalStore.send.setPath(selected[0].path);
-          globalStore.send.setTicket("");
-          globalStore.send.setIsTextMode(false);
-          globalStore.send.setIsFolder(false);
-        }
-      } else {
-        const selected = await open({ multiple: false, directory: false });
-        if (selected && typeof selected === "string") {
-          globalStore.send.setPath(selected);
-          globalStore.send.setTicket("");
-          globalStore.send.setIsTextMode(false);
-          globalStore.send.setIsFolder(false);
-        }
-      }
-    } catch (e) {}
-  }
-
-  async function selectDirectory() {
-    try {
-      if (isMobile()) {
-        const result = await pick_directory();
-        globalStore.send.setPath(result.uri);
-        globalStore.send.setTicket("");
-        globalStore.send.setIsTextMode(false);
-        globalStore.send.setIsFolder(true);
-      } else {
-        const selected = await open({ multiple: false, directory: true });
-        if (selected && typeof selected === "string") {
-          globalStore.send.setPath(selected);
-          globalStore.send.setTicket("");
-          globalStore.send.setIsTextMode(false);
-          globalStore.send.setIsFolder(true);
-        }
-      }
-    } catch (e) {}
-  }
-
-  async function selectOutputDirectory() {
-    try {
-      if (isMobile()) {
-        const result = await pick_directory();
-        globalStore.receive.setOutputDir(result.uri);
-      } else {
-        const selected = await open({ multiple: false, directory: true });
-        if (selected && typeof selected === "string")
-          globalStore.receive.setOutputDir(selected);
-      }
-    } catch (e) {}
-  }
 
   async function handleSend() {
     if (isTextMode() && !textContent().trim()) return;
@@ -315,7 +266,47 @@ export default function MainPage() {
           width: 280,
         }),
       );
-      setShowQrCode(!isMobile());
+      setShowQrCode(true);
+      await loadTransfers();
+    } catch (e) {
+      toast.error(t("send.failed") + `: ${e}`);
+    } finally {
+      globalStore.send.setIsSending(false);
+    }
+  }
+
+  async function selectOutputDirectory() {
+    try {
+      if (isMobile()) {
+        const result = await pick_directory();
+        globalStore.receive.setOutputDir(result.uri);
+      } else {
+        const selected = await open({ multiple: false, directory: true });
+        if (selected && typeof selected === "string")
+          globalStore.receive.setOutputDir(selected);
+      }
+    } catch (e) {}
+  }
+
+  async function handleGenerateTicket() {
+    if (isTextMode() && !textContent().trim()) return;
+    if (!isTextMode() && !sendPath()) return;
+
+    globalStore.send.setIsSending(true);
+    try {
+      const result = isTextMode()
+        ? await send_text({
+            text: textContent().trim(),
+            ticket_type: sendTicketType(),
+          })
+        : await send_file({ path: sendPath(), ticket_type: sendTicketType() });
+      globalStore.send.setTicket(result);
+      globalStore.send.setTicketQrCode(
+        await QRCode.toDataURL(result, {
+          errorCorrectionLevel: "H",
+          width: 280,
+        }),
+      );
       await loadTransfers();
     } catch (e) {
       toast.error(t("send.failed") + `: ${e}`);
@@ -972,62 +963,31 @@ export default function MainPage() {
                           when={isTextMode()}
                           fallback={
                             <div class="grid min-w-0 gap-3">
-                              <Show
-                                when={sendPath()}
-                                fallback={
-                                  <div class="border-base-300 bg-base-100/75 flex min-h-48 w-full min-w-0 flex-col items-center justify-center gap-4 overflow-hidden rounded-3xl border border-dashed p-5 transition">
-                                    <div class="bg-primary/10 text-primary rounded-2xl p-3">
-                                      <SendIcon size={24} />
-                                    </div>
-                                    <p class="text-base-content/60 text-sm">
-                                      {t("send.dragDrop")}
-                                    </p>
-                                    <div class="flex gap-2">
-                                      <button
-                                        onClick={selectFile}
-                                        class="btn btn-primary btn-sm rounded-xl"
-                                      >
-                                        <FileText size={16} />
-                                        {t("send.selectFile")}
-                                      </button>
-                                      <button
-                                        onClick={selectDirectory}
-                                        class="btn btn-outline btn-sm rounded-xl"
-                                      >
-                                        <Folder size={16} />
-                                        {t("send.selectFolder")}
-                                      </button>
-                                    </div>
-                                  </div>
+                              <DropZone
+                                files={
+                                  sendPath()
+                                    ? [
+                                        {
+                                          name: getDisplayName(sendPath()),
+                                          size: 0,
+                                          path: sendPath(),
+                                        },
+                                      ]
+                                    : []
                                 }
-                              >
-                                <button
-                                  onClick={
-                                    sendIsFolder()
-                                      ? selectDirectory
-                                      : selectFile
+                                onFilesSelected={(files) => {
+                                  if (files.length > 0) {
+                                    globalStore.send.setPath(files[0].path);
+                                    globalStore.send.setTicket("");
+                                    globalStore.send.setIsTextMode(false);
+                                    globalStore.send.setIsFolder(false);
                                   }
-                                  class="border-base-300 bg-base-100/75 hover:border-primary/60 hover:bg-primary/5 flex min-h-48 w-full min-w-0 flex-col items-start justify-between overflow-hidden rounded-3xl border border-dashed p-5 text-left transition"
-                                >
-                                  <div class="bg-primary/10 text-primary rounded-2xl p-3">
-                                    {sendIsFolder() ? (
-                                      <Folder size={24} />
-                                    ) : (
-                                      <SendIcon size={24} />
-                                    )}
-                                  </div>
-                                  <div class="w-full min-w-0 space-y-2">
-                                    <p class="max-w-full truncate text-sm font-medium">
-                                      {getDisplayName(sendPath())}
-                                    </p>
-                                    <p class="text-base-content/60 text-xs leading-5">
-                                      {sendIsFolder()
-                                        ? t("send.folderSelected")
-                                        : t("send.fileSelected")}
-                                    </p>
-                                  </div>
-                                </button>
-                              </Show>
+                                }}
+                                onRemoveFile={() => {
+                                  globalStore.send.setPath("");
+                                  globalStore.send.setTicket("");
+                                }}
+                              />
                             </div>
                           }
                         >
@@ -1042,127 +1002,85 @@ export default function MainPage() {
                             class="textarea textarea-bordered bg-base-100/75 min-h-48 w-full rounded-3xl p-4"
                           />
                         </Show>
+                      </div>
+                    </Show>
+                  </section>
 
-                        <div class="border-base-300/70 bg-base-100/70 rounded-3xl border p-4">
-                          <label class="mb-2 block text-sm font-medium">
-                            {t("send.ticketTypeLabel")}
-                          </label>
+                  {/* Collapsible "Share via Ticket" for strangers / forums */}
+                  <Show when={sendPath() || (isTextMode() && textContent()?.trim())}>
+                    <div class="collapse collapse-arrow bg-base-200/50 rounded-2xl">
+                      <input type="checkbox" />
+                      <div class="collapse-title text-sm font-medium flex items-center gap-2 min-h-0 py-3">
+                        <Link2 size={16} class="text-primary" />
+                        {t("send.shareViaTicket")}
+                      </div>
+                      <div class="collapse-content space-y-3 pt-0">
+                        <p class="text-base-content/60 text-xs">
+                          {t("send.shareViaTicketHint")}
+                        </p>
+
+                        <div class="flex items-center gap-2">
                           <select
-                            class="select select-bordered bg-base-100 w-full rounded-2xl"
                             value={sendTicketType()}
                             onChange={(e) =>
-                              globalStore.send.setTicketType(
-                                e.currentTarget.value,
-                              )
+                              globalStore.send.setTicketType(e.currentTarget.value)
                             }
+                            class="select select-bordered select-sm flex-1 rounded-xl text-xs"
                           >
                             <For each={ticketTypes}>
-                              {(ticketType) => (
-                                <option value={ticketType.value}>
-                                  {ticketType.label}
-                                </option>
+                              {(tt) => (
+                                <option value={tt.value}>{tt.label}</option>
                               )}
                             </For>
                           </select>
+                          <button
+                            onClick={handleGenerateTicket}
+                            class="btn btn-primary btn-sm rounded-xl"
+                            disabled={isSending()}
+                          >
+                            <Show
+                              when={!isSending()}
+                              fallback={
+                                <span class="loading loading-spinner loading-xs"></span>
+                              }
+                            >
+                              <Send size={14} />
+                            </Show>
+                            {t("send.generateTicket")}
+                          </button>
                         </div>
 
-                        <button
-                          onClick={handleSend}
-                          disabled={
-                            isSending() ||
-                            (!isTextMode() && !sendPath()) ||
-                            (isTextMode() && !textContent().trim())
-                          }
-                          class={`btn btn-primary btn-lg w-full rounded-2xl shadow-sm`}
-                        >
-                          <Zap size={18} />{" "}
-                          {isTextMode()
-                            ? t("text.generateTicket")
-                            : t("send.generateTicket")}
-                        </button>
-
                         <Show when={sendTicket()}>
-                          <div class="border-primary/20 bg-primary/10 rounded-3xl border p-4 md:p-5">
-                            <div class="flex flex-col gap-5 lg:flex-row lg:items-center">
-                              <Show when={sendTicketQrCode() && showQrCode()}>
-                                <div class="flex justify-center lg:justify-start">
-                                  <div class="rounded-[28px] bg-white p-3 shadow-sm">
-                                    <img
-                                      src={sendTicketQrCode()!}
-                                      alt="QR"
-                                      class={
-                                        isSmallWindow()
-                                          ? "h-40 w-40"
-                                          : "h-48 w-48 md:h-56 md:w-56"
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                              </Show>
-
-                              <div class="min-w-0 flex-1 space-y-4">
-                                <div class="space-y-2">
-                                  <div class="badge badge-primary badge-outline rounded-full px-3 py-3">
-                                    {t("send.readyToShare")}
-                                  </div>
-                                  <p class="text-base-content/70 text-sm leading-6">
-                                    {t("send.readyHint")}
-                                  </p>
-                                </div>
-
-                                <div class="border-primary/15 bg-base-100/80 rounded-2xl border p-3">
-                                  <code class="text-primary font-mono text-xs break-all">
-                                    {sendTicket()}
-                                  </code>
-                                </div>
-
-                                <Show when={isMobile() && sendTicketQrCode()}>
-                                  <button
-                                    onClick={() => setShowQrCode((v) => !v)}
-                                    class="btn btn-ghost btn-sm w-full gap-1 rounded-2xl text-xs"
-                                  >
-                                    <ChevronDown
-                                      size={14}
-                                      class={`transition-transform ${showQrCode() ? "rotate-180" : ""}`}
-                                    />
-                                    {showQrCode()
-                                      ? t("send.hideQrCode")
-                                      : t("send.showQrCode")}
-                                  </button>
-                                </Show>
-
-                                <div class="flex flex-col gap-2 sm:flex-row">
-                                  <button
-                                    onClick={() =>
-                                      copyToClipboard(sendTicket()!)
-                                    }
-                                    class="btn btn-outline flex-1 rounded-2xl"
-                                  >
-                                    <Copy size={14} /> {t("common.copy")}
-                                  </button>
-                                  <Show
-                                    when={
-                                      typeof navigator !== "undefined" &&
-                                      "share" in navigator
-                                    }
-                                  >
-                                    <button
-                                      onClick={() =>
-                                        handleNativeShare(sendTicket()!)
-                                      }
-                                      class="btn btn-outline flex-1 rounded-2xl"
-                                    >
-                                      <Share2 size={14} /> {t("common.share")}
-                                    </button>
-                                  </Show>
+                          <div class="space-y-3 mt-2">
+                            <Show when={sendTicketQrCode()}>
+                              <div class="flex justify-center">
+                                <div class="rounded-xl bg-white p-2">
+                                  <img
+                                    src={sendTicketQrCode()}
+                                    alt="QR"
+                                    class="h-40 w-40"
+                                  />
                                 </div>
                               </div>
+                            </Show>
+                            <div class="bg-base-300 overflow-hidden rounded-lg p-2">
+                              <code class="text-primary font-mono text-xs break-all">
+                                {sendTicket()}
+                              </code>
+                            </div>
+                            <div class="flex gap-2">
+                              <button
+                                onClick={() => copyToClipboard(sendTicket())}
+                                class="btn btn-outline btn-sm flex-1 rounded-xl"
+                              >
+                                <Copy size={14} /> {t("common.copy")}
+                              </button>
                             </div>
                           </div>
                         </Show>
                       </div>
-                    </Show>
-                  </section>
+                    </div>
+                  </Show>
 
                   <div class="space-y-4">
                     <Show
@@ -1217,6 +1135,13 @@ export default function MainPage() {
                         {t("nearby.title")}
                       </button>
                       <button
+                        class={`tab gap-2 rounded-2xl ${shareSubTab() === "devices" ? "tab-active" : ""}`}
+                        onClick={() => setShareSubTab("devices")}
+                      >
+                        <Smartphone size={16} />
+                        {t("devices.title")}
+                      </button>
+                      <button
                         class={`tab gap-2 rounded-2xl ${shareSubTab() === "friends" ? "tab-active" : ""}`}
                         onClick={() => setShareSubTab("friends")}
                       >
@@ -1227,17 +1152,20 @@ export default function MainPage() {
                   </div>
 
                   <Show when={shareSubTab() === "nearby"}>
-                    <NearbyPage />
+                    <NearbyPage sendPath={sendPath() || undefined} isFolder={sendIsFolder()} />
+                  </Show>
+                  <Show when={shareSubTab() === "devices"}>
+                    <DevicesPage
+                      sendPath={sendPath() || undefined}
+                      isTextMode={isTextMode()}
+                      textContent={textContent()}
+                    />
                   </Show>
                   <Show when={shareSubTab() === "friends"}>
                     <FriendsPage
-                      onSendToFriend={(_friendUserId, friendName) => {
-                        setActiveTab("transfer");
-                        setShareSubTab("friends");
-                        toast.success(
-                          t("friends.goToSendTab", { name: friendName }),
-                        );
-                      }}
+                      sendPath={sendPath() || undefined}
+                      isTextMode={isTextMode()}
+                      textContent={textContent()}
                     />
                   </Show>
                 </section>

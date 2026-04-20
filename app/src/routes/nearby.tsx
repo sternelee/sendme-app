@@ -11,9 +11,7 @@ import {
   type NearbyTransferState,
 } from "~/bindings";
 import { useGlobalStore } from "~/lib/store";
-import { DropZone } from "~/lib/components/DropZone";
 import { NearbyDeviceList } from "~/lib/components/NearbyDeviceList";
-import { FileManifest } from "~/lib/components/FileManifest";
 import { TransferProgress } from "~/lib/components/TransferProgress";
 import { ConnectionWaiting } from "~/lib/components/ConnectionWaiting";
 import { toast } from "solid-sonner";
@@ -22,7 +20,12 @@ import { i18n } from "~/lib/i18n";
 const t = i18n.t;
 const RECONCILE_INTERVAL_MS = 20_000;
 
-export default function NearbyPage() {
+interface NearbyPageProps {
+  sendPath?: string;
+  isFolder?: boolean;
+}
+
+export default function NearbyPage(props: NearbyPageProps) {
   const store = useGlobalStore();
   const [isScanning, setIsScanning] = createSignal(false);
   const [nearbyProfile, setNearbyProfile] = createSignal<NearbyProfile | null>(
@@ -143,11 +146,8 @@ export default function NearbyPage() {
     });
   });
 
-  const totalSize = () =>
-    nearbyState().files.reduce((sum, file) => sum + file.size, 0);
-
   async function handleDeviceSelect(device: NearbyDevice) {
-    if (nearbyState().files.length === 0) {
+    if (!props.sendPath) {
       toast.error(t("nearby.selectFilesFirst"));
       return;
     }
@@ -156,17 +156,17 @@ export default function NearbyPage() {
     store.nearbySend.setTransferState("waiting");
     store.nearbySend.setTransferProgress({
       transferred: 0,
-      total: totalSize(),
+      total: 0,
       speed: 0,
       eta: 0,
     });
     store.nearbySend.setError(null);
 
     try {
-      const fileItems: NearbySendItem[] = nearbyState().files.map((file) => ({
-        path: file.path,
-        filename: file.name,
-      }));
+      const filename = props.sendPath.split("/").pop() || "file";
+      const fileItems: NearbySendItem[] = [
+        { path: props.sendPath, filename },
+      ];
       await send_to_device(fileItems, device.id);
     } catch (error) {
       store.nearbySend.setTransferState("error");
@@ -175,9 +175,7 @@ export default function NearbyPage() {
   }
 
   function handleCancel() {
-    const files = nearbyState().files;
     store.nearbySend.reset();
-    store.nearbySend.setFiles(files);
   }
 
   function handleDone() {
@@ -197,18 +195,6 @@ export default function NearbyPage() {
         </Show>
       </div>
 
-      <DropZone
-        files={nearbyState().files}
-        onFilesSelected={(files) =>
-          store.nearbySend.setFiles(files.map((file) => ({ ...file })))
-        }
-        onRemoveFile={(index) =>
-          store.nearbySend.setFiles(
-            nearbyState().files.filter((_, current) => current !== index),
-          )
-        }
-      />
-
       <NearbyDeviceList
         devices={nearbyState().nearbyDevices}
         isScanning={isScanning()}
@@ -219,15 +205,6 @@ export default function NearbyPage() {
         }
         error={nearbyState().error}
       />
-
-      <Show
-        when={
-          nearbyState().files.length > 0 &&
-          nearbyState().transferState === "idle"
-        }
-      >
-        <FileManifest files={nearbyState().files} totalSize={totalSize()} />
-      </Show>
 
       <Show
         when={

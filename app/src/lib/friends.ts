@@ -164,6 +164,45 @@ class FriendsService {
   }
 
   /**
+   * Send a ticket to one of the user's own devices
+   * @param deviceId - The target device ID
+   * @param ticket - The transfer ticket
+   * @param filename - Optional filename
+   */
+  async sendTicketToDevice(
+    deviceId: string,
+    ticket: string,
+    filename?: string,
+  ): Promise<{ success: boolean }> {
+    try {
+      const headers = await this.getAuthHeader();
+      const response = await fetch(`${API_BASE}/tickets`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Device-Id": getPersistentDeviceId(),
+          ...headers,
+        },
+        body: JSON.stringify({
+          deviceId,
+          ticket,
+          filename,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Failed to send ticket" }));
+        throw new Error(error.error || "Failed to send ticket to device");
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("[FriendsService] sendTicketToDevice error:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Get tickets shared with the user
    */
   async getSharedTickets(): Promise<Array<{

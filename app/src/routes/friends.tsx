@@ -1,7 +1,7 @@
 import { createSignal, createMemo, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "solid-sonner";
-import { get_cloud_presence_state, type CloudFriend } from "~/bindings";
+import { get_cloud_presence_state, send_file, send_text, type CloudFriend } from "~/bindings";
 import { useAuth } from "~/lib/auth";
 import { useFriends, type Friend } from "~/lib/friends";
 import { i18n } from "~/lib/i18n";
@@ -75,7 +75,9 @@ function FriendRequestToast(props: {
 }
 
 export interface FriendsPageProps {
-  onSendToFriend?: (friendUserId: string, friendName: string) => void;
+  sendPath?: string;
+  isTextMode?: boolean;
+  textContent?: string;
 }
 
 export default function FriendsPage(props: FriendsPageProps) {
@@ -88,6 +90,10 @@ export default function FriendsPage(props: FriendsPageProps) {
   const [friends, setFriends] = createSignal<Friend[]>([]);
   const [isLoading, setIsLoading] = createSignal(false);
   const [isRefreshing, setIsRefreshing] = createSignal(false);
+  const [sendingTo, setSendingTo] = createSignal<string | null>(null);
+
+  const hasSendContent = () =>
+    (props.isTextMode && props.textContent?.trim()) || (!props.isTextMode && props.sendPath);
 
   // Check if user is signed in
   const isLoggedIn = () => auth.isSignedIn();
@@ -293,10 +299,25 @@ export default function FriendsPage(props: FriendsPageProps) {
   }
 
   async function handleSendToFriend(friend: Friend) {
-    if (props.onSendToFriend) {
-      props.onSendToFriend(friend.friend.id, friend.friend.name);
-    } else {
-      toast.success(t("friends.goToSendTab", { name: friend.friend.name }));
+    if (!hasSendContent()) return;
+    setSendingTo(friend.friend.id);
+    try {
+      const ticketType = "relay_and_addresses";
+      const ticket = props.isTextMode
+        ? await send_text({ text: props.textContent!.trim(), ticket_type: ticketType })
+        : await send_file({ path: props.sendPath!, ticket_type: ticketType });
+
+      const filename = props.isTextMode
+        ? undefined
+        : props.sendPath?.split("/").pop() || undefined;
+
+      await friendsService.sendTicketToFriend(friend.friend.id, ticket, filename);
+      toast.success(t("friends.ticketSent", { name: friend.friend.name }));
+    } catch (error) {
+      console.error("Failed to send to friend:", error);
+      toast.error(t("friends.sendFailed"));
+    } finally {
+      setSendingTo(null);
     }
   }
 
@@ -498,13 +519,26 @@ export default function FriendsPage(props: FriendsPageProps) {
                             </div>
 
                             <Show when={hasOnlineDevice()}>
-                              <button
-                                onClick={() => handleSendToFriend(friend)}
-                                class="btn btn-primary btn-sm"
-                                title={t("friends.sendFile")}
-                              >
-                                <Send size={14} />
-                              </button>
+                              {(() => {
+                                const isSending = () => sendingTo() === friend.friend.id;
+                                return (
+                                  <button
+                                    onClick={() => handleSendToFriend(friend)}
+                                    class="btn btn-primary btn-sm"
+                                    disabled={!hasSendContent() || isSending()}
+                                    title={t("friends.sendFile")}
+                                  >
+                                    <Show
+                                      when={!isSending()}
+                                      fallback={
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                      }
+                                    >
+                                      <Send size={14} />
+                                    </Show>
+                                  </button>
+                                );
+                              })()}
                             </Show>
                             <button
                               onClick={() => handleRemoveFriend(friend)}
