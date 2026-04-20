@@ -2,7 +2,7 @@
 
 use clerk_fapi_rs::clerk::Clerk;
 use clerk_fapi_rs::configuration::ClerkFapiConfiguration;
-use mockito::Server;
+use mockito::{Matcher, Server};
 use serde_json::{self, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -773,10 +773,14 @@ async fn test_get_token() {
         .await;
 
     let token_mock = server
-        .mock(
-            "POST",
-            "/v1/client/sessions/sess_abc123xyz456def789/tokens?_is_native=1",
-        )
+        .mock("POST", "/v1/client/sessions/sess_abc123xyz456def789/tokens")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("_is_native".into(), "1".into()),
+            Matcher::UrlEncoded(
+                "__dev_session".into(),
+                "eyJrandomJwtTokenXyz789Abc123Def456...".into(),
+            ),
+        ]))
         .with_status(200)
         .with_body(
             serde_json::json!({
@@ -858,6 +862,54 @@ async fn test_listener() {
 
     client_mock.assert_async().await;
     env_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn test_browser_client_uses_native_flag_when_auth_header_is_present() {
+    let mut server = Server::new_async().await;
+
+    let env_mock = server
+        .mock("GET", "/v1/environment")
+        .match_query(Matcher::UrlEncoded("_is_native".into(), "1".into()))
+        .with_status(200)
+        .with_body(get_env_data())
+        .with_header("content-type", "application/json")
+        .create_async()
+        .await;
+
+    let client_mock = server
+        .mock("GET", "/v1/client")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("_is_native".into(), "1".into()),
+            Matcher::UrlEncoded("__dev_session".into(), "test.jwt.token".into()),
+        ]))
+        .match_header("authorization", "Bearer test.jwt.token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!({
+                "response": logged_in_client(),
+                "client": null
+            })
+            .to_string(),
+        )
+        .create_async()
+        .await;
+
+    let config = ClerkFapiConfiguration::new_browser(
+        "pk_live_Y2xlcmsuZXhhbXBsZS5jb20k".to_string(),
+        Some(server.url()),
+        None,
+    )
+    .unwrap();
+
+    let clerk = Clerk::new(config);
+    clerk.set_client_authorization_header(Some("Bearer test.jwt.token".to_string()));
+    clerk.load().await.unwrap();
+
+    env_mock.assert_async().await;
+    client_mock.assert_async().await;
+    assert!(clerk.session().unwrap().is_some());
 }
 
 #[tokio::test]

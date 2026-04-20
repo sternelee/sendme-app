@@ -30,3 +30,4 @@ app_logs.txt
 wrangler.jsonc
 .env.local
 .env
+.omx/

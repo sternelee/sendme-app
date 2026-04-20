@@ -13,6 +13,7 @@
     "http:default",
     "http:allow-fetch",
     "clerk:default",
+    "store:default",
     "opener:allow-open-url",
     "deep-link:default",
     {

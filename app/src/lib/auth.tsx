@@ -1,6 +1,12 @@
 /**
  * Clerk Auth for Tauri Desktop App
- * Uses tauri-plugin-clerk for native Tauri authentication
+ * Uses tauri-plugin-clerk for native Tauri authentication.
+ *
+ * Key design decisions:
+ * 1. User info is cached in localStorage so restarts show the user instantly.
+ * 2. Clerk JS init runs in the background — the UI never blocks on it.
+ * 3. Events from Rust (plugin-clerk-auth-cb, clerk-auth-callback-complete)
+ *    update the cached user and signals without depending on Clerk JS state.
  */
 
 import { Clerk } from "@clerk/clerk-js";
@@ -38,242 +44,257 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue>();
 
-const AUTH_STARTUP_TIMEOUT_MS = 2200;
+const USER_CACHE_KEY = "sendme_cached_user";
 
 const getAuthRedirectUrl = () => `${getCloudApiOrigin()}/auth/callback`;
+
+// ── localStorage helpers ──
+
+function loadCachedUser(): UserInfo | null {
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.id === "string") return parsed as UserInfo;
+  } catch { /* ignore */ }
+  return null;
+}
+
+function saveCachedUser(u: UserInfo | null) {
+  try {
+    if (u) {
+      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(u));
+    } else {
+      localStorage.removeItem(USER_CACHE_KEY);
+    }
+  } catch { /* ignore */ }
+}
+
+// ── Rust event types ──
+
+interface RustUser {
+  id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  username?: string | null;
+  image_url?: string | null;
+  email_addresses?: Array<{ email_address: string }>;
+}
+interface PublicUserData {
+  user_id?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  image_url?: string | null;
+  identifier?: string | null;
+}
+interface RustSession {
+  user?: RustUser | null;
+  public_user_data?: PublicUserData | null;
+}
+interface ClerkAuthEventData {
+  source: string;
+  payload: {
+    user: RustUser | null;
+    session?: RustSession | null;
+    client?: { sessions?: RustSession[] } | null;
+  };
+}
+
+function rustUserToUserInfo(ru: RustUser): UserInfo {
+  return {
+    id: ru.id,
+    email: ru.email_addresses?.[0]?.email_address || "",
+    name:
+      [ru.first_name, ru.last_name].filter(Boolean).join(" ") ||
+      ru.username ||
+      "",
+    imageUrl: ru.image_url || undefined,
+  };
+}
+
+function userFromPublicData(data: PublicUserData): RustUser | null {
+  if (!data.user_id && !data.identifier) return null;
+  return {
+    id: data.user_id || "unknown",
+    first_name: data.first_name,
+    last_name: data.last_name,
+    image_url: data.image_url,
+    email_addresses: data.identifier
+      ? [{ email_address: data.identifier }]
+      : [],
+  };
+}
+
+function extractUserFromPayload(
+  payload: ClerkAuthEventData["payload"],
+): RustUser | null {
+  if (payload.user) return payload.user;
+  if (payload.session?.public_user_data) {
+    const u = userFromPublicData(payload.session.public_user_data);
+    if (u) return u;
+  }
+  const sessions = payload.client?.sessions;
+  if (sessions && sessions.length > 0) {
+    if (sessions[0].user) return sessions[0].user;
+    if (sessions[0].public_user_data) {
+      const u = userFromPublicData(sessions[0].public_user_data);
+      if (u) return u;
+    }
+  }
+  return null;
+}
+
+function extractUserFromDeepLink(url: string): UserInfo | null {
+  try {
+    const parsed = new URL(url);
+    const id = parsed.searchParams.get("user_id");
+    if (!id) return null;
+    return {
+      id,
+      email: parsed.searchParams.get("user_email") || "",
+      name: parsed.searchParams.get("user_name") || "",
+      imageUrl: parsed.searchParams.get("user_image_url") || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Auth Provider for Tauri Desktop App
  */
 export function AuthProvider(props: { children: JSX.Element }) {
-  const [user, setUser] = createSignal<UserInfo | null>(null);
-  const [isLoaded, setIsLoaded] = createSignal(false);
-  const [isSignedIn, setIsSignedIn] = createSignal(false);
+  // Restore cached user synchronously — no async, no flicker
+  const cached = loadCachedUser();
+  const [user, _setUser] = createSignal<UserInfo | null>(cached);
+  const [isLoaded, setIsLoaded] = createSignal(true); // always loaded immediately
+  const [isSignedIn, setIsSignedIn] = createSignal(!!cached);
   const [clerkInstance, setClerkInstance] = createSignal<Clerk | null>(null);
 
-  onMount(async () => {
-    const fallbackTimer = window.setTimeout(() => {
-      setIsLoaded(true);
-    }, AUTH_STARTUP_TIMEOUT_MS);
+  // Wrapper that also persists to localStorage
+  const setUser = (u: UserInfo | null) => {
+    _setUser(u);
+    setIsSignedIn(!!u);
+    saveCachedUser(u);
+  };
 
+  onMount(() => {
     let clerkUnsubscribe: (() => void) | undefined;
     let tauriUnlisten: (() => void) | undefined;
     let deepLinkUnlisten: (() => void) | undefined;
     let callbackUnlisten: (() => void) | undefined;
 
     onCleanup(() => {
-      window.clearTimeout(fallbackTimer);
       clerkUnsubscribe?.();
       tauriUnlisten?.();
       deepLinkUnlisten?.();
       callbackUnlisten?.();
     });
 
-    try {
-      // Initialize clerk using tauri-plugin-clerk
-      // initClerk returns a Promise<Clerk> that resolves when clerk is ready
-      const clerk = await initClerk();
-      setClerkInstance(clerk);
-
-      const syncFromClerk = () => {
-        if (clerk.user) {
-          setIsSignedIn(true);
-          setUser({
-            id: clerk.user.id,
-            email: clerk.user.emailAddresses[0]?.emailAddress || "",
-            name: clerk.user.fullName || clerk.user.username || "",
-            imageUrl: clerk.user.imageUrl,
-          });
-        } else {
-          setUser(null);
-          setIsSignedIn(false);
-        }
-      };
-
-      // Check initial sign-in status
-      syncFromClerk();
-      setIsLoaded(true);
-
-      // Listen for session changes directly from Clerk JS
-      clerkUnsubscribe = clerk.addListener(({ user: clerkUser }) => {
-        if (clerkUser) {
-          setUser({
-            id: clerkUser.id,
-            email: clerkUser.emailAddresses[0]?.emailAddress || "",
-            name: clerkUser.fullName || clerkUser.username || "",
-            imageUrl: clerkUser.imageUrl,
-          });
-          setIsSignedIn(true);
-        } else {
-          setUser(null);
-          setIsSignedIn(false);
-        }
-      });
-
-      // Rust-side ClerkState extracts user from client.sessions via
-      // last_active_session_id. If the API response doesn't set that field,
-      // payload.user can be null even though sessions exist. We fall back to
-      // pulling user info directly from the first session in client.sessions.
-      interface RustUser {
-        id: string;
-        first_name?: string | null;
-        last_name?: string | null;
-        username?: string | null;
-        image_url?: string | null;
-        email_addresses?: Array<{ email_address: string }>;
-      }
-      interface PublicUserData {
-        user_id?: string;
-        first_name?: string | null;
-        last_name?: string | null;
-        image_url?: string | null;
-        identifier?: string | null;
-      }
-      interface RustSession {
-        user?: RustUser | null;
-        public_user_data?: PublicUserData | null;
-      }
-      interface ClerkAuthEventData {
-        source: string;
-        payload: {
-          user: RustUser | null;
-          session?: RustSession | null;
-          client?: { sessions?: RustSession[] } | null;
-        };
-      }
-
-      const setUserFromRust = (rustUser: RustUser) => {
-        setIsSignedIn(true);
+    // Helper: update from Clerk JS user object (only if it has data)
+    const syncFromClerk = (clerk: Clerk) => {
+      if (clerk.user) {
         setUser({
-          id: rustUser.id,
-          email: rustUser.email_addresses?.[0]?.email_address || "",
-          name:
-            [rustUser.first_name, rustUser.last_name]
-              .filter(Boolean)
-              .join(" ") ||
-            rustUser.username ||
-            "",
-          imageUrl: rustUser.image_url || undefined,
+          id: clerk.user.id,
+          email: clerk.user.emailAddresses[0]?.emailAddress || "",
+          name: clerk.user.fullName || clerk.user.username || "",
+          imageUrl: clerk.user.imageUrl,
         });
-      };
+      }
+      // NOTE: intentionally do NOT clear user when clerk.user is null —
+      // the Rust side is the source of truth; Clerk JS in standardBrowser:false
+      // often reports null even when a valid session exists.
+    };
 
-      const userFromPublicData = (data: PublicUserData): RustUser | null => {
-        if (!data.user_id && !data.identifier) return null;
-        return {
-          id: data.user_id || "unknown",
-          first_name: data.first_name,
-          last_name: data.last_name,
-          image_url: data.image_url,
-          email_addresses: data.identifier
-            ? [{ email_address: data.identifier }]
-            : [],
-        };
-      };
+    // ── 1. Start Clerk JS init in background (fire-and-forget) ──
+    const initClerkBackground = async () => {
+      try {
+        const clerk = await initClerk();
+        setClerkInstance(clerk);
+        console.log("[auth] Clerk JS initialized, user=", clerk.user?.id ?? null);
 
-      const extractUserFromPayload = (
-        payload: ClerkAuthEventData["payload"],
-      ): RustUser | null => {
-        if (payload.user) return payload.user;
-        // Clerk's /v1/client often returns public_user_data instead of the full user object
-        if (payload.session?.public_user_data) {
-          const user = userFromPublicData(payload.session.public_user_data);
-          if (user) return user;
-        }
-        const sessions = payload.client?.sessions;
-        if (sessions && sessions.length > 0) {
-          if (sessions[0].user) return sessions[0].user;
-          if (sessions[0].public_user_data) {
-            const user = userFromPublicData(sessions[0].public_user_data);
-            if (user) return user;
+        syncFromClerk(clerk);
+
+        clerkUnsubscribe = clerk.addListener(({ user: clerkUser }) => {
+          if (clerkUser) {
+            setUser({
+              id: clerkUser.id,
+              email: clerkUser.emailAddresses[0]?.emailAddress || "",
+              name: clerkUser.fullName || clerkUser.username || "",
+              imageUrl: clerkUser.imageUrl,
+            });
           }
-        }
-        return null;
-      };
+          // Don't clear on null — Rust events are authoritative
+        });
+      } catch (error) {
+        console.error("[auth] Failed to initialize Clerk JS (non-blocking):", error);
+      }
+    };
 
-      // Listen to Tauri auth events from Rust. These fire whenever the Rust
-      // Clerk state changes (including during the deep-link OAuth callback).
+    // Don't await — this runs in the background
+    initClerkBackground();
+
+    // ── 2. Listen for Rust auth events (these work even before Clerk JS is ready) ──
+
+    const setupTauriListeners = async () => {
       tauriUnlisten = await listen<ClerkAuthEventData>("plugin-clerk-auth-cb", (event) => {
         const p = event.payload.payload;
-        console.log("[auth] plugin-clerk-auth-cb: payload=", {
+        console.log("[auth] plugin-clerk-auth-cb:", {
           hasUser: !!p.user,
-          hasSession: !!p.session,
-          sessionHasUser: !!p.session?.user,
-          sessionHasPublicData: !!p.session?.public_user_data,
           sessionCount: p.client?.sessions?.length,
-          firstSessionHasUser: !!p.client?.sessions?.[0]?.user,
-          firstSessionHasPublicData: !!p.client?.sessions?.[0]?.public_user_data,
         });
-        const user = extractUserFromPayload(p);
-        if (user) {
-          console.log("[auth] plugin-clerk-auth-cb: user found, updating UI");
-          setUserFromRust(user);
-        } else {
-          console.log("[auth] plugin-clerk-auth-cb: no user in payload, syncing from Clerk JS");
-          syncFromClerk();
+        const extracted = extractUserFromPayload(p);
+        if (extracted) {
+          console.log("[auth] plugin-clerk-auth-cb: user found →", extracted.id);
+          setUser(rustUserToUserInfo(extracted));
         }
+        // If no user in payload, do nothing — keep whatever we have cached
       });
 
-      // After the deep-link callback finishes, Rust emits this event.
-      // The Rust-side get_user() may fail because the Authorization header
-      // hasn't been propagated yet. Instead, we asynchronously reload Clerk JS
-      // so it picks up the new session from its internal cache (which was
-      // updated by the plugin-clerk-auth-cb event). Using setTimeout avoids
-      // blocking the JS main thread if clerk.load() triggers synchronous work.
       callbackUnlisten = await listen<{
         success: boolean;
         user: RustUser | null;
       }>("clerk-auth-callback-complete", (event) => {
         const payload = event.payload;
-        console.log("[auth] Clerk auth callback complete, success=", payload.success);
+        console.log("[auth] clerk-auth-callback-complete, success=", payload.success);
         if (payload.user) {
-          console.log("[auth] callback-complete: user provided by Rust, updating UI");
-          setUserFromRust(payload.user);
+          console.log("[auth] callback-complete: user →", payload.user.id);
+          setUser(rustUserToUserInfo(payload.user));
           return;
         }
-        console.log("[auth] callback-complete: no user in payload, will async reload Clerk JS");
-        window.setTimeout(async () => {
-          try {
-            console.log("[auth] Fetching fresh init args from Rust...");
-            const freshInit = await invoke<any>("plugin:clerk|initialize");
-            console.log("[auth] Fresh init args received, sessions=", freshInit.client?.sessions?.length);
-
-            // Update Clerk's cached resources so load() picks up the new session
-            (clerk as any).__internal_getCachedResources = async () => ({
-              client: freshInit.client,
-              environment: freshInit.environment,
-            });
-
-            console.log("[auth] Async reloading Clerk JS with fresh cache...");
-            await clerk.load();
-            console.log("[auth] Clerk JS reload done, user=", clerk.user ? clerk.user.id : null);
-            syncFromClerk();
-          } catch (err) {
-            console.error("[auth] Async clerk.load() failed:", err);
-            syncFromClerk();
-          }
-        }, 100);
+        // If no user in event but we already have one cached, keep it.
+        if (user()) {
+          console.log("[auth] callback-complete: no user in payload, keeping cached user");
+          return;
+        }
+        // Last resort: try to reload from Clerk JS
+        const clerk = clerkInstance();
+        if (clerk) {
+          console.log("[auth] callback-complete: attempting Clerk JS sync");
+          syncFromClerk(clerk);
+        }
       });
 
-      // Listen for deep link callbacks from system browser auth
+      // Deep link listener
       try {
         deepLinkUnlisten = await onOpenUrl((urls) => {
           for (const url of urls) {
             if (url.startsWith("sendme://auth/callback")) {
-              // The actual state reload is triggered by the clerk-auth-callback-complete event
-              // from Rust once the handshake finishes; this listener just ensures the app wakes up.
               console.log("[auth] Received auth deep link:", url);
+              const deepLinkUser = extractUserFromDeepLink(url);
+              if (deepLinkUser) {
+                console.log("[auth] Deep link user:", deepLinkUser.id);
+                setUser(deepLinkUser);
+              }
             }
           }
         });
       } catch (e) {
-        console.error("Failed to register deep link listener:", e);
+        console.error("[auth] Failed to register deep link listener:", e);
       }
-    } catch (error) {
-      console.error("Failed to initialize Clerk:", error);
-      setIsLoaded(true);
-    } finally {
-      window.clearTimeout(fallbackTimer);
-    }
+    };
+
+    setupTauriListeners();
   });
 
   const getClerkHostedBaseUrl = (clerk: Clerk): string => {
@@ -291,10 +312,6 @@ export function AuthProvider(props: { children: JSX.Element }) {
     });
     console.log("[auth] clerk.buildSignInUrl returned:", url);
 
-    // In standardBrowser:false mode buildSignInUrl may return the app's configured
-    // signInUrl (e.g. https://sendme.leeapp.dev/) which is wrong for system-browser auth,
-    // or it may return Clerk's hosted URL without the redirect_url query param.
-    // Ensure we always end up with a Clerk-hosted URL that includes our redirect_url.
     if (!url || !url.startsWith("http") || url.startsWith(getCloudApiOrigin())) {
       const base = getClerkHostedBaseUrl(clerk);
       url = `${base}/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
@@ -343,15 +360,13 @@ export function AuthProvider(props: { children: JSX.Element }) {
   const signOut = async () => {
     const clerk = clerkInstance();
     if (clerk) {
-      await clerk.signOut();
-      setUser(null);
-      setIsSignedIn(false);
+      try { await clerk.signOut(); } catch (e) { console.error("[auth] clerk.signOut error:", e); }
     }
+    setUser(null);
   };
 
   const getToken = async (): Promise<string | null> => {
     try {
-      // Use tauri-plugin-clerk to get the JWT token
       const token = await invoke<string | null>(
         "plugin:clerk|get_client_authorization_header",
       );

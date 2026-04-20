@@ -56,13 +56,7 @@ impl ClerkHttpClient {
         // forbids having both Origin and Authorization in native app contexts.
         req.headers_mut().remove("Origin");
 
-        // When running in non standard browser we need to tell Clerk
-        // API that with the _is_native query parameter
-        if self.client_kind == ClientKind::NonBrowser {
-            req.url_mut()
-                .query_pairs_mut()
-                .append_pair("_is_native", "1");
-        }
+        let mut needs_native_flag = self.client_kind == ClientKind::NonBrowser;
 
         let token_id = {
             let read_guard = self.dev_browser_token_id.read();
@@ -79,6 +73,11 @@ impl ClerkHttpClient {
             let mut state = self.state.write();
             match state.authorization_header() {
                 Some(auth) => {
+                    // Clerk requires `_is_native=1` whenever the request is
+                    // authenticated via Authorization header, even if the
+                    // client otherwise behaves like a browser.
+                    needs_native_flag = true;
+
                     if let Ok(value) = HeaderValue::from_str(auth.as_str()) {
                         req.headers_mut().insert("Authorization", value);
                     } else {
@@ -98,6 +97,12 @@ impl ClerkHttpClient {
                     debug!("ClerkHttpClient: No authorization header available");
                 }
             }
+        }
+
+        if needs_native_flag {
+            req.url_mut()
+                .query_pairs_mut()
+                .append_pair("_is_native", "1");
         }
 
         req

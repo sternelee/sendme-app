@@ -2815,25 +2815,46 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
 
     let mut db_jwt: Option<String> = None;
     let mut clerk_token: Option<String> = None;
+    let mut session_id: Option<String> = None;
+    let mut token_iat: Option<i64> = None;
+    let mut token_exp: Option<i64> = None;
+    let mut deep_link_user_id: Option<String> = None;
+    let mut deep_link_user_email: Option<String> = None;
+    let mut deep_link_user_name: Option<String> = None;
+    let mut deep_link_user_image_url: Option<String> = None;
     for (k, v) in parsed.query_pairs() {
         if k == "__clerk_db_jwt" {
             db_jwt = Some(v.into_owned());
         } else if k == "__clerk_token" {
             clerk_token = Some(v.into_owned());
+        } else if k == "session_id" {
+            session_id = Some(v.into_owned());
+        } else if k == "token_iat" {
+            token_iat = v.parse::<i64>().ok();
+        } else if k == "token_exp" {
+            token_exp = v.parse::<i64>().ok();
+        } else if k == "user_id" {
+            deep_link_user_id = Some(v.into_owned());
+        } else if k == "user_email" {
+            deep_link_user_email = Some(v.into_owned());
+        } else if k == "user_name" {
+            deep_link_user_name = Some(v.into_owned());
+        } else if k == "user_image_url" {
+            deep_link_user_image_url = Some(v.into_owned());
         }
     }
 
     let clerk = app.clerk();
     let fapi_client = clerk.get_fapi_client();
 
-    if let Some(token) = clerk_token {
+    if let Some(ref token) = clerk_token {
         log_info!("Setting Clerk authorization header from OAuth callback token");
         clerk.set_client_authorization_header(Some(format!("Bearer {}", token)));
     }
 
-    if let Some(token) = db_jwt {
+    if let Some(ref token) = db_jwt {
         log_info!("Setting Clerk dev browser token from deep link");
-        fapi_client.set_dev_browser_token_id(token);
+        fapi_client.set_dev_browser_token_id(token.clone());
     }
 
     // Make sure Clerk is loaded and listeners are registered before we
@@ -2841,11 +2862,173 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
     // and the plugin-clerk-auth-cb listener that pushes state to the
     // frontend won't fire.
     if let Err(e) = app.ensure_clerk_initialized().await {
-        log_error!("Clerk ensure_clerk_initialized failed before auth callback: {}", e);
+        log_error!(
+            "Clerk ensure_clerk_initialized failed before auth callback: {}",
+            e
+        );
     }
 
     let mut success = false;
     let mut user_json = serde_json::Value::Null;
+
+    let synthesize_client_from_deep_link = || -> Option<serde_json::Value> {
+        let token = clerk_token.as_ref()?;
+        let user_id = deep_link_user_id.as_ref()?;
+        let session_id = session_id.as_ref()?;
+
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let created_at_ms = token_iat.map(|v| v * 1000).unwrap_or(now_ms);
+        let expire_at_ms = token_exp
+            .map(|v| v * 1000)
+            .unwrap_or(now_ms + 60 * 60 * 1000);
+
+        let email_id = deep_link_user_email
+            .as_ref()
+            .map(|_| format!("idn_email_{}", user_id));
+
+        let (first_name, last_name, username) = match deep_link_user_name.as_deref() {
+            Some(name) if !name.trim().is_empty() => {
+                let trimmed = name.trim();
+                match trimmed.split_once(' ') {
+                    Some((first, last)) => {
+                        (Some(first.to_string()), Some(last.trim().to_string()), None)
+                    }
+                    None => (None, None, Some(trimmed.to_string())),
+                }
+            }
+            _ => (None, None, None),
+        };
+
+        let has_image = deep_link_user_image_url.is_some();
+        let public_user_data = serde_json::json!({
+            "user_id": user_id,
+            "first_name": first_name,
+            "last_name": last_name,
+            "image_url": deep_link_user_image_url,
+            "has_image": has_image,
+            "identifier": deep_link_user_email,
+            "profile_image_url": deep_link_user_image_url,
+        });
+        let email_addresses = deep_link_user_email
+            .as_ref()
+            .map(|email| {
+                serde_json::json!([{
+                    "id": email_id,
+                    "object": "email_address",
+                    "email_address": email,
+                    "reserved": false,
+                    "verification": null,
+                    "linked_to": [],
+                    "matches_sso_connection": null,
+                    "created_at": created_at_ms,
+                    "updated_at": now_ms,
+                }])
+            })
+            .unwrap_or_else(|| serde_json::json!([]));
+        let user_value = serde_json::json!({
+            "id": user_id,
+            "object": "user",
+            "username": username,
+            "first_name": first_name,
+            "last_name": last_name,
+            "image_url": deep_link_user_image_url,
+            "has_image": has_image,
+            "primary_email_address_id": email_id,
+            "primary_phone_number_id": null,
+            "primary_web3_wallet_id": null,
+            "password_enabled": false,
+            "two_factor_enabled": false,
+            "totp_enabled": false,
+            "backup_code_enabled": false,
+            "email_addresses": email_addresses,
+            "phone_numbers": [],
+            "web3_wallets": [],
+            "passkeys": [],
+            "organization_memberships": null,
+            "external_accounts": [],
+            "saml_accounts": [],
+            "password_last_updated_at": null,
+            "public_metadata": {},
+            "private_metadata": null,
+            "unsafe_metadata": null,
+            "external_id": null,
+            "last_sign_in_at": created_at_ms,
+            "banned": false,
+            "locked": false,
+            "lockout_expires_in_seconds": null,
+            "verification_attempts_remaining": null,
+            "created_at": created_at_ms,
+            "updated_at": now_ms,
+            "delete_self_enabled": false,
+            "create_organization_enabled": false,
+            "create_organizations_limit": null,
+            "last_active_at": now_ms,
+            "mfa_enabled_at": null,
+            "mfa_disabled_at": null,
+            "legal_accepted_at": null,
+            "profile_image_url": deep_link_user_image_url,
+        });
+        let session_value = serde_json::json!({
+            "id": session_id,
+            "object": "session",
+            "status": "active",
+            "expire_at": expire_at_ms,
+            "abandon_at": expire_at_ms,
+            "last_active_at": now_ms,
+            "last_active_token": {
+                "object": "token",
+                "jwt": token,
+            },
+            "actor": null,
+            "tasks": null,
+            "last_active_organization_id": null,
+            "user": user_value,
+            "public_user_data": public_user_data,
+            "factor_verification_age": [],
+            "created_at": created_at_ms,
+            "updated_at": now_ms,
+        });
+
+        Some(serde_json::json!({
+            "object": "client",
+            "id": format!("client_{}", session_id),
+            "sessions": [session_value],
+            "sign_in": null,
+            "sign_up": null,
+            "last_active_session_id": session_id,
+            "cookie_expires_at": expire_at_ms,
+            "captcha_bypass": false,
+            "created_at": created_at_ms,
+            "updated_at": now_ms,
+        }))
+    };
+
+    let apply_synthetic_client = || -> bool {
+        let Some(synthetic_client_value) = synthesize_client_from_deep_link() else {
+            return false;
+        };
+
+        match serde_json::from_value(synthetic_client_value) {
+            Ok(synthetic_client) => match clerk.set_client(synthetic_client) {
+                Ok(_) => {
+                    log_info!("Applied synthetic Clerk client from deep link claims");
+                    true
+                }
+                Err(e) => {
+                    log_warn!("Failed to apply synthetic Clerk client: {}", e);
+                    false
+                }
+            },
+            Err(e) => {
+                log_warn!("Failed to deserialize synthetic Clerk client: {}", e);
+                false
+            }
+        }
+    };
 
     // OAuth completes in the system browser; the resulting session lives in
     // the browser's cookies, not in our native HTTP client. Clerk's handshake
@@ -2853,43 +3036,55 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
     // Authorization header so that subsequent /v1/client calls can see the
     // newly created session.
     log_info!("Initiating Clerk handshake after OAuth callback");
-    match fapi_client.handshake_client(None, None, Some(&url_str), None, None, None).await {
+    match fapi_client
+        .handshake_client(None, None, Some(&url_str), None, None, None)
+        .await
+    {
         Ok(_) => log_info!("Clerk handshake succeeded"),
         Err(e) => log_warn!("Clerk handshake failed (non-fatal): {}", e),
     }
 
-    match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_client())
-        .await
-    {
+    match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_client()).await {
         Ok(Ok(Some(client))) => {
             log_info!(
                 "Clerk client refreshed, sessions={}, last_active_session_id={:?}",
                 client.sessions.len(),
                 client.last_active_session_id
             );
-            match clerk.set_client(client) {
-                Ok(_) => {
-                    log_info!("Clerk set_client succeeded");
-                    success = true;
+            if client.sessions.is_empty() {
+                log_warn!(
+                    "Clerk client had no sessions after OAuth callback, applying synthetic fallback"
+                );
+                success = apply_synthetic_client();
+            } else {
+                match clerk.set_client(client) {
+                    Ok(_) => {
+                        log_info!("Clerk set_client succeeded");
+                        success = true;
+                    }
+                    Err(e) => log_warn!("Clerk set_client failed: {}", e),
                 }
-                Err(e) => log_warn!("Clerk set_client failed: {}", e),
             }
         }
         Ok(Ok(None)) => {
             log_warn!("Clerk client refreshed but no session found");
+            success = apply_synthetic_client();
         }
         Ok(Err(e)) => {
             log_error!("Failed to reload Clerk client after deep link: {}", e);
+            success = apply_synthetic_client();
         }
         Err(_) => {
             log_error!("Clerk get_client timed out after 5 seconds");
+            success = apply_synthetic_client();
         }
     }
 
     // The /v1/client endpoint may not include user data inside sessions.
     // Explicitly fetch /v1/me so we always have the user profile for the UI.
     if success {
-        match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_user()).await {
+        match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_user()).await
+        {
             Ok(Ok(user)) => {
                 log_info!("Clerk get_user succeeded, id={}", user.id);
                 let email = user
@@ -2975,6 +3170,7 @@ pub fn run() {
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_fs::init())
@@ -2986,6 +3182,7 @@ pub fn run() {
         .plugin(
             tauri_plugin_clerk::ClerkPluginBuilder::new()
                 .publishable_key(clerk_publishable_key)
+                .with_tauri_store()
                 .build(),
         );
 

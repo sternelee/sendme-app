@@ -204,6 +204,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-os",
  "tauri-plugin-sharesheet",
+ "tauri-plugin-store",
  "tauri-plugin-updater",
  "tokio",
  "tokio-tungstenite",

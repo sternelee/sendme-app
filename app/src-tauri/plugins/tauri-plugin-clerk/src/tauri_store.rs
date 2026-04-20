@@ -21,6 +21,10 @@ impl<R: Runtime> std::fmt::Debug for ClerkTauriStore<R> {
 impl<R: Runtime> ClerkStateStore for ClerkTauriStore<R> {
     fn set(&self, key: &str, value: JsonValue) {
         self.inner.set(key, value);
+        // Flush to disk so state survives restarts
+        if let Err(e) = self.inner.save() {
+            tracing::warn!("ClerkTauriStore: failed to save after set({}): {}", key, e);
+        }
     }
     fn get(&self, key: &str) -> Option<JsonValue> {
         self.inner.get(key)
@@ -29,6 +33,12 @@ impl<R: Runtime> ClerkStateStore for ClerkTauriStore<R> {
         self.inner.has(key)
     }
     fn delete(&self, key: &str) -> bool {
-        self.inner.delete(key)
+        let deleted = self.inner.delete(key);
+        if deleted {
+            if let Err(e) = self.inner.save() {
+                tracing::warn!("ClerkTauriStore: failed to save after delete({}): {}", key, e);
+            }
+        }
+        deleted
     }
 }

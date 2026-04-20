@@ -168,7 +168,13 @@ impl ClerkState {
         let active_session = client_clone
             .last_active_session_id
             .as_ref()
-            .and_then(|id| client_clone.sessions.iter().find(|s| s.id == id.clone()).cloned())
+            .and_then(|id| {
+                client_clone
+                    .sessions
+                    .iter()
+                    .find(|s| s.id == id.clone())
+                    .cloned()
+            })
             .or_else(|| client_clone.sessions.first().cloned());
 
         if let Some(active_session) = active_session {
