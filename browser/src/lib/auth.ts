@@ -4,6 +4,9 @@
  */
 
 import { verifyToken } from "@clerk/backend";
+import { drizzle } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
+import { apiKeys } from "./db/schema";
 
 export interface Env {
   CLERK_SECRET_KEY?: string;
@@ -42,6 +45,12 @@ export async function authenticateRequest(
       return { userId: null, status: "no-token" };
     }
 
+    // API key authentication path
+    if (sessionToken.startsWith("sk_")) {
+      return await authenticateApiKey(sessionToken, env);
+    }
+
+    // Clerk JWT authentication path
     if (!env.CLERK_SECRET_KEY && !env.CLERK_JWT_KEY) {
       console.error("[Clerk Auth] Missing CLERK_SECRET_KEY or CLERK_JWT_KEY");
       return { userId: null, status: "missing-clerk-config" };
@@ -76,3 +85,60 @@ export async function requireAuth(request: Request, env: Env): Promise<string> {
 
   return userId;
 }
+
+/**
+ * Authenticate a request using an API key (sk_* prefix).
+ * Hashes the key with SHA-256 and looks it up in the api_keys table.
+ */
+async function authenticateApiKey(
+  token: string,
+  env: Env,
+): Promise<{ userId: string | null; status: string }> {
+  try {
+    const hash = await sha256hex(token);
+    const db = drizzle(env.DB);
+    const key = await db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.keyHash, hash))
+      .get();
+
+    if (!key) {
+      return { userId: null, status: "invalid-api-key" };
+    }
+
+    // Check expiration
+    if (key.expiresAt && key.expiresAt < new Date()) {
+      return { userId: null, status: "expired-api-key" };
+    }
+
+    // Update lastUsedAt (fire-and-forget)
+    db.update(apiKeys)
+      .set({ lastUsedAt: new Date(), updatedAt: new Date() })
+      .where(eq(apiKeys.id, key.id))
+      .run();
+
+    return { userId: key.userId, status: "authenticated" };
+  } catch (error) {
+    console.error("[API Key Auth] Error:", error);
+    return { userId: null, status: "invalid-api-key" };
+  }
+}
+
+/**
+ * Compute SHA-256 hex digest of a string.
+ */
+async function sha256hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(input),
+  );
+  return [...new Uint8Array(buf)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Exported for use in API key creation endpoint.
+ */
+export { sha256hex };

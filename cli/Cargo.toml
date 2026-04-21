@@ -39,6 +39,16 @@ ratatui = "0.29"
 uuid = "1.11"
 tracing = "0.1"
 
+# Cloud connectivity
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+toml = "0.8"
+dirs = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hostname = "0.4"
+
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2.174", optional = true }
 

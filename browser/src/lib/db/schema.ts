@@ -153,6 +153,7 @@ export const transfers = sqliteTable(
  */
 export const platformValues = [
   "web",
+  "cli",
   "windows",
   "mac",
   "linux",
@@ -301,6 +302,41 @@ export const friends = sqliteTable(
   }),
 );
 
+/**
+ * API Keys table - allows CLI and external clients to authenticate
+ * Users generate keys from the browser app, then use them in CLI via `sendme login --api-key`
+ * Keys are stored as SHA-256 hashes; the full key is shown only once at creation time.
+ */
+export const apiKeys = sqliteTable(
+  "api_keys",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Human-readable label (e.g., "My laptop CLI")
+    name: text("name").notNull(),
+    // SHA-256 hex digest of the full key
+    keyHash: text("key_hash").notNull(),
+    // First 11 chars of the key for display (e.g., "sk_a1b2c3d4")
+    keyPrefix: text("key_prefix").notNull(),
+    // Last time this key was used to authenticate
+    lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+    // Optional expiration
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("api_keys_user_id_idx").on(table.userId),
+    keyHashIdx: index("api_keys_key_hash_idx").on(table.keyHash),
+  }),
+);
+
 // Type exports - match better-auth's expected table names
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -318,6 +354,8 @@ export type Ticket = typeof tickets.$inferSelect;
 export type NewTicket = typeof tickets.$inferInsert;
 export type Friend = typeof friends.$inferSelect;
 export type NewFriend = typeof friends.$inferInsert;
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type NewApiKey = typeof apiKeys.$inferInsert;
 
 // Re-export tables with singular names for better-auth compatibility
 export const user = users;

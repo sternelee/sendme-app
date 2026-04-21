@@ -10,8 +10,8 @@ use ratatui::{
 };
 
 use crate::tui::{
-    app::Tab, tabs::receive::render_receive_tab, tabs::send::render_send_tab,
-    tabs::transfers::render_transfers_tab, App,
+    app::Tab, tabs::cloud::render_cloud_tab, tabs::receive::render_receive_tab,
+    tabs::send::render_send_tab, tabs::transfers::render_transfers_tab, App,
 };
 
 /// Main UI rendering function.
@@ -54,7 +54,12 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
             } else {
                 Style::default().fg(Color::Gray)
             };
-            Line::from(Span::styled(format!(" {} ", tab.name()), style))
+            let label = if *tab == Tab::Cloud && !app.cloud_pending_tickets.is_empty() {
+                format!(" {} [{}] ", tab.name(), app.cloud_pending_tickets.len())
+            } else {
+                format!(" {} ", tab.name())
+            };
+            Line::from(Span::styled(label, style))
         })
         .collect();
 
@@ -78,6 +83,7 @@ fn render_current_tab(f: &mut Frame, app: &App, area: Rect) {
         Tab::Send => render_send_tab(f, app, area),
         Tab::Receive => render_receive_tab(f, app, area),
         Tab::Transfers => render_transfers_tab(f, app, area),
+        Tab::Cloud => render_cloud_tab(f, app, area),
     }
 }
 
@@ -85,11 +91,14 @@ fn render_current_tab(f: &mut Frame, app: &App, area: Rect) {
 fn render_footer(f: &mut Frame, current_tab: Tab, area: Rect) {
     let help_text = match current_tab {
         Tab::Send => {
-            " [1-3] Switch Tab | [q] Quit | [Enter] Send | [ESC] Return | Type to enter path "
+            " [1-4] Tab | [q] Quit | [Enter] Send | [@] Search | [D] To Device | [F] To Friend "
         }
-        Tab::Receive => " [1-3] Switch Tab | [q] Quit | [Enter] Receive | Type to paste ticket ",
+        Tab::Receive => " [1-4] Tab | [q] Quit | [Enter] Receive | Type to paste ticket ",
         Tab::Transfers => {
-            " [1-3] Switch Tab | [q] Quit | [Up/Down] Navigate | [Enter] View | [d] Delete | [c] Clean up "
+            " [1-4] Tab | [q] Quit | [↑↓] Navigate | [Enter] View | [d] Delete | [c] Clean up "
+        }
+        Tab::Cloud => {
+            " [1-4] Tab | [q] Quit | [d] Devices | [f] Friends | [i] Incoming | [↑↓] Navigate | [Enter] Receive "
         }
     };
 

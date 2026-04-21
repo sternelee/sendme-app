@@ -12,13 +12,13 @@ pub enum Tab {
     Send,
     Receive,
     Transfers,
+    Cloud,
 }
 
 impl Tab {
-    #[allow(dead_code)]
     /// Get all tabs in order.
     pub fn all() -> &'static [Tab] {
-        &[Tab::Send, Tab::Receive, Tab::Transfers]
+        &[Tab::Send, Tab::Receive, Tab::Transfers, Tab::Cloud]
     }
 
     /// Get tab index.
@@ -27,6 +27,7 @@ impl Tab {
             Tab::Send => 0,
             Tab::Receive => 1,
             Tab::Transfers => 2,
+            Tab::Cloud => 3,
         }
     }
 
@@ -36,6 +37,7 @@ impl Tab {
             0 => Some(Tab::Send),
             1 => Some(Tab::Receive),
             2 => Some(Tab::Transfers),
+            3 => Some(Tab::Cloud),
             _ => None,
         }
     }
@@ -46,8 +48,52 @@ impl Tab {
             Tab::Send => "Send",
             Tab::Receive => "Receive",
             Tab::Transfers => "Transfers",
+            Tab::Cloud => "Cloud",
         }
     }
+}
+
+/// WebSocket connection state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloudWsState {
+    /// No API key configured.
+    NotLoggedIn,
+    /// Attempting to connect.
+    Connecting,
+    /// Connection is active.
+    Connected,
+    /// Connection lost; will retry.
+    Reconnecting,
+}
+
+impl std::fmt::Display for CloudWsState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CloudWsState::NotLoggedIn => write!(f, "Not logged in"),
+            CloudWsState::Connecting => write!(f, "Connecting…"),
+            CloudWsState::Connected => write!(f, "Connected ●"),
+            CloudWsState::Reconnecting => write!(f, "Reconnecting…"),
+        }
+    }
+}
+
+/// Which section of the Cloud tab is active.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloudSection {
+    Devices,
+    Friends,
+    Incoming,
+}
+
+/// Cloud-send overlay state in the Send tab success view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendCloudState {
+    /// No overlay shown.
+    None,
+    /// Device selector popup is open.
+    SelectingDevice,
+    /// Friend selector popup is open.
+    SelectingFriend,
 }
 
 /// Transfer type.
@@ -286,6 +332,30 @@ pub struct App {
     /// Index of currently selected transfer.
     pub selected_transfer_index: Option<usize>,
 
+    // Cloud tab state
+    /// WebSocket connection state.
+    pub cloud_ws_state: CloudWsState,
+    /// This device's DB-assigned ID (set after registration).
+    pub cloud_my_device_db_id: Option<String>,
+    /// My own devices as returned by the server.
+    pub cloud_devices: Vec<crate::cloud::Device>,
+    /// Friends with their devices as returned by the server.
+    pub cloud_friends: Vec<crate::cloud::WsFriend>,
+    /// Pending incoming tickets.
+    pub cloud_pending_tickets: Vec<crate::cloud::Ticket>,
+    /// Which section of the Cloud tab is currently shown.
+    pub cloud_section: CloudSection,
+    /// Selected item index within the current cloud section.
+    pub cloud_selected_index: usize,
+    /// Short-lived notification message shown in Cloud tab.
+    pub cloud_notification: Option<String>,
+
+    // Send tab – cloud send overlay
+    /// Whether the device/friend selector popup is open.
+    pub send_cloud_state: SendCloudState,
+    /// Selection index within the cloud send popup.
+    pub send_cloud_selected_index: usize,
+
     /// Application running flag.
     pub running: bool,
 }
@@ -307,12 +377,21 @@ impl App {
             receive_message: String::new(),
             transfers_tab_state: TransfersTabState::List,
             selected_transfer_index: None,
+            cloud_ws_state: CloudWsState::NotLoggedIn,
+            cloud_my_device_db_id: None,
+            cloud_devices: Vec::new(),
+            cloud_friends: Vec::new(),
+            cloud_pending_tickets: Vec::new(),
+            cloud_section: CloudSection::Incoming,
+            cloud_selected_index: 0,
+            cloud_notification: None,
+            send_cloud_state: SendCloudState::None,
+            send_cloud_selected_index: 0,
             running: true,
         }
     }
 
-    #[allow(dead_code)]
-    /// Update application state based on a progress event.
+    /// Update application state based on a progress event for a specific transfer.
     pub fn update_progress(&mut self, event: &ProgressEvent, transfer_id: &str) {
         if let Some(transfer) = self.transfers.iter_mut().find(|t| t.id == transfer_id) {
             transfer.update_progress(event);
@@ -337,7 +416,10 @@ impl App {
         if key.code == crossterm::event::KeyCode::Esc {
             match self.current_tab {
                 Tab::Send => {
-                    if self.send_tab_state == SendTabState::Success {
+                    if self.send_cloud_state != SendCloudState::None {
+                        // Close cloud send popup first
+                        self.send_cloud_state = SendCloudState::None;
+                    } else if self.send_tab_state == SendTabState::Success {
                         self.send_tab_state = SendTabState::Input;
                         self.send_input_path.clear();
                         self.send_success_ticket = None;
@@ -361,6 +443,7 @@ impl App {
             Tab::Send => self.handle_send_tab_key(key),
             Tab::Receive => self.handle_receive_tab_key(key),
             Tab::Transfers => self.handle_transfers_tab_key(key),
+            Tab::Cloud => self.handle_cloud_tab_key(key),
         }
     }
 
@@ -392,15 +475,59 @@ impl App {
                 self.handle_file_search_key(key);
             }
             SendTabState::Success => {
-                // Handle 'C' key to copy ticket
-                if key.code == crossterm::event::KeyCode::Char('c')
-                    || key.code == crossterm::event::KeyCode::Char('C')
-                {
-                    if let Some(ticket) = self.send_success_ticket.clone() {
-                        self.copy_to_clipboard(&ticket);
+                match key.code {
+                    // 'C' – copy ticket to clipboard
+                    crossterm::event::KeyCode::Char('c')
+                    | crossterm::event::KeyCode::Char('C') => {
+                        if self.send_cloud_state == SendCloudState::None {
+                            if let Some(ticket) = self.send_success_ticket.clone() {
+                                self.copy_to_clipboard(&ticket);
+                            }
+                        }
                     }
+                    // 'D' – open device selector (cloud send)
+                    crossterm::event::KeyCode::Char('d')
+                    | crossterm::event::KeyCode::Char('D') => {
+                        if !self.cloud_devices.is_empty() {
+                            self.send_cloud_state = SendCloudState::SelectingDevice;
+                            self.send_cloud_selected_index = 0;
+                        } else {
+                            self.send_message = "No devices available. Log in to use cloud send.".to_string();
+                        }
+                    }
+                    // 'F' – open friend selector (cloud send)
+                    crossterm::event::KeyCode::Char('f')
+                    | crossterm::event::KeyCode::Char('F') => {
+                        if !self.cloud_friends.is_empty() {
+                            self.send_cloud_state = SendCloudState::SelectingFriend;
+                            self.send_cloud_selected_index = 0;
+                        } else {
+                            self.send_message = "No friends available. Log in to use cloud send.".to_string();
+                        }
+                    }
+                    // Navigate inside cloud send popup
+                    crossterm::event::KeyCode::Up
+                        if self.send_cloud_state != SendCloudState::None =>
+                    {
+                        if self.send_cloud_selected_index > 0 {
+                            self.send_cloud_selected_index -= 1;
+                        }
+                    }
+                    crossterm::event::KeyCode::Down
+                        if self.send_cloud_state != SendCloudState::None =>
+                    {
+                        let max = match self.send_cloud_state {
+                            SendCloudState::SelectingDevice => self.cloud_devices.len(),
+                            SendCloudState::SelectingFriend => self.cloud_friends.len(),
+                            SendCloudState::None => 0,
+                        };
+                        if self.send_cloud_selected_index + 1 < max {
+                            self.send_cloud_selected_index += 1;
+                        }
+                    }
+                    // ESC / Enter in popup are handled in main event loop
+                    _ => {}
                 }
-                // ESC handled in main handler
             }
         }
     }
@@ -620,6 +747,47 @@ impl App {
             }
         }
         self.close_file_search();
+    }
+
+    /// Handle key events in the Cloud tab.
+    pub fn handle_cloud_tab_key(&mut self, key: crossterm::event::KeyEvent) {
+        match key.code {
+            // Switch sections with letter shortcuts
+            crossterm::event::KeyCode::Char('d') | crossterm::event::KeyCode::Char('D') => {
+                self.cloud_section = CloudSection::Devices;
+                self.cloud_selected_index = 0;
+            }
+            crossterm::event::KeyCode::Char('f') | crossterm::event::KeyCode::Char('F') => {
+                self.cloud_section = CloudSection::Friends;
+                self.cloud_selected_index = 0;
+            }
+            crossterm::event::KeyCode::Char('i') | crossterm::event::KeyCode::Char('I') => {
+                self.cloud_section = CloudSection::Incoming;
+                self.cloud_selected_index = 0;
+            }
+            crossterm::event::KeyCode::Up => {
+                if self.cloud_selected_index > 0 {
+                    self.cloud_selected_index -= 1;
+                }
+            }
+            crossterm::event::KeyCode::Down => {
+                let max = self.cloud_section_len();
+                if self.cloud_selected_index + 1 < max {
+                    self.cloud_selected_index += 1;
+                }
+            }
+            // Enter is handled in the main event loop (needs receive_tx)
+            _ => {}
+        }
+    }
+
+    /// Number of items in the currently active cloud section.
+    pub fn cloud_section_len(&self) -> usize {
+        match self.cloud_section {
+            CloudSection::Devices => self.cloud_devices.len(),
+            CloudSection::Friends => self.cloud_friends.len(),
+            CloudSection::Incoming => self.cloud_pending_tickets.len(),
+        }
     }
 }
 

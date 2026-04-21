@@ -53,6 +53,9 @@ export function normalizeDevicesPresence<T extends PresenceLike>(items: T[], now
 export function detectPlatform(userAgent: string): Platform {
   const ua = userAgent.toLowerCase();
 
+  // CLI client
+  if (ua.includes("sendme-cli")) return "cli";
+
   // Mobile platforms
   if (ua.includes("android")) return "android";
   if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) return "ios";

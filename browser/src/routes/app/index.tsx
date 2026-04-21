@@ -4,6 +4,7 @@ import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
 import TextTab from "../../components/sendme/TextTab";
 import FriendsTab from "../../components/sendme/FriendsTab";
+import ApiKeysPanel from "../../components/settings/ApiKeysPanel";
 import HistoryTab from "../../components/sendme/HistoryTab";
 import { ThemeSwitcher } from "../../lib/ThemeSwitcher";
 import { LanguageSwitcher } from "../../lib/LanguageSwitcher";
@@ -314,9 +315,16 @@ export default function AppPage() {
                             </button>
                           </div>
                         </div>
-                      </Show>
+                        </Show>
 
-                      <div class="flex items-center justify-between">
+                        {/* API Keys — only for signed-in users */}
+                        <Show when={auth.isSignedIn()}>
+                          <div class="divider my-1" />
+                          <ApiKeysPanel />
+                          <div class="divider my-1" />
+                        </Show>
+
+                        <div class="flex items-center justify-between">
                         <span class="font-bold">{t("common.protocol")}</span>
                         <span class="badge badge-success gap-1">
                           <span class="w-2 h-2 rounded-full bg-success-content animate-pulse"></span>

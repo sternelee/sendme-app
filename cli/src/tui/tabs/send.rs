@@ -4,18 +4,24 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 
-use crate::tui::app::SendTabState;
+use crate::tui::app::{CloudWsState, SendCloudState, SendTabState};
 use crate::tui::App;
 
 /// Render the send tab.
 pub fn render_send_tab(f: &mut Frame, app: &App, area: Rect) {
     match app.send_tab_state {
         SendTabState::Input => render_input_view(f, app, area),
-        SendTabState::Success => render_success_view(f, app, area),
+        SendTabState::Success => {
+            render_success_view(f, app, area);
+            // Render cloud selector popup on top if active
+            if app.send_cloud_state != SendCloudState::None {
+                render_cloud_send_popup(f, app, area);
+            }
+        }
         SendTabState::FileSearch => {
             // Render input view first, then popup overlay
             render_input_view(f, app, area);
@@ -332,8 +338,13 @@ fn render_success_view(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(qr_paragraph, chunks[1]);
 
     // Footer with instructions
+    let cloud_hint = if matches!(app.cloud_ws_state, CloudWsState::Connected) {
+        "  [D] To Device | [F] To Friend |"
+    } else {
+        ""
+    };
     let mut footer_lines = vec![Line::from(vec![Span::styled(
-        "[C] Copy ticket | [ESC] Return to file input",
+        format!("[C] Copy ticket |{cloud_hint} [ESC] Return"),
         Style::default().fg(Color::Yellow),
     )])];
 
@@ -358,4 +369,64 @@ fn generate_qr_string(ticket: &str) -> String {
         Ok(qr) => qr.to_str(),
         Err(_) => "[QR Code Error]".to_string(),
     }
+}
+
+/// Render the cloud send selector popup (device or friend list).
+fn render_cloud_send_popup(f: &mut Frame, app: &App, area: Rect) {
+    let popup_width = area.width.min(60);
+    let popup_height = area.height.min(20);
+    let popup_area = Rect {
+        x: area.x + (area.width.saturating_sub(popup_width)) / 2,
+        y: area.y + (area.height.saturating_sub(popup_height)) / 2,
+        width: popup_width,
+        height: popup_height,
+    };
+
+    f.render_widget(Clear, popup_area);
+
+    let (title, items): (&str, Vec<ListItem>) = match app.send_cloud_state {
+        SendCloudState::SelectingDevice => {
+            let list_items: Vec<ListItem> = app
+                .cloud_devices
+                .iter()
+                .map(|d| ListItem::new(format!("  {}", d.name)))
+                .collect();
+            (" Send to Device  [↑↓] Select | [Enter] Confirm | [ESC] Cancel ", list_items)
+        }
+        SendCloudState::SelectingFriend => {
+            let list_items: Vec<ListItem> = app
+                .cloud_friends
+                .iter()
+                .map(|fr| {
+                    let name = fr
+                        .friend
+                        .as_ref()
+                        .map(|fi| fi.name.as_str())
+                        .unwrap_or("(unknown)");
+                    ListItem::new(format!("  {}", name))
+                })
+                .collect();
+            (" Send to Friend  [↑↓] Select | [Enter] Confirm | [ESC] Cancel ", list_items)
+        }
+        SendCloudState::None => return,
+    };
+
+    let mut state = ListState::default();
+    state.select(Some(app.send_cloud_selected_index));
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(title),
+        )
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("▶ ");
+
+    f.render_stateful_widget(list, popup_area, &mut state);
 }

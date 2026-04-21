@@ -1,0 +1,228 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    SENDME CLOUD CONNECTIVITY ARCHITECTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          FRONTEND (SolidJS)                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  ┌──────────────────┐         ┌──────────────────┐         ┌──────────────┐ │
+│  │  Friends Page    │         │  Devices Page    │         │   App (auth) │ │
+│  │  - Add/Remove    │         │  - List devices  │         │   - Sign in  │ │
+│  │  - Send tickets  │         │  - Send to dev   │         │   - Sign out │ │
+│  └────────┬─────────┘         └────────┬─────────┘         └────────┬─────┘ │
+│           │                             │                            │       │
+│           └─────────────────────────────┼────────────────────────────┘       │
+│                                         │                                    │
+│  ┌─────────────────────────────────────┴──────────────────────────────┐    │
+│  │                         Store & Event Listeners                     │    │
+│  │  - listen("cloud_friends_updated")                                 │    │
+│  │  - listen("cloud_devices_updated")                                 │    │
+│  │  - listen("cloud_tickets_updated")                                 │    │
+│  │  - listen("cloud_presence_error")                                  │    │
+│  └─────────────────────────────────────┬──────────────────────────────┘    │
+│                                         │                                    │
+└─────────────────────────────────────────┼────────────────────────────────────┘
+                                          │
+         ┌────────────────────────────────┼────────────────────────────────┐
+         │                                 │                                │
+         ▼                                 ▼                                ▼
+    ┌─────────────┐              ┌────────────────┐              ┌──────────────┐
+    │ Friends API │              │ Cloud WebSocket│              │ Cloud API    │
+    │ (HTTP)      │              │ (Persistent)   │              │ (HTTP)       │
+    │             │              │                │              │              │
+    │ - GET       │              │ - heartbeat    │              │ - Device reg │
+    │   /friends  │              │ - real-time    │              │ - Get state  │
+    │ - POST      │              │   updates      │              │              │
+    │   /friends  │              │ - friends      │              ├──────────────┤
+    │ - DELETE    │              │ - devices      │              │ Clerk JWT    │
+    │   /friends  │              │ - tickets      │              │ (Auth Token) │
+    │             │              │ - errors       │              │              │
+    └─────┬───────┘              └────────┬───────┘              └──────┬───────┘
+          │                                │                            │
+          │                                │                            │
+          │  Authorization: Bearer {JWT}   │  ws://...?token={JWT}     │
+          │                                │   deviceId={UUID}          │
+          │                                │                            │
+          └────────────────┬───────────────┴────────────────┬───────────┘
+                           │                                │
+                    ┌──────┴────────────────────────────────┴───────┐
+                    │                                                │
+                    │   Tauri IPC (Clerk Plugin)                    │
+                    │   plugin:clerk|get_client_authorization_header│
+                    │                                                │
+                    └─────────────────────┬──────────────────────────┘
+                                          │
+                                          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         TAURI BACKEND (Rust)                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                    CloudPresenceRuntime State                        │  │
+│  │  - generation: u64 (staleness tracking)                             │  │
+│  │  - api_origin: String                                               │  │
+│  │  - snapshot: {                                                       │  │
+│  │      active, connected, device_id, last_error,                     │  │
+│  │      friends: Vec<CloudFriendPayload>,                              │  │
+│  │      devices: Vec<CloudDevicePayload>,                              │  │
+│  │      tickets: Vec<CloudTicketPayload>                               │  │
+│  │    }                                                                 │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐                │
+│  │ register_cloud │  │ set_cloud_     │  │ update_cloud_  │                │
+│  │ device         │  │ connected      │  │ state          │                │
+│  │ (Device Reg)   │  │ (Connection)   │  │ (WS Messages)  │                │
+│  └────────┬───────┘  └────────┬───────┘  └────────┬───────┘                │
+│           │                   │                   │                        │
+│           └───────────────────┼───────────────────┘                        │
+│                               │                                            │
+│  ┌────────────────────────────┴──────────────────────────────┐            │
+│  │          Message Router (CloudServerMessage)              │            │
+│  │  Deserializes JSON from WebSocket:                        │            │
+│  │  - Friends { ... }  → update_cloud_friends()             │            │
+│  │  - Devices { ... }  → update_cloud_devices()             │            │
+│  │  - Tickets { ... }  → update_cloud_tickets()             │            │
+│  │  - Error(msg)       → update_cloud_server_error()        │            │
+│  │  - Pong             → no-op                               │            │
+│  │  - TransferReceived → emit "cloud_transfer_received"     │            │
+│  └────────────────────────────────────────────────────────────┘            │
+│           │                   │                   │                        │
+│           ▼                   ▼                   ▼                        │
+│  ┌──────────────────────────────────────────────────────────┐            │
+│  │           Emit Tauri Events (→ Frontend)                │            │
+│  │  - cloud_presence_state(snapshot)                       │            │
+│  │  - cloud_friends_updated(Vec<CloudFriendPayload>)       │            │
+│  │  - cloud_devices_updated(Vec<CloudDevicePayload>)       │            │
+│  │  - cloud_tickets_updated(Vec<CloudTicketPayload>)       │            │
+│  │  - cloud_presence_error(String)                         │            │
+│  │  - cloud_transfer_received(payload)                     │            │
+│  └──────────────────────────────────────────────────────────┘            │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────┐            │
+│  │   Other Tauri Commands (accept/decline tickets)            │            │
+│  │  - accept_cloud_ticket()   → calls receive_file()         │            │
+│  │  - decline_cloud_ticket()  → removes from snapshot         │            │
+│  │  - get_cloud_presence_state() → returns snapshot           │            │
+│  │  - stop_cloud_presence() → clears all state               │            │
+│  └────────────────────────────────────────────────────────────┘            │
+│                                                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+         │                              │                              │
+         └──────────────────┬───────────┼──────────────────┬──────────┘
+                            │           │                  │
+                            ▼           ▼                  ▼
+         ┌──────────────────────────────────────────────────────────┐
+         │                  CLOUD BACKEND API                       │
+         │         https://sendme.leeapp.dev/api/                  │
+         ├──────────────────────────────────────────────────────────┤
+         │                                                          │
+         │  POST   /devices             (Register device)          │
+         │  GET    /friends?status=...  (List friends)             │
+         │  POST   /friends             (Add/Accept friend)        │
+         │  DELETE /friends/{userId}    (Remove friend)            │
+         │  POST   /tickets             (Send ticket)              │
+         │  GET    /tickets?deviceId=...  (Get incoming)           │
+         │  POST   /tickets/{id}/receive  (Mark received)          │
+         │                                                          │
+         │  WebSocket: /ws                (Real-time updates)       │
+         │  Query params: ?deviceId=UUID&token=JWT                │
+         │                                                          │
+         └──────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                            KEY FLOWS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. INITIALIZATION (Sign In)
+   ┌────────────────────────────────────────────────────────────────┐
+   │ App.tsx detects auth.isSignedIn()                              │
+   │   ↓                                                              │
+   │ Calls connectCloudWebSocket()                                   │
+   │   ↓                                                              │
+   │ Gets Clerk JWT: plugin:clerk|get_client_authorization_header   │
+   │   ↓                                                              │
+   │ Calls register_cloud_device(device_id, api_origin)             │
+   │   ↓                                                              │
+   │ Establishes WebSocket to wss://.../api/ws?token={JWT}&...      │
+   │   ↓                                                              │
+   │ Starts 30-second heartbeat                                      │
+   │   ↓                                                              │
+   │ Receives Friends/Devices/Tickets updates                        │
+   │   ↓                                                              │
+   │ Updates CloudPresenceRuntime.snapshot                           │
+   │   ↓                                                              │
+   │ Emits cloud_*_updated events to Frontend                        │
+   └────────────────────────────────────────────────────────────────┘
+
+2. SEND TO FRIEND (HTTP + WebSocket)
+   ┌────────────────────────────────────────────────────────────────┐
+   │ Friends Page: handleSendToFriend(friend)                       │
+   │   ↓                                                              │
+   │ Generate ticket: send_file() → invoke("send_file", ...)        │
+   │   ↓                                                              │
+   │ Call FriendsService.sendTicketToFriend(friendUserId, ticket)   │
+   │   ↓                                                              │
+   │ HTTP POST /api/tickets with Authorization header               │
+   │   ├─ friendUserId (or deviceId)                                │
+   │   ├─ ticket (transfer blob)                                    │
+   │   └─ filename                                                   │
+   │   ↓                                                              │
+   │ Cloud backend stores ticket, broadcasts to friend via WS        │
+   │   ↓                                                              │
+   │ Friend receives "tickets" message on WebSocket                  │
+   │   ↓                                                              │
+   │ update_cloud_state() in Rust → update_cloud_tickets()          │
+   │   ↓                                                              │
+   │ Emits cloud_tickets_updated event → Friend notified            │
+   └────────────────────────────────────────────────────────────────┘
+
+3. RECONNECTION (Exponential Backoff)
+   ┌────────────────────────────────────────────────────────────────┐
+   │ WebSocket connection fails / closes                             │
+   │   ↓                                                              │
+   │ scheduleReconnect() calculates delay:                           │
+   │   1000ms × 2^attempt capped at 30s                              │
+   │   ↓                                                              │
+   │ setTimeout(connectCloudWebSocket, delay)                        │
+   │   ↓                                                              │
+   │ On success: reset reconnectAttempt to 0                         │
+   │   ↓                                                              │
+   │ On failure: increment and retry                                 │
+   │   ↓                                                              │
+   │ Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s, 30s, ...        │
+   └────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                         DATA FLOW SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+AUTHENTICATION
+  └─ Clerk JWT obtained via tauri-plugin-clerk
+     └─ Passed to Cloud API as "Authorization: Bearer {JWT}"
+     └─ Passed to WebSocket as "?token={JWT}"
+
+DEVICE IDENTIFICATION
+  └─ Persistent UUID stored in localStorage["sendme_device_id"]
+     └─ Sent in WebSocket query: "?deviceId={UUID}"
+     └─ Sent in X-Device-Id header for ticket endpoints
+
+REAL-TIME STATE
+  └─ CloudPresenceRuntime maintains in-memory snapshot
+     └─ RwLock<CloudPresenceRuntime> shared across Tauri commands
+     └─ Generation counter prevents stale updates
+     └─ Events emitted for each state change
+
+HTTP VS WEBSOCKET
+  └─ HTTP: Stateless operations (add friend, send ticket, get friends)
+  └─ WebSocket: Real-time push updates (friend online, incoming tickets)
+
+ERROR HANDLING
+  └─ Heartbeat failure → reconnect
+  └─ Device registration failure → delay reconnect
+  └─ No auth token → refuse connection
+  └─ Server-sent errors → emit cloud_presence_error event
+  └─ Generation mismatch → ignore stale messages
+
+═══════════════════════════════════════════════════════════════════════════════
