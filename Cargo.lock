@@ -176,6 +176,7 @@ version = "0.1.3"
 dependencies = [
  "android_logger",
  "anyhow",
+ "base64 0.22.1",
  "iroh",
  "iroh-blobs",
  "jni",

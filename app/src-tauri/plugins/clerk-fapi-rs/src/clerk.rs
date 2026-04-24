@@ -177,7 +177,9 @@ impl Clerk {
         if self.config.is_development() && self.config.kind == ClientKind::Browser {
             // Try to restore a persisted dev browser token first so we reuse the
             // same dev-browser across restarts (keeps sessions alive).
-            let cached_token = self.config.get_store_value("dev_browser_token_id")
+            let cached_token = self
+                .config
+                .get_store_value("dev_browser_token_id")
                 .and_then(|v| serde_json::from_value::<String>(v).ok());
 
             if let Some(token) = cached_token {
@@ -188,10 +190,8 @@ impl Clerk {
                     .create_dev_browser()
                     .await
                     .map_err(|_| ClerkLoadError::DevFailedToLoadDevBrowser)?;
-                self.config.set_store_value(
-                    "dev_browser_token_id",
-                    serde_json::json!(dev_browser.id),
-                );
+                self.config
+                    .set_store_value("dev_browser_token_id", serde_json::json!(dev_browser.id));
                 self.api_client.set_dev_browser_token_id(dev_browser.id);
             }
         }
@@ -497,7 +497,8 @@ impl Clerk {
         };
         // The remove sessions calls will update the client state via the callback
         // Clear persisted dev browser token so a fresh one is created on next login
-        self.config.set_store_value("dev_browser_token_id", serde_json::json!(null));
+        self.config
+            .set_store_value("dev_browser_token_id", serde_json::json!(null));
         Ok(())
     }
 

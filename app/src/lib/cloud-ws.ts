@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   getCloudWebSocketUrl,
   getAuthorizationHeaderValue,
+  refreshAuthorizationHeaderValue,
   extractBearerToken,
   getPersistentDeviceId,
   getCloudApiOrigin,
@@ -83,9 +84,17 @@ export async function connectCloudWebSocket(): Promise<void> {
   isConnecting = true;
 
   try {
-    // Get auth token
-    const authHeader = await getAuthorizationHeaderValue();
-    const token = extractBearerToken(authHeader);
+    // Get auth token — if expired, Rust will refresh via Clerk FAPI automatically
+    let authHeader = await getAuthorizationHeaderValue();
+    let token = extractBearerToken(authHeader);
+
+    // If no token returned (e.g. first time after expiry), try a forced refresh once
+    if (!token) {
+      console.log("[cloud-ws] No auth token on first attempt; forcing Clerk refresh");
+      authHeader = await refreshAuthorizationHeaderValue();
+      token = extractBearerToken(authHeader);
+    }
+
     if (!token) {
       isConnecting = false;
       await updateConnectionState(false, "No auth token available");

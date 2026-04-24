@@ -48,11 +48,46 @@ export function extractBearerToken(authorizationHeader: string | null): string |
   return token;
 }
 
+export function normalizeAuthorizationHeader(
+  authorizationHeader: string | null,
+): string | null {
+  if (!authorizationHeader) {
+    return null;
+  }
+
+  const trimmed = authorizationHeader.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const token = extractBearerToken(trimmed);
+  if (token) {
+    return `Bearer ${token}`;
+  }
+
+  return `Bearer ${trimmed}`;
+}
+
 export async function getAuthorizationHeaderValue(): Promise<string | null> {
   try {
-    return await invoke<string | null>("plugin:clerk|get_client_authorization_header");
+    const header = await invoke<string | null>("get_cloud_authorization_header");
+    return normalizeAuthorizationHeader(header);
   } catch (error) {
     console.error("[cloud-api] Failed to get authorization header:", error);
+    return null;
+  }
+}
+
+/**
+ * Force-clear the cached token and get a fresh one from Clerk via FAPI.
+ * Use this after a 401 response to recover from a revoked/rotated token.
+ */
+export async function refreshAuthorizationHeaderValue(): Promise<string | null> {
+  try {
+    await invoke("clear_cloud_authorization_header");
+    return await getAuthorizationHeaderValue();
+  } catch (error) {
+    console.error("[cloud-api] Failed to refresh authorization header:", error);
     return null;
   }
 }

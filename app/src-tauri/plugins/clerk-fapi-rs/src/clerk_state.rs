@@ -73,6 +73,22 @@ impl fmt::Display for ClerkNotLoadedError {
 }
 impl Error for ClerkNotLoadedError {}
 
+fn normalize_authorization_header(authorization_header: Option<String>) -> Option<String> {
+    let authorization_header = authorization_header?;
+    let trimmed = authorization_header.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut parts = trimmed.split_whitespace();
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(scheme), Some(token), None) if scheme.eq_ignore_ascii_case("bearer") => {
+            Some(format!("Bearer {}", token))
+        }
+        _ => Some(format!("Bearer {}", trimmed)),
+    }
+}
+
 impl ClerkState {
     pub fn new<F>(config: ClerkFapiConfiguration, callback: F) -> Self
     where
@@ -227,14 +243,17 @@ impl ClerkState {
         match self.authorization_header.clone() {
             Some(token) => Some(token),
             None => {
-                // try to load from store
                 let stored_token = self.config.get_store_value("authorization_header");
                 match stored_token {
                     Some(token_value) => {
                         if let Ok(token) = serde_json::from_value::<Option<String>>(token_value) {
-                            // there was a token! let's update also internal state
-                            self.authorization_header = token.clone();
-                            token
+                            let normalized = normalize_authorization_header(token.clone());
+                            if normalized != token {
+                                self.set_authorization_header(normalized.clone());
+                            } else {
+                                self.authorization_header = normalized.clone();
+                            }
+                            normalized
                         } else {
                             warn!("Failed to parse stored authorization header");
                             None
@@ -246,6 +265,7 @@ impl ClerkState {
         }
     }
     pub fn set_authorization_header(&mut self, authorization_header: Option<String>) {
+        let authorization_header = normalize_authorization_header(authorization_header);
         self.authorization_header = authorization_header.clone();
         if let Ok(value) = serde_json::to_value(authorization_header.clone()) {
             self.config.set_store_value("authorization_header", value);

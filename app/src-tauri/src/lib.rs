@@ -9,10 +9,11 @@ use std::time::{Duration, Instant};
 use tauri::WebviewWindowBuilder;
 use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_clerk::ClerkExt;
-use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_fs::FsExt;
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
+
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
@@ -510,7 +511,6 @@ struct NearbyProfilePayload {
     device_type: String,
 }
 
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CloudDevicePayload {
@@ -719,7 +719,7 @@ async fn register_cloud_device(
     device_id: String,
     api_origin: String,
 ) -> Result<(), String> {
-    let authorization = current_cloud_authorization_header(&app)?;
+    let authorization = current_cloud_authorization_header(&app).await?;
     let token = extract_bearer_token(&authorization)
         .ok_or_else(|| "Missing bearer token".to_string())?
         .to_string();
@@ -1731,7 +1731,6 @@ fn emit_cloud_presence_state(app: &AppHandle, payload: CloudPresenceSnapshotPayl
     let _ = app.emit("cloud_presence_state", payload);
 }
 
-
 fn extract_bearer_token(header: &str) -> Option<&str> {
     let mut parts = header.split_whitespace();
     let scheme = parts.next()?;
@@ -1742,10 +1741,121 @@ fn extract_bearer_token(header: &str) -> Option<&str> {
     Some(token)
 }
 
-fn current_cloud_authorization_header(app: &AppHandle) -> Result<String, String> {
-    app.clerk()
-        .get_client_authorization_header()
+/// Returns true if the JWT is definitively expired.
+/// Decodes the payload (middle segment) without verifying the signature and checks `exp`.
+/// Returns `false` (not expired) if the token cannot be decoded or has no `exp` claim,
+/// so that short-lived handshake tokens (like `__clerk_token` from OAuth redirects)
+/// or opaque tokens are never incorrectly cleared.
+fn is_jwt_expired(jwt: &str) -> bool {
+    use base64::Engine as _;
+    let parts: Vec<&str> = jwt.splitn(3, '.').collect();
+    if parts.len() != 3 {
+        // Not a standard JWT — let the server decide whether it's valid
+        return false;
+    }
+    let payload_b64 = parts[1];
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload_b64)
+        .or_else(|_| {
+            let stripped = payload_b64.trim_end_matches('=');
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(stripped)
+        });
+    let bytes = match decoded {
+        Ok(b) => b,
+        Err(_) => return false, // Can't decode → let the server decide
+    };
+    let payload: serde_json::Value = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(_) => return false, // Can't parse → let the server decide
+    };
+    let exp = match payload.get("exp").and_then(|v| v.as_i64()) {
+        Some(exp) => exp,
+        // No `exp` claim (e.g. short-lived handshake tokens) → assume valid
+        None => return false,
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    now >= exp
+}
+
+async fn refresh_cloud_authorization_header(app: &AppHandle) -> Result<Option<String>, String> {
+    // Snapshot the cached token once so we can fall back to it on any failure.
+    let cached = app.clerk().get_client_authorization_header();
+
+    // If the cached token is present and not yet expired, return it immediately.
+    let token_needs_refresh = match &cached {
+        Some(header) => match extract_bearer_token(header) {
+            Some(token) => is_jwt_expired(token),
+            None => true, // Malformed header
+        },
+        None => true, // No token at all
+    };
+
+    if !token_needs_refresh {
+        return Ok(cached);
+    }
+
+    // Token is missing or expired — attempt a proactive refresh via Clerk FAPI.
+    // IMPORTANT: do NOT clear the cached token before this attempt so that we can
+    // fall back to it if the refresh fails (e.g. during the login race window).
+    log_info!("Clerk auth token missing or expired; attempting refresh via Clerk FAPI");
+
+    // ensure_clerk_initialized is a no-op when Clerk is already loaded.
+    if let Err(error) = app.ensure_clerk_initialized().await {
+        log_warn!(
+            "Failed to initialize Clerk before fetching cloud token: {}",
+            error
+        );
+        // Return cached (even if expired) — the server will reject it if truly invalid.
+        return Ok(cached);
+    }
+
+    match app.clerk().get_token(None, None).await {
+        Ok(Some(jwt)) => {
+            let header = format!("Bearer {}", jwt);
+            app.clerk()
+                .set_client_authorization_header(Some(header.clone()));
+            Ok(Some(header))
+        }
+        Ok(None) => {
+            log_info!("Clerk has no active session; returning cached token as fallback");
+            // Return cached — useful during the login race condition where the
+            // OAuth callback hasn't finished setting up the session yet.
+            Ok(cached)
+        }
+        Err(e) => {
+            log_warn!(
+                "Clerk get_token() failed: {}; returning cached token as fallback",
+                e
+            );
+            Ok(cached)
+        }
+    }
+}
+
+async fn current_cloud_authorization_header(app: &AppHandle) -> Result<String, String> {
+    refresh_cloud_authorization_header(app)
+        .await?
         .ok_or_else(|| "Cloud presence is not authenticated".to_string())
+}
+
+#[tauri::command]
+async fn get_cloud_authorization_header(app: AppHandle) -> Result<Option<String>, String> {
+    refresh_cloud_authorization_header(&app).await
+}
+
+#[tauri::command]
+fn set_cloud_authorization_header(app: AppHandle, header: Option<String>) -> Result<(), String> {
+    app.clerk().set_client_authorization_header(header);
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_cloud_authorization_header(app: AppHandle) -> Result<(), String> {
+    app.clerk().set_client_authorization_header(None);
+    Ok(())
 }
 
 fn cloud_user_agent() -> &'static str {
@@ -1784,7 +1894,6 @@ fn build_cloud_api_url(api_origin: &str, path: &str) -> Result<String, String> {
         .map(|url| url.to_string())
         .map_err(|e| format!("Invalid cloud API path: {e}"))
 }
-
 
 async fn update_cloud_friends(
     app: &AppHandle,
@@ -1837,7 +1946,12 @@ async fn update_cloud_tickets(
     // Determine new pending tickets for notification
     let previous_ticket_ids: std::collections::HashSet<String> = {
         let guard = cloud.read().await;
-        guard.snapshot.tickets.iter().map(|t| t.id.clone()).collect()
+        guard
+            .snapshot
+            .tickets
+            .iter()
+            .map(|t| t.id.clone())
+            .collect()
     };
 
     let snapshot = {
@@ -1860,14 +1974,8 @@ async fn update_cloud_tickets(
         .collect();
 
     for ticket in &new_pending {
-        let sender = ticket
-            .sender_name
-            .as_deref()
-            .unwrap_or("Someone");
-        let filename = ticket
-            .filename
-            .as_deref()
-            .unwrap_or("a file");
+        let sender = ticket.sender_name.as_deref().unwrap_or("Someone");
+        let filename = ticket.filename.as_deref().unwrap_or("a file");
         let title = format!("{} wants to send you a file", sender);
         let body = format!("File: {}", filename);
         if let Err(e) = app
@@ -1905,7 +2013,6 @@ async fn update_cloud_server_error(
     emit_cloud_presence_state(app, snapshot);
     refresh_android_foreground_notification(app).await;
 }
-
 
 async fn set_android_active_receive(
     app: &AppHandle,
@@ -2807,6 +2914,23 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
     // The /v1/client endpoint may not include user data inside sessions.
     // Explicitly fetch /v1/me so we always have the user profile for the UI.
     if success {
+        match app.clerk().get_token(None, None).await {
+            Ok(Some(jwt)) => {
+                let header = format!("Bearer {}", jwt);
+                app.clerk().set_client_authorization_header(Some(header));
+                log_info!("Refreshed and persisted durable cloud auth token after Clerk callback");
+            }
+            Ok(None) => {
+                log_warn!("Clerk callback succeeded but get_token returned no active token");
+            }
+            Err(e) => {
+                log_warn!(
+                    "Failed to refresh durable cloud auth token after callback: {}",
+                    e
+                );
+            }
+        }
+
         match tokio::time::timeout(std::time::Duration::from_secs(5), fapi_client.get_user()).await
         {
             Ok(Ok(user)) => {
@@ -3057,6 +3181,9 @@ pub fn run() {
             accept_incoming,
             decline_incoming,
             register_cloud_device,
+            get_cloud_authorization_header,
+            set_cloud_authorization_header,
+            clear_cloud_authorization_header,
             set_cloud_connected,
             update_cloud_state,
             stop_cloud_presence,
@@ -3111,8 +3238,9 @@ async fn accept_cloud_ticket(
     let transfer_id = receive_file(app.clone(), transfers, request).await?;
 
     // Mark ticket as received on the server (best-effort)
-    let mark_url = build_cloud_api_url(&api_origin, &format!("/api/tickets/{}/receive", ticket_id))?;
-    let authorization = current_cloud_authorization_header(&app).ok();
+    let mark_url =
+        build_cloud_api_url(&api_origin, &format!("/api/tickets/{}/receive", ticket_id))?;
+    let authorization = current_cloud_authorization_header(&app).await.ok();
     tokio::spawn(async move {
         if let Some(auth) = authorization {
             let client = reqwest::Client::new();
@@ -3138,10 +3266,7 @@ async fn decline_cloud_ticket(
     // Remove from local snapshot
     let snapshot = {
         let mut guard = cloud.write().await;
-        guard
-            .snapshot
-            .tickets
-            .retain(|t| t.id != ticket_id);
+        guard.snapshot.tickets.retain(|t| t.id != ticket_id);
         guard.snapshot.clone()
     };
 

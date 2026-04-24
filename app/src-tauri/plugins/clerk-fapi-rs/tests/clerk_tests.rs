@@ -1,7 +1,7 @@
 #![recursion_limit = "512"]
 
 use clerk_fapi_rs::clerk::Clerk;
-use clerk_fapi_rs::configuration::ClerkFapiConfiguration;
+use clerk_fapi_rs::configuration::{ClerkFapiConfiguration, ClientKind, DefaultStore};
 use mockito::{Matcher, Server};
 use serde_json::{self, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -910,6 +910,78 @@ async fn test_browser_client_uses_native_flag_when_auth_header_is_present() {
     env_mock.assert_async().await;
     client_mock.assert_async().await;
     assert!(clerk.session().unwrap().is_some());
+}
+
+#[tokio::test]
+async fn test_load_normalizes_last_active_token_to_bearer_authorization_header() {
+    let mut server = Server::new_async().await;
+
+    let env_mock = server
+        .mock("GET", "/v1/environment?_is_native=1")
+        .with_status(200)
+        .with_body(get_env_data())
+        .with_header("content-type", "application/json")
+        .create_async()
+        .await;
+
+    let client_mock = server
+        .mock("GET", "/v1/client?_is_native=1")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!({
+                "response": logged_in_client(),
+                "client": null
+            })
+            .to_string(),
+        )
+        .create_async()
+        .await;
+
+    let clerk = Clerk::new(
+        ClerkFapiConfiguration::new(
+            "pk_test_Y2xlcmsuZXhhbXBsZS5jb20k".to_string(),
+            Some(server.url()),
+            None,
+        )
+        .unwrap(),
+    );
+
+    clerk.load().await.unwrap();
+
+    env_mock.assert_async().await;
+    client_mock.assert_async().await;
+    assert_eq!(
+        clerk.get_client_authorization_header(),
+        Some("Bearer eyJrandomJwtTokenXyz789Abc123Def456...".to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_load_normalizes_legacy_stored_authorization_header() {
+    let store = Arc::new(DefaultStore::default());
+    let config = ClerkFapiConfiguration::new_with_store(
+        "pk_test_Y2xlcmsuZXhhbXBsZS5jb20k".to_string(),
+        None,
+        None,
+        Some(store.clone()),
+        None,
+        ClientKind::NonBrowser,
+    )
+    .unwrap();
+
+    config.set_store_value("authorization_header", serde_json::json!("legacy.raw.jwt"));
+
+    let clerk = Clerk::new(config.clone());
+
+    assert_eq!(
+        clerk.get_client_authorization_header(),
+        Some("Bearer legacy.raw.jwt".to_string())
+    );
+    assert_eq!(
+        config.get_store_value("authorization_header"),
+        Some(serde_json::json!("Bearer legacy.raw.jwt"))
+    );
 }
 
 #[tokio::test]

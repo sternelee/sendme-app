@@ -88,6 +88,16 @@ impl<R: Runtime, T: Manager<R>> crate::ClerkExt<R> for T {
             // resources in case of not being able to load resources from API. This
             // allows the app to work in offline mode for signedin users.
             clerk.load().await.map_err(|e| e.to_string())?;
+
+            // After clerk.load() succeeds, Clerk JS has restored its state from cache
+            // (via __internal_getCachedResources). However, the Rust ClerkState hasn't
+            // been synced yet. On fresh login, the listener fires and set_client is called.
+            // On app restart, Clerk restores from cache but the listener doesn't fire
+            // (no "change" detected), so we must manually sync the cached client here.
+            if let Ok(cached_client) = clerk.client() {
+                let _ = clerk.set_client(cached_client);
+            }
+
             let app_handle_inner = app_handle.clone();
             clerk.add_listener(move |client, session, user, organization| {
                 let app_handle_clone = app_handle_inner.clone();
@@ -101,9 +111,26 @@ impl<R: Runtime, T: Manager<R>> crate::ClerkExt<R> for T {
                 if let Ok(payload) = serde_json::from_str::<ClerkAuthEvent>(payload) {
                     if payload.source != RUST_EVENT_SOURCE {
                         debug!("Received ClerkAuthEvent: {payload:?}");
-                        let _ = app_handle
-                            .clerk()
-                            .set_client(payload.payload.client.clone());
+                        let incoming_client = payload.payload.client.clone();
+                        let should_ignore_empty_client = if incoming_client.sessions.is_empty() {
+                            app_handle
+                                .clerk()
+                                .client()
+                                .ok()
+                                .map(|current_client| !current_client.sessions.is_empty())
+                                .unwrap_or(false)
+                        } else {
+                            false
+                        };
+
+                        if should_ignore_empty_client {
+                            debug!(
+                                "Ignoring JS auth event with empty client because Rust already has a persisted session"
+                            );
+                            return;
+                        }
+
+                        let _ = app_handle.clerk().set_client(incoming_client);
                     }
                 }
             });

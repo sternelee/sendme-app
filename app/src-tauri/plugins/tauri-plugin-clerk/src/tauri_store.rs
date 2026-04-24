@@ -36,7 +36,11 @@ impl<R: Runtime> ClerkStateStore for ClerkTauriStore<R> {
         let deleted = self.inner.delete(key);
         if deleted {
             if let Err(e) = self.inner.save() {
-                tracing::warn!("ClerkTauriStore: failed to save after delete({}): {}", key, e);
+                tracing::warn!(
+                    "ClerkTauriStore: failed to save after delete({}): {}",
+                    key,
+                    e
+                );
             }
         }
         deleted

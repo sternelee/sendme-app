@@ -37,4 +37,23 @@ describe("cloud-api", () => {
     expect(mod.extractBearerToken("Basic abc")).toBeNull();
     expect(mod.extractBearerToken(null)).toBeNull();
   });
+
+  it("normalizes authorization headers to bearer format", async () => {
+    const mod = await import("~/lib/cloud-api");
+
+    expect(mod.normalizeAuthorizationHeader("abc123")).toBe("Bearer abc123");
+    expect(mod.normalizeAuthorizationHeader("Bearer abc123")).toBe("Bearer abc123");
+    expect(mod.normalizeAuthorizationHeader("bearer xyz")).toBe("Bearer xyz");
+    expect(mod.normalizeAuthorizationHeader("   ")).toBeNull();
+    expect(mod.normalizeAuthorizationHeader(null)).toBeNull();
+  });
+
+  it("loads the cloud authorization header via the dedicated Tauri command", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    vi.mocked(invoke).mockResolvedValueOnce("abc123");
+    const mod = await import("~/lib/cloud-api");
+
+    await expect(mod.getAuthorizationHeaderValue()).resolves.toBe("Bearer abc123");
+    expect(invoke).toHaveBeenCalledWith("get_cloud_authorization_header");
+  });
 });

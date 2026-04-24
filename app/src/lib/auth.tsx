@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { getCloudApiOrigin } from "./cloud-api";
+import { normalizeAuthorizationHeader } from "./cloud-api";
 import {
   createContext,
   useContext,
@@ -90,6 +91,7 @@ interface PublicUserData {
 interface RustSession {
   user?: RustUser | null;
   public_user_data?: PublicUserData | null;
+  last_active_token?: { object: string; jwt: string } | null;
 }
 interface ClerkAuthEventData {
   source: string;
@@ -237,12 +239,13 @@ export function AuthProvider(props: { children: JSX.Element }) {
     // ── 2. Listen for Rust auth events (these work even before Clerk JS is ready) ──
 
     const setupTauriListeners = async () => {
-      tauriUnlisten = await listen<ClerkAuthEventData>("plugin-clerk-auth-cb", (event) => {
+      tauriUnlisten = await listen<ClerkAuthEventData>("plugin-clerk-auth-cb", async (event) => {
         const p = event.payload.payload;
         console.log("[auth] plugin-clerk-auth-cb:", {
           hasUser: !!p.user,
           sessionCount: p.client?.sessions?.length,
         });
+
         const extracted = extractUserFromPayload(p);
         if (extracted) {
           console.log("[auth] plugin-clerk-auth-cb: user found →", extracted.id);
@@ -277,14 +280,50 @@ export function AuthProvider(props: { children: JSX.Element }) {
 
       // Deep link listener
       try {
-        deepLinkUnlisten = await onOpenUrl((urls) => {
+        deepLinkUnlisten = await onOpenUrl(async (urls) => {
           for (const url of urls) {
             if (url.startsWith("sendme://auth/callback")) {
               console.log("[auth] Received auth deep link:", url);
+
+              const parsed = new URL(url);
+              const clerkToken = parsed.searchParams.get("__clerk_token");
+              const sessionId = parsed.searchParams.get("session_id");
+
+              if (clerkToken) {
+                console.log("[auth] Saving cloud token from deep link");
+                const header = normalizeAuthorizationHeader(clerkToken);
+                if (!header) {
+                  continue;
+                }
+                await invoke("set_cloud_authorization_header", {
+                  header,
+                }).catch((e) =>
+                  console.error("[auth] Failed to save cloud token:", e)
+                );
+              }
+
               const deepLinkUser = extractUserFromDeepLink(url);
               if (deepLinkUser) {
                 console.log("[auth] Deep link user:", deepLinkUser.id);
                 setUser(deepLinkUser);
+              }
+
+              // If Clerk JS is ready, trigger it to reload session from the token
+              const clerk = clerkInstance();
+              if (clerk) {
+                // Clerk JS needs the session to be created from the token
+                // In standardBrowser:false, we need to call setActive with the session
+                if (sessionId) {
+                  console.log("[auth] Triggering Clerk JS setActive for session:", sessionId);
+                  clerk
+                    .setActive({ session: sessionId })
+                    .then(() => console.log("[auth] Clerk JS session activated"))
+                    .catch((e) => console.error("[auth] setActive failed:", e));
+                } else if (clerkToken) {
+                  // No sessionId but have token - try to reload Clerk
+                  console.log("[auth] No sessionId, reloading Clerk to pick up token");
+                  await clerk.reload();
+                }
               }
             }
           }
@@ -362,14 +401,15 @@ export function AuthProvider(props: { children: JSX.Element }) {
     if (clerk) {
       try { await clerk.signOut(); } catch (e) { console.error("[auth] clerk.signOut error:", e); }
     }
+    await invoke("clear_cloud_authorization_header").catch((e) =>
+      console.error("[auth] Failed to clear cloud token:", e)
+    );
     setUser(null);
   };
 
   const getToken = async (): Promise<string | null> => {
     try {
-      const token = await invoke<string | null>(
-        "plugin:clerk|get_client_authorization_header",
-      );
+      const token = await invoke<string | null>("get_cloud_authorization_header");
       return token;
     } catch (error) {
       console.error("Failed to get token:", error);
