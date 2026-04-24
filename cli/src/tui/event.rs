@@ -92,9 +92,11 @@ impl EventHandler {
 
     /// Send a send completed event with ticket.
     pub fn send_send_completed(&self, transfer_id: String, ticket: String, path: String) {
-        let _ = self
-            .sender
-            .send(AppEvent::SendCompleted { transfer_id, ticket, path });
+        let _ = self.sender.send(AppEvent::SendCompleted {
+            transfer_id,
+            ticket,
+            path,
+        });
     }
 
     /// Emit any AppEvent (used by background tasks such as the WS listener).

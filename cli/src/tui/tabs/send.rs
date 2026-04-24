@@ -391,7 +391,10 @@ fn render_cloud_send_popup(f: &mut Frame, app: &App, area: Rect) {
                 .iter()
                 .map(|d| ListItem::new(format!("  {}", d.name)))
                 .collect();
-            (" Send to Device  [↑↓] Select | [Enter] Confirm | [ESC] Cancel ", list_items)
+            (
+                " Send to Device  [↑↓] Select | [Enter] Confirm | [ESC] Cancel ",
+                list_items,
+            )
         }
         SendCloudState::SelectingFriend => {
             let list_items: Vec<ListItem> = app
@@ -406,7 +409,10 @@ fn render_cloud_send_popup(f: &mut Frame, app: &App, area: Rect) {
                     ListItem::new(format!("  {}", name))
                 })
                 .collect();
-            (" Send to Friend  [↑↓] Select | [Enter] Confirm | [ESC] Cancel ", list_items)
+            (
+                " Send to Friend  [↑↓] Select | [Enter] Confirm | [ESC] Cancel ",
+                list_items,
+            )
         }
         SendCloudState::None => return,
     };

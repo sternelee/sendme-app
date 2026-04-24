@@ -41,9 +41,7 @@ fn render_ws_status(f: &mut Frame, app: &App, area: Rect) {
         ),
         CloudWsState::Connecting => (" ◌ Connecting to cloud…".to_string(), Color::Yellow),
         CloudWsState::Connected => (" ● Connected".to_string(), Color::Green),
-        CloudWsState::Reconnecting => {
-            (" ↻ Reconnecting to cloud…".to_string(), Color::Yellow)
-        }
+        CloudWsState::Reconnecting => (" ↻ Reconnecting to cloud…".to_string(), Color::Yellow),
     };
 
     let device_info = if let Some(id) = &app.cloud_my_device_db_id {
@@ -59,13 +57,17 @@ fn render_ws_status(f: &mut Frame, app: &App, area: Rect) {
         .unwrap_or_default();
 
     let line = Line::from(vec![
-        Span::styled(status_text, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            status_text,
+            Style::default()
+                .fg(status_color)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(device_info),
         Span::styled(notification, Style::default().fg(Color::Cyan)),
     ]);
 
-    let para = Paragraph::new(line)
-        .block(Block::default().borders(Borders::ALL).title(" Cloud "));
+    let para = Paragraph::new(line).block(Block::default().borders(Borders::ALL).title(" Cloud "));
     f.render_widget(para, area);
 }
 
@@ -77,8 +79,7 @@ fn render_section_tabs(f: &mut Frame, app: &App, area: Rect) {
         Span::raw("  "),
         section_span("Incoming", app.cloud_section == CloudSection::Incoming),
     ]);
-    let para = Paragraph::new(tabs_line)
-        .block(Block::default().borders(Borders::NONE));
+    let para = Paragraph::new(tabs_line).block(Block::default().borders(Borders::NONE));
     f.render_widget(para, area);
 }
 
@@ -91,10 +92,7 @@ fn section_span(label: &str, active: bool) -> Span<'static> {
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
         )
     } else {
-        Span::styled(
-            format!(" {} ", label),
-            Style::default().fg(Color::DarkGray),
-        )
+        Span::styled(format!(" {} ", label), Style::default().fg(Color::DarkGray))
     }
 }
 
@@ -116,7 +114,11 @@ fn render_devices_section(f: &mut Frame, app: &App, area: Rect) {
         .cloud_devices
         .iter()
         .map(|d| {
-            ListItem::new(format!("  {}  (id: {})", d.name, &d.id[..d.id.len().min(12)]))
+            ListItem::new(format!(
+                "  {}  (id: {})",
+                d.name,
+                &d.id[..d.id.len().min(12)]
+            ))
         })
         .collect();
 
@@ -161,7 +163,11 @@ fn render_friends_section(f: &mut Frame, app: &App, area: Rect) {
                 .map(|fi| fi.name.as_str())
                 .unwrap_or("(unknown)");
             let device_count = f_entry.friend_devices.len();
-            let dev_label = if device_count == 1 { "device" } else { "devices" };
+            let dev_label = if device_count == 1 {
+                "device"
+            } else {
+                "devices"
+            };
             ListItem::new(format!("  {}  ({} {})", name, device_count, dev_label))
         })
         .collect();
@@ -192,7 +198,11 @@ fn render_incoming_section(f: &mut Frame, app: &App, area: Rect) {
         };
         let para = Paragraph::new(msg)
             .style(Style::default().fg(Color::DarkGray))
-            .block(Block::default().borders(Borders::ALL).title(" Incoming Files "));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Incoming Files "),
+            );
         f.render_widget(para, area);
         return;
     }

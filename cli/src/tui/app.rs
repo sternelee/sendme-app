@@ -477,8 +477,7 @@ impl App {
             SendTabState::Success => {
                 match key.code {
                     // 'C' – copy ticket to clipboard
-                    crossterm::event::KeyCode::Char('c')
-                    | crossterm::event::KeyCode::Char('C') => {
+                    crossterm::event::KeyCode::Char('c') | crossterm::event::KeyCode::Char('C') => {
                         if self.send_cloud_state == SendCloudState::None {
                             if let Some(ticket) = self.send_success_ticket.clone() {
                                 self.copy_to_clipboard(&ticket);
@@ -486,23 +485,23 @@ impl App {
                         }
                     }
                     // 'D' – open device selector (cloud send)
-                    crossterm::event::KeyCode::Char('d')
-                    | crossterm::event::KeyCode::Char('D') => {
+                    crossterm::event::KeyCode::Char('d') | crossterm::event::KeyCode::Char('D') => {
                         if !self.cloud_devices.is_empty() {
                             self.send_cloud_state = SendCloudState::SelectingDevice;
                             self.send_cloud_selected_index = 0;
                         } else {
-                            self.send_message = "No devices available. Log in to use cloud send.".to_string();
+                            self.send_message =
+                                "No devices available. Log in to use cloud send.".to_string();
                         }
                     }
                     // 'F' – open friend selector (cloud send)
-                    crossterm::event::KeyCode::Char('f')
-                    | crossterm::event::KeyCode::Char('F') => {
+                    crossterm::event::KeyCode::Char('f') | crossterm::event::KeyCode::Char('F') => {
                         if !self.cloud_friends.is_empty() {
                             self.send_cloud_state = SendCloudState::SelectingFriend;
                             self.send_cloud_selected_index = 0;
                         } else {
-                            self.send_message = "No friends available. Log in to use cloud send.".to_string();
+                            self.send_message =
+                                "No friends available. Log in to use cloud send.".to_string();
                         }
                     }
                     // Navigate inside cloud send popup
