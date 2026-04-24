@@ -1245,6 +1245,8 @@ fn current_nearby_profile(_app: &AppHandle) -> Result<(String, sendme_lib::Devic
         _ => get_hostname().unwrap_or_else(|_| "Sendme".to_string()),
     };
 
+    device_name = sanitize_nearby_device_name(&device_name);
+
     if device_name.trim().is_empty() || is_loopback_device_name(&device_name) {
         device_name = "Sendme".to_string();
     }
@@ -1268,6 +1270,34 @@ fn is_loopback_device_name(value: &str) -> bool {
         value.trim().to_ascii_lowercase().as_str(),
         "localhost" | "localhost.localdomain" | "127.0.0.1" | "::1"
     )
+}
+
+fn sanitize_nearby_device_name(value: &str) -> String {
+    let mut name = value.trim().trim_end_matches('.').to_string();
+    let mut stripped_local_suffix = false;
+
+    loop {
+        let lower = name.to_ascii_lowercase();
+        if lower.ends_with(".local") {
+            let new_len = name.len().saturating_sub(6);
+            name.truncate(new_len);
+            name = name.trim_end_matches('.').to_string();
+            stripped_local_suffix = true;
+            continue;
+        }
+        break;
+    }
+
+    if let Some((base, suffix)) = name.rsplit_once('-') {
+        let looks_like_conflict_suffix = !base.is_empty()
+            && suffix.chars().all(|c| c.is_ascii_digit())
+            && (stripped_local_suffix || suffix.len() >= 3);
+        if looks_like_conflict_suffix {
+            name = base.to_string();
+        }
+    }
+
+    name.trim().to_string()
 }
 
 fn spawn_nearby_listener(app: AppHandle, nearby: NearbyState, endpoint: Endpoint) {
@@ -4135,7 +4165,7 @@ fn get_hostname() -> Result<String, String> {
         // Fallback to a default name
         Ok("My Device".to_string())
     } else {
-        Ok(hostname)
+        Ok(sanitize_nearby_device_name(&hostname))
     }
 }
 
@@ -4311,6 +4341,29 @@ fn get_device_model() -> Result<String, String> {
         let hostname = get_hostname()?;
         log_info!("✅ Using hostname: {}", hostname);
         Ok(hostname)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_nearby_device_name;
+
+    #[test]
+    fn strips_local_suffix_and_conflict_counter() {
+        assert_eq!(sanitize_nearby_device_name("sendme-1014.local"), "sendme");
+        assert_eq!(
+            sanitize_nearby_device_name("Sterne-MacBook-Pro-22.local."),
+            "Sterne-MacBook-Pro"
+        );
+    }
+
+    #[test]
+    fn keeps_normal_device_names() {
+        assert_eq!(
+            sanitize_nearby_device_name("Sterne-MacBook-Pro"),
+            "Sterne-MacBook-Pro"
+        );
+        assert_eq!(sanitize_nearby_device_name("sendme-2"), "sendme-2");
     }
 }
 
