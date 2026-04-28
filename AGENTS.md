@@ -10,7 +10,6 @@ Sendme is a **P2P file transfer system** built with [iroh](https://crates.io/cra
 - **Mobile apps** - iOS & Android native
 - **Browser app** (`browser/`) - SolidStart/Cloudflare Workers (separate from Tauri frontend)
 - **WASM browser** - Experimental (separate build: `browser-lib/`)
-- **Cloudflare Workers** - Presence service (`sendme-presence/`)
 
 **Package Manager**: Use **pnpm** for ALL JavaScript/TypeScript operations (NOT npm or yarn).
 
@@ -21,12 +20,14 @@ sendme-app/
 ├── lib/                    # sendme-lib - Core library (send/receive/nearby)
 ├── cli/                    # sendme CLI - Binary using sendme-lib
 ├── app/src-tauri/          # Tauri backend
+│   └── plugins/            # tauri-plugin-clerk, tauri-plugin-media-picker, clerk-fapi-rs
 ├── browser-lib/            # WASM bindings (separate workspace - NOT in main)
-├── browser/                # Browser/Cloudflare app (separate SolidStart, NOT the Tauri UI)
-└── sendme-presence/        # Cloudflare Durable Objects (separate)
+└── browser/                # Browser/Cloudflare app (separate SolidStart, NOT the Tauri UI)
 ```
 
 **Key**: `browser-lib` has its own `[workspace]` - never add it to main workspace.
+**Key**: pnpm workspace contains only `app` and `browser` (`pnpm-workspace.yaml`).
+**Key**: `[patch.crates-io] n0-snafu = { path = "patches/n0-snafu" }` — local patch fixes color-backtrace incompatibility; do not remove.
 
 ## Build Commands
 
@@ -34,7 +35,8 @@ sendme-app/
 ```bash
 cargo build --release
 cargo build -p sendme-lib      # Library only
-cargo build -p sendme         # CLI only (binary is 'sendme', package is 'cli')
+cargo build -p cli             # CLI only (package name 'cli', binary name 'sendme')
+cargo run -p cli               # Run the TUI directly
 cargo build -p app             # Tauri backend only
 
 cargo fmt --all               # Required before commit
@@ -61,19 +63,29 @@ pnpm run format       # Prettier
 pnpm test             # Vitest
 ```
 
+**Linux Tauri build dependencies** (Ubuntu 22.04):
+```bash
+sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+```
+
 ### Browser App (`browser/`) - separate SolidStart app, NOT the Tauri UI
 ```bash
 cd browser
 pnpm install
 pnpm run build:wasm           # Build WASM from browser-lib (debug)
 pnpm run build:wasm:release   # Build WASM release
-pnpm run dev                  # Local dev server
+pnpm run dev                  # Vinxi dev server (local)
+pnpm run dev:cf               # wrangler dev on built output
 pnpm run build                # Build for production
-pnpm run deploy:cf            # Deploy to Cloudflare Workers
+pnpm run preview
+pnpm run deploy:cf            # Deploy to Cloudflare Workers (use this, NOT deploy)
+pnpm run db:generate          # Generate drizzle migration files
 pnpm run db:migrate           # Apply D1 migrations locally
 pnpm run db:migrate:prod      # Apply D1 migrations to production
+pnpm run db:studio            # Drizzle Studio UI
+pnpm test                     # Vitest
 ```
-Node >=22 required. Use `deploy:cf` not `deploy` (the `deploy` script internally calls `npm run build` which may fail with pnpm).
+Node >=22 required. Use `deploy:cf` not `deploy` — `deploy` internally calls `npm run build` which fails with pnpm.
 
 ### Browser WASM (separate workspace)
 ```bash
@@ -81,6 +93,7 @@ cd browser-lib
 export CC=/opt/homebrew/opt/llvm/bin/clang   # LLVM Clang, NOT Apple Clang
 cargo build --target=wasm32-unknown-unknown --release
 ```
+After changing WASM API or Rust browser logic, rebuild artifacts with `pnpm run build:wasm` from `browser/`.
 
 ### Mobile Builds
 ```bash
@@ -95,6 +108,7 @@ cd src-tauri/gen/apple
 xcodegen generate
 xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
 xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
+xcrun devicectl device process launch --console --terminate-existing --device <device-id> io.sendme.app
 ```
 
 ## Critical Patterns
@@ -142,6 +156,15 @@ Convert Rust errors to String for the frontend:
 .map_err(|e| format!("Failed to send: {}", e))?
 ```
 
+### TypeScript/SolidJS Conventions
+```typescript
+// Path alias: ~/* maps to src/
+import { send_file, type SendFileRequest } from "~/lib/commands";
+
+// Explicit types for signals
+const [devices, setDevices] = createSignal<NearbyDevice[]>([]);
+```
+
 ## Common Pitfalls
 
 1. **Router keep-alive**: Never remove `std::future::pending()` - critical for send
@@ -154,13 +177,32 @@ Convert Rust errors to String for the frontend:
 8. **Android JNI**: Use `push_local_frame()`/`pop_local_frame()` in loops to prevent JNI reference leaks
 9. **Recursion limit**: If compilation fails with "recursion limit reached", add `#![recursion_limit = "256"]` to `app/src-tauri/src/lib.rs`
 10. **Android file picking**: Android uses URI-based picking (`content://`); the Tauri backend copies URIs to temp files before processing
-11. **Two SolidJS frontends**: `app/src/` is the Tauri UI; `browser/src/` is the Cloudflare web app. They are separate builds with no shared state
+11. **Two SolidJS frontends**: `app/src/` is the Tauri UI; `browser/src/` is the Cloudflare web app. Separate builds, no shared state
 
 ## Platform-Specific File Picking
 
 - **Android**: `tauri_plugin_android_fs` (URI-based, copies to temp)
-- **iOS**: `tauri_plugin_fs_ios` + Documents directory (no directory picking)
+- **iOS**: `tauri_plugin_fs_ios` + Documents directory (no directory picking); custom `tauri-plugin-media-picker` (Swift + Rust, `PHPickerViewController`) for photo/video
 - **Desktop**: `tauri_plugin_dialog`
+
+## Clerk Auth (Mobile)
+
+Android/iOS cannot access runtime env vars — `CLERK_PUBLISHABLE_KEY` must be embedded at compile time.
+
+Auth flow uses system browser + deep link, NOT in-app WebView:
+1. Frontend calls `open_system_browser(url)` → system browser OAuth
+2. Clerk redirects to `sendme://auth-callback?__clerk_db_jwt=...`
+3. `handle_clerk_auth_callback` in `lib.rs` extracts token, sets it on FAPI client, emits `clerk-auth-callback-complete`
+4. Frontend refreshes auth state on that event
+
+Custom plugins in `app/src-tauri/plugins/`:
+- `tauri-plugin-clerk` — Clerk auth integration
+- `tauri-plugin-media-picker` — iOS photo/video selection
+- `clerk-fapi-rs` — Clerk FAPI client
+
+## iOS Safari Web Inspector
+
+Enable `ios-web-inspector` feature in `app/src-tauri/Cargo.toml` to debug the iOS WebView with Safari DevTools. This calls `setInspectable:true` on `WKWebView` at startup.
 
 ## Environment Variables
 
@@ -188,8 +230,24 @@ Minimum Supported Rust Version: **1.81**
 - `app/src-tauri/src/lib.rs` — single large file with ALL Tauri command handlers, transfer registry, progress emission, and platform-specific logic
 - `app/src/bindings.ts` — typed wrapper for Tauri commands
 - `app/src/lib/store.tsx` — shared client-side transfer and nearby UI state
-- `browser/src/worker/durable-objects/user.ts` — real-time hub for Cloudflare device presence/tickets
+- `browser/src/worker/durable-objects/user.ts` — real-time hub for Cloudflare device presence/tickets (Durable Objects are inside `browser/`, not a separate package)
 - `browser/src/lib/commands.ts` — JS bridge that lazily loads WASM, exposes send/receive helpers
+- `browser/app.config.ts` — two critical Rollup plugins: `cloudflareDoExportsPlugin` (injects `UserDO` export for Wrangler) and `cloudflareWsBypassPlugin` (preserves Cloudflare WebSocket property for DO handshakes)
+
+## Releases
+
+Releases trigger on `v*` tag pushes. CI builds:
+- CLI for Linux/macOS/Windows (multiple architectures)
+- Tauri desktop app for macOS/Linux/Windows
+- Android APK/AAB (requires `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_BASE64` secrets; uses NDK 27.0.12077973)
+
+## Commit Convention
+
+Prefix commit messages with the component when applicable:
+- `cli: fix progress bar`
+- `app: update send screen`
+- `lib: add nearby discovery`
+- `browser: fix WebSocket reconnect`
 
 ## Additional Docs
 

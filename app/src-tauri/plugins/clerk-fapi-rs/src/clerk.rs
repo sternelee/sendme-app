@@ -170,6 +170,10 @@ impl Clerk {
             .ok_or(ClerkLoadError::FailedToLoadClient)
     }
 
+    fn client_has_active_session(client: &Client) -> bool {
+        !client.sessions.is_empty()
+    }
+
     /// Initializes Clerk, tries to pull Environment and Client from API
     /// in case that fails tries to pull them from cache. Example if
     /// there wasn't internet connection
@@ -197,15 +201,27 @@ impl Clerk {
         }
 
         let mut environment = self.load_environment_from_api().await.ok();
-        let mut client = self.load_client_from_api().await.ok();
+        let api_client = self.load_client_from_api().await.ok();
+        let cached_client = self.load_client_from_cache();
 
         if environment.is_none() {
             environment = self.load_environment_from_cache();
         }
 
-        if client.is_none() {
-            client = self.load_client_from_cache();
-        }
+        let client = match (api_client, cached_client) {
+            (Some(api_client), Some(cached_client))
+                if !Self::client_has_active_session(&api_client)
+                    && Self::client_has_active_session(&cached_client) =>
+            {
+                warn!(
+                    "Clerk: API returned an empty client during load; preserving cached signed-in client"
+                );
+                Some(cached_client)
+            }
+            (Some(api_client), _) => Some(api_client),
+            (None, Some(cached_client)) => Some(cached_client),
+            (None, None) => None,
+        };
 
         let environment = environment.ok_or(ClerkLoadError::FailedToLoadEnv)?;
         let client = client.ok_or(ClerkLoadError::FailedToLoadClient)?;

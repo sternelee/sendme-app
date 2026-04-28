@@ -8,14 +8,18 @@ import * as schema from "~/lib/db/schema";
 import { friends, users } from "~/lib/db/schema";
 import { eq, and, or, desc } from "drizzle-orm";
 import { getOnlineDevices } from "~/lib/api/devices";
-import { authenticateRequest, type Env } from "~/lib/auth";
+import { authenticateRequest, getAuthTraceId, type Env } from "~/lib/auth";
 import { createClerkClient } from "@clerk/backend";
 
 /**
  * D1 may return snake_case or camelCase field names depending on the adapter version.
  * This helper reads both variants safely.
  */
-function getField<T>(obj: Record<string, unknown>, camel: string, snake: string): T | undefined {
+function getField<T>(
+  obj: Record<string, unknown>,
+  camel: string,
+  snake: string,
+): T | undefined {
   if (obj[camel] !== undefined) return obj[camel] as T;
   if (obj[snake] !== undefined) return obj[snake] as T;
   return undefined;
@@ -73,17 +77,28 @@ interface FriendWithUser {
 export async function GET(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const { userId, status: authStatus } = await authenticateRequest(requestEvent.request, env);
+    const traceId = getAuthTraceId(requestEvent.request);
+    const { userId, status: authStatus } = await authenticateRequest(
+      requestEvent.request,
+      env,
+    );
 
     if (!userId) {
+      console.warn(
+        `[Friends API] GET auth failed trace=${traceId} status=${authStatus}`,
+      );
       return new Response(
         JSON.stringify({ error: "Unauthorized", status: authStatus }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
+        { status: 401, headers: { "Content-Type": "application/json" } },
       );
     }
 
     const url = new URL(requestEvent.request.url);
     const filterStatus = url.searchParams.get("status") || "accepted";
+
+    console.log(
+      `[Friends API] GET start trace=${traceId} userId=${userId} status=${filterStatus}`,
+    );
 
     const db = drizzle(env.DB!, { schema });
 
@@ -101,7 +116,10 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
         .where(
           or(
             and(eq(friends.userId, userId), eq(friends.status, filterStatus)),
-            and(eq(friends.friendUserId, userId), eq(friends.status, filterStatus)),
+            and(
+              eq(friends.friendUserId, userId),
+              eq(friends.status, filterStatus),
+            ),
           ),
         )
         .orderBy(desc(friends.updatedAt));
@@ -110,16 +128,27 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
     const enrichedFriends: FriendWithUser[] = [];
     for (const friendship of userFriends) {
       const fUserId = getField<string>(friendship, "userId", "user_id");
-      const fFriendUserId = getField<string>(friendship, "friendUserId", "friend_user_id");
+      const fFriendUserId = getField<string>(
+        friendship,
+        "friendUserId",
+        "friend_user_id",
+      );
       const friendUserId = fUserId === userId ? fFriendUserId : fUserId;
 
       if (!friendUserId) {
-        console.warn("[Friends API GET] Could not determine friendUserId for friendship");
+        console.warn(
+          "[Friends API GET] Could not determine friendUserId for friendship",
+        );
         continue;
       }
 
       const friendUserRows = await db
-        .select({ id: users.id, name: users.name, email: users.email, image: users.image })
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          image: users.image,
+        })
         .from(users)
         .where(eq(users.id, friendUserId))
         .limit(1);
@@ -154,6 +183,10 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
       });
     }
 
+    console.log(
+      `[Friends API] GET success trace=${traceId} userId=${userId} count=${enrichedFriends.length}`,
+    );
+
     return new Response(JSON.stringify(enrichedFriends), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -165,7 +198,7 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
         error: "Failed to fetch friends",
         message: error instanceof Error ? error.message : String(error),
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }
@@ -182,21 +215,35 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
 export async function POST(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const { userId, status: authStatus } = await authenticateRequest(requestEvent.request, env);
+    const traceId = getAuthTraceId(requestEvent.request);
+    const { userId, status: authStatus } = await authenticateRequest(
+      requestEvent.request,
+      env,
+    );
 
     if (!userId) {
+      console.warn(
+        `[Friends API] POST auth failed trace=${traceId} status=${authStatus}`,
+      );
       return new Response(
         JSON.stringify({ error: "Unauthorized", status: authStatus }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
+        { status: 401, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    const body = await requestEvent.request.json() as { email?: string; userId?: string };
+    const body = (await requestEvent.request.json()) as {
+      email?: string;
+      userId?: string;
+    };
+
+    console.log(
+      `[Friends API] POST start trace=${traceId} userId=${userId} targetEmail=${body.email ?? "none"} targetUserId=${body.userId ?? "none"}`,
+    );
 
     if (!body.email && !body.userId) {
       return new Response(
         JSON.stringify({ error: "Missing email or userId" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -223,12 +270,16 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     if (!targetUser && body.email && env.CLERK_SECRET_KEY) {
       try {
         const clerk = createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
-        const clerkUsers = await clerk.users.getUserList({ emailAddress: [body.email] });
+        const clerkUsers = await clerk.users.getUserList({
+          emailAddress: [body.email],
+        });
         const clerkUser = clerkUsers.data[0];
         if (clerkUser) {
           const primaryEmail = clerkUser.emailAddresses[0]?.emailAddress ?? "";
           const displayName =
-            [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+            [clerkUser.firstName, clerkUser.lastName]
+              .filter(Boolean)
+              .join(" ") ||
             clerkUser.username ||
             primaryEmail;
 
@@ -273,16 +324,16 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     }
 
     if (!targetUser) {
-      return new Response(
-        JSON.stringify({ error: "User not found" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "User not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     if (targetUser.id === userId) {
       return new Response(
         JSON.stringify({ error: "Cannot add yourself as friend" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -291,8 +342,14 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       .from(friends)
       .where(
         or(
-          and(eq(friends.userId, userId), eq(friends.friendUserId, targetUser.id)),
-          and(eq(friends.userId, targetUser.id), eq(friends.friendUserId, userId)),
+          and(
+            eq(friends.userId, userId),
+            eq(friends.friendUserId, targetUser.id),
+          ),
+          and(
+            eq(friends.userId, targetUser.id),
+            eq(friends.friendUserId, userId),
+          ),
         ),
       );
 
@@ -302,10 +359,10 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       const status = getField(existingFriendship, "status", "status");
 
       if (status === "accepted") {
-        return new Response(
-          JSON.stringify({ error: "Already friends" }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ error: "Already friends" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
       }
 
       // Defensive field access for D1 snake_case quirk
@@ -313,7 +370,11 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         const rUserId = getField(r, "userId", "user_id");
         const rFriendUserId = getField(r, "friendUserId", "friend_user_id");
         const rStatus = getField(r, "status", "status");
-        return rUserId === targetUser.id && rFriendUserId === userId && rStatus === "pending";
+        return (
+          rUserId === targetUser.id &&
+          rFriendUserId === userId &&
+          rStatus === "pending"
+        );
       });
 
       if (incomingRequest) {
@@ -331,9 +392,17 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         // Also accept/clean up any reverse pending request (my request to them)
         const reverseRequest = existingFriendshipRows.find((r) => {
           const rUserId = getField<string>(r, "userId", "user_id");
-          const rFriendUserId = getField<string>(r, "friendUserId", "friend_user_id");
+          const rFriendUserId = getField<string>(
+            r,
+            "friendUserId",
+            "friend_user_id",
+          );
           const rStatus = getField<string>(r, "status", "status");
-          return rUserId === userId && rFriendUserId === targetUser.id && rStatus === "pending";
+          return (
+            rUserId === userId &&
+            rFriendUserId === targetUser.id &&
+            rStatus === "pending"
+          );
         });
         if (reverseRequest) {
           const reverseId = getField<string>(reverseRequest, "id", "id");
@@ -346,15 +415,22 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         await broadcastFriendUpdate(env, userId);
         await broadcastFriendUpdate(env, targetUser.id);
 
-        return new Response(JSON.stringify({ ...updated, action: "accepted" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        console.log(
+          `[Friends API] POST success trace=${traceId} userId=${userId} action=accepted targetUserId=${targetUser.id}`,
+        );
+
+        return new Response(
+          JSON.stringify({ ...updated, action: "accepted" }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
       }
 
       return new Response(
         JSON.stringify({ error: "Friend request already sent" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -375,10 +451,17 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     await broadcastFriendUpdate(env, targetUser.id);
     await broadcastFriendUpdate(env, userId);
 
-    return new Response(JSON.stringify({ ...newFriendship, action: "request_sent" }), {
-      status: 201,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.log(
+      `[Friends API] POST success trace=${traceId} userId=${userId} action=request_sent targetUserId=${targetUser.id}`,
+    );
+
+    return new Response(
+      JSON.stringify({ ...newFriendship, action: "request_sent" }),
+      {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   } catch (error) {
     console.error("[Friends API] POST error:", error);
     return new Response(
@@ -386,7 +469,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         error: "Failed to add friend",
         message: error instanceof Error ? error.message : String(error),
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

@@ -5,7 +5,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { authenticateRequest, type Env } from "~/lib/auth";
+import { authenticateRequest, getAuthTraceId, type Env } from "~/lib/auth";
 import * as schema from "~/lib/db/schema";
 import { tickets } from "~/lib/db/schema";
 
@@ -26,22 +26,32 @@ interface RequestEvent {
 export async function POST(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
+    const traceId = getAuthTraceId(requestEvent.request);
 
-    const { userId, status } = await authenticateRequest(requestEvent.request, env);
+    const { userId, status } = await authenticateRequest(
+      requestEvent.request,
+      env,
+    );
 
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized", status }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
+      console.warn(
+        `[Tickets/receive] auth failed trace=${traceId} status=${status}`,
       );
+      return new Response(JSON.stringify({ error: "Unauthorized", status }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const ticketId = requestEvent.params.id;
+    console.log(
+      `[Tickets/receive] start trace=${traceId} userId=${userId} ticketId=${ticketId ?? "none"}`,
+    );
     if (!ticketId) {
-      return new Response(
-        JSON.stringify({ error: "Missing ticket ID" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
+      return new Response(JSON.stringify({ error: "Missing ticket ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const db = drizzle(env.DB!, { schema });
@@ -49,7 +59,13 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     const updated = await db
       .update(tickets)
       .set({ status: "received", updatedAt: now, receivedAt: now })
-      .where(and(eq(tickets.id, ticketId), eq(tickets.userId, userId), eq(tickets.status, "pending")))
+      .where(
+        and(
+          eq(tickets.id, ticketId),
+          eq(tickets.userId, userId),
+          eq(tickets.status, "pending"),
+        ),
+      )
       .returning()
       .get();
 
@@ -72,7 +88,10 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         }),
       );
     } catch (broadcastErr) {
-      console.warn("[Tickets/receive] DO broadcast to receiver failed:", broadcastErr);
+      console.warn(
+        "[Tickets/receive] DO broadcast to receiver failed:",
+        broadcastErr,
+      );
     }
 
     // Notify the sender (friend transfers only): show a "received" confirmation
@@ -93,9 +112,16 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         );
       } catch (senderBroadcastErr) {
         // Non-fatal: sender may not be connected
-        console.warn("[Tickets/receive] DO broadcast to sender failed:", senderBroadcastErr);
+        console.warn(
+          "[Tickets/receive] DO broadcast to sender failed:",
+          senderBroadcastErr,
+        );
       }
     }
+
+    console.log(
+      `[Tickets/receive] success trace=${traceId} userId=${userId} ticketId=${updated.id}`,
+    );
 
     return new Response(JSON.stringify(updated), {
       status: 200,

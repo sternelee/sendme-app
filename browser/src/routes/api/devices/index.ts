@@ -14,7 +14,7 @@ import {
   getUserDevices,
   upsertDevice,
 } from "~/lib/api/devices";
-import { authenticateRequest, type Env } from "~/lib/auth";
+import { authenticateRequest, getAuthTraceId, type Env } from "~/lib/auth";
 import { createClerkClient } from "@clerk/backend";
 
 interface CloudflareContext {
@@ -57,13 +57,16 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
 
-    const { userId, status } = await authenticateRequest(requestEvent.request, env);
+    const { userId, status } = await authenticateRequest(
+      requestEvent.request,
+      env,
+    );
 
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized", status }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
-      );
+      return new Response(JSON.stringify({ error: "Unauthorized", status }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const db = drizzle(env.DB!, { schema });
@@ -89,14 +92,21 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
     const cf = requestEvent.nativeEvent.context.cloudflare.cf;
+    const traceId = getAuthTraceId(requestEvent.request);
 
-    const { userId, status } = await authenticateRequest(requestEvent.request, env);
+    const { userId, status } = await authenticateRequest(
+      requestEvent.request,
+      env,
+    );
 
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized", status }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
+      console.warn(
+        `[Devices API] POST auth failed trace=${traceId} status=${status}`,
       );
+      return new Response(JSON.stringify({ error: "Unauthorized", status }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     let body: PostDeviceBody = {};
@@ -106,12 +116,18 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       // Empty body is okay
     }
 
-    const userAgent = requestEvent.request.headers.get("user-agent") || undefined;
+    const userAgent =
+      requestEvent.request.headers.get("user-agent") || undefined;
     const ipAddress =
-      cf?.colo || requestEvent.request.headers.get("cf-connecting-ip") || undefined;
+      cf?.colo ||
+      requestEvent.request.headers.get("cf-connecting-ip") ||
+      undefined;
     const platform = detectPlatform(userAgent || "");
     const deviceId = body.deviceId || crypto.randomUUID();
     const deviceName = body.name || generateDeviceName(platform, userAgent);
+    console.log(
+      `[Devices API] POST start trace=${traceId} userId=${userId} deviceId=${deviceId} platform=${platform}`,
+    );
 
     const db = drizzle(env.DB!, { schema });
 
@@ -126,9 +142,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
         clerkUser.emailAddresses[0]?.emailAddress ??
         "";
       const displayName =
-        [clerkUser.firstName, clerkUser.lastName]
-          .filter(Boolean)
-          .join(" ") ||
+        [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
         clerkUser.username ||
         primaryEmail;
 
@@ -177,10 +191,7 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
           .where(eq(users.id, userId));
       }
     } catch (clerkErr) {
-      console.warn(
-        "[Devices API] Could not sync user from Clerk:",
-        clerkErr,
-      );
+      console.warn("[Devices API] Could not sync user from Clerk:", clerkErr);
       // Non-blocking: friend search may fail if user record is missing
     }
 
@@ -192,6 +203,10 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       hostname: body.hostname,
       userAgent,
     });
+
+    console.log(
+      `[Devices API] POST success trace=${traceId} userId=${userId} deviceId=${deviceId} dbId=${device.id}`,
+    );
 
     await broadcastPresence(env, userId);
 

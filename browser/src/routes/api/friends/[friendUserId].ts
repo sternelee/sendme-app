@@ -6,7 +6,7 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "~/lib/db/schema";
 import { friends } from "~/lib/db/schema";
 import { eq, and, or } from "drizzle-orm";
-import { authenticateRequest, type Env } from "~/lib/auth";
+import { authenticateRequest, getAuthTraceId, type Env } from "~/lib/auth";
 
 interface CloudflareContext {
   env: Env;
@@ -41,12 +41,19 @@ async function broadcastFriendUpdate(env: Env, userId: string): Promise<void> {
 export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const { userId, status: authStatus } = await authenticateRequest(requestEvent.request, env);
+    const traceId = getAuthTraceId(requestEvent.request);
+    const { userId, status: authStatus } = await authenticateRequest(
+      requestEvent.request,
+      env,
+    );
 
     if (!userId) {
+      console.warn(
+        `[Friends API] DELETE auth failed trace=${traceId} status=${authStatus}`,
+      );
       return new Response(
         JSON.stringify({ error: "Unauthorized", status: authStatus }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
+        { status: 401, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -55,32 +62,46 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
     const friendUserId = pathParts[pathParts.length - 1];
 
     if (!friendUserId) {
-      return new Response(
-        JSON.stringify({ error: "Missing friendUserId" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Missing friendUserId" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const db = drizzle(env.DB!, { schema });
+
+    console.log(
+      `[Friends API] DELETE start trace=${traceId} userId=${userId} friendUserId=${friendUserId}`,
+    );
 
     const result = await db
       .delete(friends)
       .where(
         or(
-          and(eq(friends.userId, userId), eq(friends.friendUserId, friendUserId)),
-          and(eq(friends.userId, friendUserId), eq(friends.friendUserId, userId)),
+          and(
+            eq(friends.userId, userId),
+            eq(friends.friendUserId, friendUserId),
+          ),
+          and(
+            eq(friends.userId, friendUserId),
+            eq(friends.friendUserId, userId),
+          ),
         ),
       );
 
     if ((result as any).changes === 0) {
-      return new Response(
-        JSON.stringify({ error: "Friendship not found" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Friendship not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     await broadcastFriendUpdate(env, userId);
     await broadcastFriendUpdate(env, friendUserId);
+
+    console.log(
+      `[Friends API] DELETE success trace=${traceId} userId=${userId} friendUserId=${friendUserId}`,
+    );
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
@@ -93,7 +114,7 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
         error: "Failed to remove friend",
         message: error instanceof Error ? error.message : String(error),
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

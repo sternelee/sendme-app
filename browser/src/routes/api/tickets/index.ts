@@ -10,7 +10,7 @@ import {
   getUserDeviceByPersistentId,
   isDeviceOnline,
 } from "~/lib/api/devices";
-import { authenticateRequest, type Env } from "~/lib/auth";
+import { authenticateRequest, getAuthTraceId, type Env } from "~/lib/auth";
 import * as schema from "~/lib/db/schema";
 import { friends, tickets } from "~/lib/db/schema";
 
@@ -40,16 +40,26 @@ interface PostTicketBody {
 export async function POST(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const { userId, status } = await authenticateRequest(requestEvent.request, env);
+    const traceId = getAuthTraceId(requestEvent.request);
+    const { userId, status } = await authenticateRequest(
+      requestEvent.request,
+      env,
+    );
 
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized", status }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
+      console.warn(
+        `[Tickets API] POST auth failed trace=${traceId} status=${status}`,
       );
+      return new Response(JSON.stringify({ error: "Unauthorized", status }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const body = (await requestEvent.request.json()) as PostTicketBody;
+    console.log(
+      `[Tickets API] POST start trace=${traceId} userId=${userId} deviceId=${body.deviceId ?? "none"} friendUserId=${body.friendUserId ?? "none"}`,
+    );
 
     if (!body.ticket) {
       return new Response(
@@ -60,7 +70,9 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
 
     if ((body.deviceId ? 1 : 0) + (body.friendUserId ? 1 : 0) !== 1) {
       return new Response(
-        JSON.stringify({ error: "Provide exactly one of deviceId or friendUserId" }),
+        JSON.stringify({
+          error: "Provide exactly one of deviceId or friendUserId",
+        }),
         { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
@@ -96,10 +108,10 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       const targetDevice = await getUserDeviceById(db, userId, body.deviceId);
 
       if (!targetDevice) {
-        return new Response(
-          JSON.stringify({ error: "Device not found" }),
-          { status: 404, headers: { "Content-Type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ error: "Device not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
       }
 
       if (!isDeviceOnline(targetDevice)) {
@@ -135,7 +147,9 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
 
       if (!friendship) {
         return new Response(
-          JSON.stringify({ error: "Not friends with this user or friendship not accepted" }),
+          JSON.stringify({
+            error: "Not friends with this user or friendship not accepted",
+          }),
           { status: 403, headers: { "Content-Type": "application/json" } },
         );
       }
@@ -181,6 +195,10 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       console.warn("[Tickets API] DO broadcast failed:", broadcastErr);
     }
 
+    console.log(
+      `[Tickets API] POST success trace=${traceId} userId=${userId} ticketId=${newTicket.id} targetUserId=${targetUserId} targetDeviceId=${targetDeviceId ?? "none"}`,
+    );
+
     return new Response(JSON.stringify(newTicket), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -200,16 +218,26 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
 export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const { userId, status } = await authenticateRequest(requestEvent.request, env);
+    const traceId = getAuthTraceId(requestEvent.request);
+    const { userId, status } = await authenticateRequest(
+      requestEvent.request,
+      env,
+    );
 
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized", status }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
+      console.warn(
+        `[Tickets API] DELETE auth failed trace=${traceId} status=${status}`,
       );
+      return new Response(JSON.stringify({ error: "Unauthorized", status }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const body = (await requestEvent.request.json()) as { ticket?: string };
+    console.log(
+      `[Tickets API] DELETE start trace=${traceId} userId=${userId} ticket=${body.ticket ?? "none"}`,
+    );
 
     if (!body.ticket) {
       return new Response(
@@ -229,8 +257,14 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
 
     await db
       .delete(schema.tickets)
-      .where(and(eq(tickets.ticket, body.ticket), eq(tickets.fromUserId, userId)))
+      .where(
+        and(eq(tickets.ticket, body.ticket), eq(tickets.fromUserId, userId)),
+      )
       .run();
+
+    console.log(
+      `[Tickets API] DELETE success trace=${traceId} userId=${userId} ticket=${body.ticket}`,
+    );
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
@@ -251,18 +285,30 @@ export async function DELETE(requestEvent: RequestEvent): Promise<Response> {
 export async function GET(requestEvent: RequestEvent): Promise<Response> {
   try {
     const env = requestEvent.nativeEvent.context.cloudflare.env;
-    const { userId, status } = await authenticateRequest(requestEvent.request, env);
+    const traceId = getAuthTraceId(requestEvent.request);
+    const { userId, status } = await authenticateRequest(
+      requestEvent.request,
+      env,
+    );
 
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized", status }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
+      console.warn(
+        `[Tickets API] GET auth failed trace=${traceId} status=${status}`,
       );
+      return new Response(JSON.stringify({ error: "Unauthorized", status }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const url = new URL(requestEvent.request.url);
     const requestedDeviceId =
-      url.searchParams.get("deviceId") || requestEvent.request.headers.get("X-Device-Id");
+      url.searchParams.get("deviceId") ||
+      requestEvent.request.headers.get("X-Device-Id");
+
+    console.log(
+      `[Tickets API] GET start trace=${traceId} userId=${userId} requestedDeviceId=${requestedDeviceId ?? "none"}`,
+    );
 
     if (!requestedDeviceId) {
       return new Response(
@@ -299,6 +345,10 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
             ),
       )
       .orderBy(desc(schema.tickets.createdAt));
+
+    console.log(
+      `[Tickets API] GET success trace=${traceId} userId=${userId} count=${pendingTickets.length}`,
+    );
 
     return new Response(JSON.stringify(pendingTickets), {
       status: 200,

@@ -3,11 +3,11 @@
  * Handles friend requests, listing, and ticket sharing
  */
 
-import { fetch } from "@tauri-apps/plugin-http";
 import {
-  getAuthorizationHeaders,
+  createAuthTraceId,
   getCloudApiBaseUrl,
   getPersistentDeviceId,
+  requestCloudApi,
 } from "~/lib/cloud-api";
 
 export interface FriendDevice {
@@ -38,31 +38,38 @@ export interface Friend {
 const API_BASE = getCloudApiBaseUrl();
 
 class FriendsService {
-  private async getAuthHeader(): Promise<HeadersInit> {
-    return getAuthorizationHeaders();
+  private createTraceId(action: string): string {
+    return createAuthTraceId(`friends-${action}`);
   }
 
   /**
    * Get list of friends
    * @param status - Filter by status: 'accepted' | 'pending' | 'all'
    */
-  async getFriends(status: "accepted" | "pending" | "all" = "accepted"): Promise<Friend[]> {
+  async getFriends(
+    status: "accepted" | "pending" | "all" = "accepted",
+  ): Promise<Friend[]> {
     try {
-      const headers = await this.getAuthHeader();
-      const response = await fetch(`${API_BASE}/friends?status=${status}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...headers,
+      const traceId = this.createTraceId("list");
+      const response = await requestCloudApi(
+        `${API_BASE}/friends?status=${status}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
-      });
+        { label: "friends.list", traceId },
+      );
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "Failed to fetch friends" }));
+        const error = await response
+          .json()
+          .catch(() => ({ error: "Failed to fetch friends" }));
         throw new Error(error.error || "Failed to fetch friends");
       }
 
-      const data = await response.json() as Friend[];
+      const data = (await response.json()) as Friend[];
       return data;
     } catch (error) {
       console.error("[FriendsService] getFriends error:", error);
@@ -74,19 +81,27 @@ class FriendsService {
    * Send a friend request or accept an existing one
    * @param email - The email of the user to add/accept
    */
-  async addFriend(email: string): Promise<{ success: boolean; action?: string; error?: string }> {
+  async addFriend(
+    email: string,
+  ): Promise<{ success: boolean; action?: string; error?: string }> {
     try {
-      const headers = await this.getAuthHeader();
-      const response = await fetch(`${API_BASE}/friends`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...headers,
+      const traceId = this.createTraceId("add");
+      const response = await requestCloudApi(
+        `${API_BASE}/friends`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email }),
         },
-        body: JSON.stringify({ email }),
-      });
+        { label: "friends.add", traceId },
+      );
 
-      const data = await response.json() as { error?: string; action?: string };
+      const data = (await response.json()) as {
+        error?: string;
+        action?: string;
+      };
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to add friend");
@@ -105,17 +120,22 @@ class FriendsService {
    */
   async removeFriend(friendUserId: string): Promise<void> {
     try {
-      const headers = await this.getAuthHeader();
-      const response = await fetch(`${API_BASE}/friends/${friendUserId}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          ...headers,
+      const traceId = this.createTraceId("remove");
+      const response = await requestCloudApi(
+        `${API_BASE}/friends/${friendUserId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
-      });
+        { label: "friends.remove", traceId },
+      );
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "Failed to remove friend" }));
+        const error = await response
+          .json()
+          .catch(() => ({ error: "Failed to remove friend" }));
         throw new Error(error.error || "Failed to remove friend");
       }
     } catch (error) {
@@ -136,23 +156,28 @@ class FriendsService {
     filename?: string,
   ): Promise<{ success: boolean }> {
     try {
-      const headers = await this.getAuthHeader();
-      const response = await fetch(`${API_BASE}/tickets`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Device-Id": getPersistentDeviceId(),
-          ...headers,
+      const traceId = this.createTraceId("ticket-friend");
+      const response = await requestCloudApi(
+        `${API_BASE}/tickets`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Id": getPersistentDeviceId(),
+          },
+          body: JSON.stringify({
+            friendUserId,
+            ticket,
+            filename,
+          }),
         },
-        body: JSON.stringify({
-          friendUserId,
-          ticket,
-          filename,
-        }),
-      });
+        { label: "tickets.send-friend", traceId },
+      );
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "Failed to send ticket" }));
+        const error = await response
+          .json()
+          .catch(() => ({ error: "Failed to send ticket" }));
         throw new Error(error.error || "Failed to send ticket");
       }
 
@@ -175,23 +200,28 @@ class FriendsService {
     filename?: string,
   ): Promise<{ success: boolean }> {
     try {
-      const headers = await this.getAuthHeader();
-      const response = await fetch(`${API_BASE}/tickets`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Device-Id": getPersistentDeviceId(),
-          ...headers,
+      const traceId = this.createTraceId("ticket-device");
+      const response = await requestCloudApi(
+        `${API_BASE}/tickets`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Id": getPersistentDeviceId(),
+          },
+          body: JSON.stringify({
+            deviceId,
+            ticket,
+            filename,
+          }),
         },
-        body: JSON.stringify({
-          deviceId,
-          ticket,
-          filename,
-        }),
-      });
+        { label: "tickets.send-device", traceId },
+      );
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "Failed to send ticket" }));
+        const error = await response
+          .json()
+          .catch(() => ({ error: "Failed to send ticket" }));
         throw new Error(error.error || "Failed to send ticket to device");
       }
 
@@ -205,30 +235,37 @@ class FriendsService {
   /**
    * Get tickets shared with the user
    */
-  async getSharedTickets(): Promise<Array<{
-    id: string;
-    ticket: string;
-    filename: string | null;
-    senderName: string;
-    createdAt: Date;
-  }>> {
+  async getSharedTickets(): Promise<
+    Array<{
+      id: string;
+      ticket: string;
+      filename: string | null;
+      senderName: string;
+      createdAt: Date;
+    }>
+  > {
     try {
-      const headers = await this.getAuthHeader();
-      const response = await fetch(`${API_BASE}/tickets?deviceId=${encodeURIComponent(getPersistentDeviceId())}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Device-Id": getPersistentDeviceId(),
-          ...headers,
+      const traceId = this.createTraceId("tickets-list");
+      const response = await requestCloudApi(
+        `${API_BASE}/tickets?deviceId=${encodeURIComponent(getPersistentDeviceId())}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Id": getPersistentDeviceId(),
+          },
         },
-      });
+        { label: "tickets.list", traceId },
+      );
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "Failed to fetch tickets" }));
+        const error = await response
+          .json()
+          .catch(() => ({ error: "Failed to fetch tickets" }));
         throw new Error(error.error || "Failed to fetch tickets");
       }
 
-      const data = await response.json() as Array<{
+      const data = (await response.json()) as Array<{
         id: string;
         ticket: string;
         filename: string | null;
@@ -247,15 +284,18 @@ class FriendsService {
    */
   async markTicketReceived(ticketId: string): Promise<void> {
     try {
-      const headers = await this.getAuthHeader();
-      await fetch(`${API_BASE}/tickets/${ticketId}/receive`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Device-Id": getPersistentDeviceId(),
-          ...headers,
+      const traceId = this.createTraceId("ticket-receive");
+      await requestCloudApi(
+        `${API_BASE}/tickets/${ticketId}/receive`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Id": getPersistentDeviceId(),
+          },
         },
-      });
+        { label: "tickets.receive", traceId },
+      );
     } catch (error) {
       console.error("[FriendsService] markTicketReceived error:", error);
     }

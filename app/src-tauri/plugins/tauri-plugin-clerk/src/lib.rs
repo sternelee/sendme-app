@@ -47,6 +47,12 @@ fn clerk_auth_cb<R: Runtime>(
     user: Option<ClientUser>,
     organization: Option<ClientOrganization>,
 ) {
+    debug!(
+        "clerk_auth_cb: sessions={}, has_session={}, has_user={}",
+        client.sessions.len(),
+        session.is_some(),
+        user.is_some()
+    );
     emit_clerk_auth_event(
         app,
         ClerkAuthEventPayload {
@@ -84,10 +90,19 @@ impl<R: Runtime, T: Manager<R>> crate::ClerkExt<R> for T {
 
         let clerk = self.clerk();
         if !clerk.loaded() {
+            debug!(
+                "ensure_clerk_initialized: before load, cached client sessions={}",
+                clerk.client().ok().map(|c| c.sessions.len()).unwrap_or(0)
+            );
             // Clerk load will default loading from API and does fall back on cached
             // resources in case of not being able to load resources from API. This
             // allows the app to work in offline mode for signedin users.
             clerk.load().await.map_err(|e| e.to_string())?;
+
+            debug!(
+                "ensure_clerk_initialized: after load, clerk client sessions={}",
+                clerk.client().ok().map(|c| c.sessions.len()).unwrap_or(0)
+            );
 
             // After clerk.load() succeeds, Clerk JS has restored its state from cache
             // (via __internal_getCachedResources). However, the Rust ClerkState hasn't
@@ -95,6 +110,10 @@ impl<R: Runtime, T: Manager<R>> crate::ClerkExt<R> for T {
             // On app restart, Clerk restores from cache but the listener doesn't fire
             // (no "change" detected), so we must manually sync the cached client here.
             if let Ok(cached_client) = clerk.client() {
+                debug!(
+                    "ensure_clerk_initialized: syncing cached client into Rust state, sessions={}",
+                    cached_client.sessions.len()
+                );
                 let _ = clerk.set_client(cached_client);
             }
 
@@ -112,6 +131,11 @@ impl<R: Runtime, T: Manager<R>> crate::ClerkExt<R> for T {
                     if payload.source != RUST_EVENT_SOURCE {
                         debug!("Received ClerkAuthEvent: {payload:?}");
                         let incoming_client = payload.payload.client.clone();
+                        debug!(
+                            "Received JS ClerkAuthEvent: sessions={}, last_active_session_id={:?}",
+                            incoming_client.sessions.len(),
+                            incoming_client.last_active_session_id
+                        );
                         let should_ignore_empty_client = if incoming_client.sessions.is_empty() {
                             app_handle
                                 .clerk()

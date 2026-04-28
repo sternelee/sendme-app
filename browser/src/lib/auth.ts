@@ -16,6 +16,25 @@ export interface Env {
   USER_DO: DurableObjectNamespace;
 }
 
+export function describeBearerToken(token: string | null): string {
+  if (!token) {
+    return "none";
+  }
+
+  const prefix = token.slice(0, 10);
+  const suffix = token.slice(-6);
+  return `len=${token.length},prefix=${prefix},suffix=${suffix}`;
+}
+
+export function getAuthTraceId(request: Request): string {
+  const url = new URL(request.url);
+  return (
+    request.headers.get("x-auth-trace-id") ||
+    url.searchParams.get("authTraceId") ||
+    "none"
+  );
+}
+
 function getBearerToken(request: Request): string | null {
   const authHeader = request.headers.get("authorization");
   if (!authHeader) {

@@ -78,16 +78,27 @@ export class UserDO extends DurableObject<Env> {
       const userId = url.searchParams.get("userId");
       const persistentDeviceId =
         request.headers.get("X-Device-Id") || url.searchParams.get("deviceId");
+      const traceId =
+        request.headers.get("X-Auth-Trace-Id") ||
+        url.searchParams.get("authTraceId") ||
+        "none";
 
       if (!userId) {
+        console.warn(`[UserDO] websocket missing userId trace=${traceId}`);
         return new Response("User ID required", { status: 400 });
       }
 
       if (!persistentDeviceId) {
+        console.warn(
+          `[UserDO] websocket missing deviceId trace=${traceId} userId=${userId}`,
+        );
         return new Response("Device ID required", { status: 400 });
       }
 
-      return this.handleWebSocket(userId, persistentDeviceId);
+      console.log(
+        `[UserDO] websocket fetch trace=${traceId} userId=${userId} deviceId=${persistentDeviceId}`,
+      );
+      return this.handleWebSocket(userId, persistentDeviceId, traceId);
     }
 
     const pathname = url.pathname;
@@ -116,7 +127,10 @@ export class UserDO extends DurableObject<Env> {
       return new Response("ok");
     }
 
-    if (pathname.endsWith("/broadcast/transfer_received") && request.method === "POST") {
+    if (
+      pathname.endsWith("/broadcast/transfer_received") &&
+      request.method === "POST"
+    ) {
       const payload = (await request.json()) as {
         ticketId: string;
         filename: string | null;
@@ -136,10 +150,11 @@ export class UserDO extends DurableObject<Env> {
   private async handleWebSocket(
     userId: string,
     persistentDeviceId: string,
+    traceId: string,
   ): Promise<Response> {
     const { 0: client, 1: server } = Object.values(new WebSocketPair());
 
-    this.acceptWebSocket(server, userId, persistentDeviceId);
+    this.acceptWebSocket(server, userId, persistentDeviceId, traceId);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -148,11 +163,16 @@ export class UserDO extends DurableObject<Env> {
     ws: WebSocket,
     userId: string,
     persistentDeviceId: string,
+    traceId: string,
   ): void {
     ws.accept();
+    console.log(
+      `[UserDO] websocket accepted trace=${traceId} userId=${userId} deviceId=${persistentDeviceId}`,
+    );
 
     const existingSessions = this.deviceSessions.get(persistentDeviceId);
-    const isFirstSessionForDevice = !existingSessions || existingSessions.size === 0;
+    const isFirstSessionForDevice =
+      !existingSessions || existingSessions.size === 0;
 
     this.sessions.set(ws, persistentDeviceId);
 
@@ -167,7 +187,12 @@ export class UserDO extends DurableObject<Env> {
     });
 
     ws.addEventListener("message", (event) => {
-      void this.handleMessage(ws, userId, persistentDeviceId, event.data as string);
+      void this.handleMessage(
+        ws,
+        userId,
+        persistentDeviceId,
+        event.data as string,
+      );
     });
 
     void this.sendInitialState(userId, ws);
@@ -298,11 +323,15 @@ export class UserDO extends DurableObject<Env> {
         ),
       );
 
-    const friendIds = [...new Set(
-      acceptedFriendships.map((friendship) =>
-        friendship.userId === userId ? friendship.friendUserId : friendship.userId,
+    const friendIds = [
+      ...new Set(
+        acceptedFriendships.map((friendship) =>
+          friendship.userId === userId
+            ? friendship.friendUserId
+            : friendship.userId,
+        ),
       ),
-    )];
+    ];
 
     await Promise.all(
       friendIds.map(async (friendId) => {
@@ -347,18 +376,27 @@ export class UserDO extends DurableObject<Env> {
     }
 
     await Promise.all(
-      [...this.sessions.keys()].map((socket) => this.sendTicketsToSocket(userId, socket)),
+      [...this.sessions.keys()].map((socket) =>
+        this.sendTicketsToSocket(userId, socket),
+      ),
     );
   }
 
-  private async sendTicketsToSocket(userId: string, ws: WebSocket): Promise<void> {
+  private async sendTicketsToSocket(
+    userId: string,
+    ws: WebSocket,
+  ): Promise<void> {
     const persistentDeviceId = this.sessions.get(ws);
     if (!persistentDeviceId) {
       return;
     }
 
     const db = drizzle(this.env.DB, { schema });
-    const currentDevice = await getUserDeviceByPersistentId(db, userId, persistentDeviceId);
+    const currentDevice = await getUserDeviceByPersistentId(
+      db,
+      userId,
+      persistentDeviceId,
+    );
 
     const userTickets = currentDevice
       ? await db
@@ -419,13 +457,17 @@ export class UserDO extends DurableObject<Env> {
             return undefined;
           };
 
-          const fId = getField(friendship, 'id', 'id');
-          const fUserId = getField(friendship, 'userId', 'user_id');
-          const fFriendUserId = getField(friendship, 'friendUserId', 'friend_user_id');
-          const fStatus = getField(friendship, 'status', 'status');
-          const fCreatedAt = getField(friendship, 'createdAt', 'created_at');
-          const fUpdatedAt = getField(friendship, 'updatedAt', 'updated_at');
-          const fAcceptedAt = getField(friendship, 'acceptedAt', 'accepted_at');
+          const fId = getField(friendship, "id", "id");
+          const fUserId = getField(friendship, "userId", "user_id");
+          const fFriendUserId = getField(
+            friendship,
+            "friendUserId",
+            "friend_user_id",
+          );
+          const fStatus = getField(friendship, "status", "status");
+          const fCreatedAt = getField(friendship, "createdAt", "created_at");
+          const fUpdatedAt = getField(friendship, "updatedAt", "updated_at");
+          const fAcceptedAt = getField(friendship, "acceptedAt", "accepted_at");
 
           const friendUserId = fUserId === userId ? fFriendUserId : fUserId;
 
@@ -434,7 +476,12 @@ export class UserDO extends DurableObject<Env> {
           }
 
           const friendUserRows = await db
-            .select({ id: users.id, name: users.name, email: users.email, image: users.image })
+            .select({
+              id: users.id,
+              name: users.name,
+              email: users.email,
+              image: users.image,
+            })
             .from(users)
             .where(eq(users.id, friendUserId))
             .limit(1);

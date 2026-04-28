@@ -985,6 +985,88 @@ async fn test_load_normalizes_legacy_stored_authorization_header() {
 }
 
 #[tokio::test]
+async fn test_load_prefers_cached_signed_in_client_when_api_returns_empty_client() {
+    let mut server = Server::new_async().await;
+
+    let env_mock = server
+        .mock("GET", "/v1/environment?_is_native=1")
+        .with_status(200)
+        .with_body(get_env_data())
+        .with_header("content-type", "application/json")
+        .create_async()
+        .await;
+
+    let client_mock = server
+        .mock("GET", "/v1/client?_is_native=1")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!({
+                "response": not_logged_in_client(),
+                "client": null
+            })
+            .to_string(),
+        )
+        .create_async()
+        .await;
+
+    let store = Arc::new(DefaultStore::default());
+    let config = ClerkFapiConfiguration::new_with_store(
+        "pk_test_Y2xlcmsuZXhhbXBsZS5jb20k".to_string(),
+        Some(server.url()),
+        None,
+        Some(store),
+        None,
+        ClientKind::NonBrowser,
+    )
+    .unwrap();
+    config.set_store_value("client", serde_json::to_value(logged_in_client()).unwrap());
+
+    let clerk = Clerk::new(config);
+    clerk.load().await.unwrap();
+
+    env_mock.assert_async().await;
+    client_mock.assert_async().await;
+    assert!(clerk.session().unwrap().is_some());
+    assert!(clerk.user().unwrap().is_some());
+}
+
+#[tokio::test]
+async fn test_load_keeps_persisted_authorization_header_when_cached_session_lacks_durable_token() {
+    let store = Arc::new(DefaultStore::default());
+    let config = ClerkFapiConfiguration::new_with_store(
+        "pk_test_Y2xlcmsuZXhhbXBsZS5jb20k".to_string(),
+        None,
+        None,
+        Some(store),
+        None,
+        ClientKind::NonBrowser,
+    )
+    .unwrap();
+
+    let mut cached_client: clerk_fapi_rs::models::ClientClient =
+        serde_json::from_value(logged_in_client()).unwrap();
+    cached_client.sessions[0].last_active_token = Some(None);
+    config.set_store_value("client", serde_json::to_value(cached_client).unwrap());
+    config.set_store_value(
+        "authorization_header",
+        serde_json::json!("Bearer durable.persisted.token"),
+    );
+    config.set_store_value(
+        "environment",
+        serde_json::from_str::<Value>(&get_env_data()).unwrap(),
+    );
+
+    let clerk = Clerk::new(config);
+    clerk.load().await.unwrap();
+
+    assert_eq!(
+        clerk.get_client_authorization_header(),
+        Some("Bearer durable.persisted.token".to_string())
+    );
+}
+
+#[tokio::test]
 async fn test_parse_client() {
     // smoke test with client fetched as of 2025-10-13
     let value1 = serde_json::json!(
