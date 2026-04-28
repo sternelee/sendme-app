@@ -110,12 +110,22 @@ impl NearbyDiscovery {
 
         let daemon = ServiceDaemon::new()?;
         let service_type = format!("{}.local.", SERVICE_TYPE);
-        let instance_name = name.replace(" ", "-");
+
+        // Make instance name unique by appending a short endpoint-id suffix.
+        // mDNS service names must be unique per LAN; without this, multiple
+        // devices with the same display name collide and discovery becomes
+        // inconsistent across platforms.
+        let unique_suffix = {
+            let id_str = endpoint_addr.id.to_string();
+            &id_str[..id_str.len().min(8)].to_string()
+        };
+        let instance_name = format!("{}-{}", name.replace(" ", "-"), unique_suffix);
         let hostname = format!("{}.local.", instance_name);
 
         let endpoint = encode_endpoint_addr(endpoint_addr)?;
         let endpoint_chunks = chunk_ascii(&endpoint, ENDPOINT_CHUNK_LEN);
         let mut properties = vec![
+            ("name".to_string(), name.to_string()),
             ("type".to_string(), device_type.as_str().to_string()),
             ("ver".to_string(), TXT_VERSION.to_string()),
             ("ec".to_string(), endpoint_chunks.len().to_string()),
@@ -169,12 +179,11 @@ impl NearbyDiscovery {
                             // Skip if this is our own service
                             if let Some(entry) = create_service_entry(&info) {
                                 let id = info.get_fullname().to_string();
-                                // Check if this is our own instance
-                                if let Some(our_name) = our_name.split('.').next() {
-                                    if entry.name == our_name {
-                                        tracing::debug!("Skipping our own service: {}", id);
-                                        continue;
-                                    }
+                                // Check if this is our own instance by matching the
+                                // unique instance name prefix in the fullname.
+                                if id.starts_with(&format!("{}.", our_name)) {
+                                    tracing::debug!("Skipping our own service: {}", id);
+                                    continue;
                                 }
                                 if let Ok(mut services) = services.lock() {
                                     let changed = services.get(&id) != Some(&entry);
@@ -249,7 +258,12 @@ fn snapshot_devices(services: &HashMap<String, ServiceEntry>) -> Vec<NearbyDevic
 
 fn create_service_entry(info: &ServiceInfo) -> Option<ServiceEntry> {
     let fullname = info.get_fullname();
-    let name = extract_instance_name(fullname)?;
+    // Prefer the original display name stored in TXT properties so the UI
+    // shows the friendly name rather than the unique mDNS instance name.
+    let name = info
+        .get_property_val_str("name")
+        .map(|s| s.to_string())
+        .or_else(|| extract_instance_name(fullname))?;
     let endpoint_addr = endpoint_addr_from_txt(info.get_properties())?;
 
     let addresses: Vec<String> = info
