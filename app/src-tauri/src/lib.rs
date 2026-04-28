@@ -1,4 +1,3 @@
-use reqwest::Client;
 use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -710,46 +709,6 @@ async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyState>) -> Result<
     guard.pending_requests.clear();
     guard.endpoint = None;
     guard.listener_started = false;
-    Ok(())
-}
-
-#[tauri::command]
-async fn register_cloud_device(
-    app: AppHandle,
-    device_id: String,
-    api_origin: String,
-) -> Result<(), String> {
-    let authorization = current_cloud_authorization_header(&app).await?;
-    let token = extract_bearer_token(&authorization)
-        .ok_or_else(|| "Missing bearer token".to_string())?
-        .to_string();
-    let (device_name, _) = current_nearby_profile(&app)?;
-    let url = build_cloud_api_url(&api_origin, "/api/devices")?;
-    let client = Client::builder()
-        .user_agent(cloud_user_agent())
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
-    let response = client
-        .post(url)
-        .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
-        .json(&serde_json::json!({
-            "deviceId": device_id,
-            "name": device_name,
-            "hostname": device_name,
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to register cloud device: {e}"))?;
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Failed to register device".to_string());
-        return Err(format!(
-            "Failed to register cloud device ({status}): {body}"
-        ));
-    }
     Ok(())
 }
 
@@ -1761,168 +1720,20 @@ fn emit_cloud_presence_state(app: &AppHandle, payload: CloudPresenceSnapshotPayl
     let _ = app.emit("cloud_presence_state", payload);
 }
 
-fn extract_bearer_token(header: &str) -> Option<&str> {
-    let mut parts = header.split_whitespace();
-    let scheme = parts.next()?;
-    let token = parts.next()?;
-    if !scheme.eq_ignore_ascii_case("bearer") {
-        return None;
-    }
-    Some(token)
-}
-
-/// Returns true if the JWT is definitively expired.
-/// Decodes the payload (middle segment) without verifying the signature and checks `exp`.
-/// Returns `false` (not expired) if the token cannot be decoded or has no `exp` claim,
-/// so that short-lived handshake tokens (like `__clerk_token` from OAuth redirects)
-/// or opaque tokens are never incorrectly cleared.
-fn is_jwt_expired(jwt: &str) -> bool {
-    use base64::Engine as _;
-    let parts: Vec<&str> = jwt.splitn(3, '.').collect();
-    if parts.len() != 3 {
-        // Not a standard JWT — let the server decide whether it's valid
-        return false;
-    }
-    let payload_b64 = parts[1];
-    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(payload_b64)
-        .or_else(|_| {
-            let stripped = payload_b64.trim_end_matches('=');
-            base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(stripped)
-        });
-    let bytes = match decoded {
-        Ok(b) => b,
-        Err(_) => return false, // Can't decode → let the server decide
-    };
-    let payload: serde_json::Value = match serde_json::from_slice(&bytes) {
-        Ok(v) => v,
-        Err(_) => return false, // Can't parse → let the server decide
-    };
-    let exp = match payload.get("exp").and_then(|v| v.as_i64()) {
-        Some(exp) => exp,
-        // No `exp` claim (e.g. short-lived handshake tokens) → assume valid
-        None => return false,
-    };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    now >= exp
-}
-
-async fn refresh_cloud_authorization_header(app: &AppHandle) -> Result<Option<String>, String> {
-    // Snapshot the cached token once so we can fall back to it on any failure.
-    let cached = app.clerk().get_client_authorization_header();
-
-    // If the cached token is present and not yet expired, return it immediately.
-    let token_needs_refresh = match &cached {
-        Some(header) => match extract_bearer_token(header) {
-            Some(token) => is_jwt_expired(token),
-            None => true, // Malformed header
-        },
-        None => true, // No token at all
-    };
-
-    if !token_needs_refresh {
-        return Ok(cached);
-    }
-
-    // Token is missing or expired — attempt a proactive refresh via Clerk FAPI.
-    // IMPORTANT: do NOT clear the cached token before this attempt so that we can
-    // fall back to it if the refresh fails (e.g. during the login race window).
-    log_info!("Clerk auth token missing or expired; attempting refresh via Clerk FAPI");
-
-    // ensure_clerk_initialized is a no-op when Clerk is already loaded.
-    if let Err(error) = app.ensure_clerk_initialized().await {
-        log_warn!(
-            "Failed to initialize Clerk before fetching cloud token: {}",
-            error
-        );
-        // Return cached (even if expired) — the server will reject it if truly invalid.
-        return Ok(cached);
-    }
-
-    match app.clerk().get_token(None, None).await {
-        Ok(Some(jwt)) => {
-            let header = format!("Bearer {}", jwt);
-            app.clerk()
-                .set_client_authorization_header(Some(header.clone()));
-            Ok(Some(header))
-        }
-        Ok(None) => {
-            log_info!("Clerk has no active session; returning cached token as fallback");
-            // Return cached — useful during the login race condition where the
-            // OAuth callback hasn't finished setting up the session yet.
-            Ok(cached)
-        }
-        Err(e) => {
-            log_warn!(
-                "Clerk get_token() failed: {}; returning cached token as fallback",
-                e
-            );
-            Ok(cached)
-        }
-    }
-}
-
-async fn current_cloud_authorization_header(app: &AppHandle) -> Result<String, String> {
-    refresh_cloud_authorization_header(app)
-        .await?
-        .ok_or_else(|| "Cloud presence is not authenticated".to_string())
-}
-
 #[tauri::command]
-async fn get_cloud_authorization_header(app: AppHandle) -> Result<Option<String>, String> {
-    refresh_cloud_authorization_header(&app).await
-}
-
-#[tauri::command]
-fn set_cloud_authorization_header(app: AppHandle, header: Option<String>) -> Result<(), String> {
-    app.clerk().set_client_authorization_header(header);
+fn set_clerk_dev_browser_token(app: AppHandle, token: Option<String>) -> Result<(), String> {
+    let normalized = token
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default();
+    app.clerk()
+        .get_fapi_client()
+        .set_dev_browser_token_id(normalized.clone());
+    log_info!(
+        "[cloud-auth] set_clerk_dev_browser_token len={}",
+        normalized.len()
+    );
     Ok(())
-}
-
-#[tauri::command]
-fn clear_cloud_authorization_header(app: AppHandle) -> Result<(), String> {
-    app.clerk().set_client_authorization_header(None);
-    Ok(())
-}
-
-fn cloud_user_agent() -> &'static str {
-    #[cfg(target_os = "android")]
-    {
-        "Sendme Android"
-    }
-    #[cfg(target_os = "ios")]
-    {
-        "Sendme iPhone"
-    }
-    #[cfg(target_os = "macos")]
-    {
-        "Sendme macOS"
-    }
-    #[cfg(target_os = "windows")]
-    {
-        "Sendme Windows"
-    }
-    #[cfg(all(
-        not(target_os = "android"),
-        not(target_os = "ios"),
-        not(target_os = "macos"),
-        not(target_os = "windows")
-    ))]
-    {
-        "Sendme Linux"
-    }
-}
-
-fn build_cloud_api_url(api_origin: &str, path: &str) -> Result<String, String> {
-    let base = format!("{}/", api_origin.trim_end_matches('/'));
-    let base_url = Url::parse(&base).map_err(|e| format!("Invalid cloud API origin: {e}"))?;
-    base_url
-        .join(path.trim_start_matches('/'))
-        .map(|url| url.to_string())
-        .map_err(|e| format!("Invalid cloud API path: {e}"))
 }
 
 async fn update_cloud_friends(
@@ -2710,7 +2521,8 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
 
     if let Some(ref token) = clerk_token {
         log_info!("Setting Clerk authorization header from OAuth callback token");
-        clerk.set_client_authorization_header(Some(format!("Bearer {}", token)));
+        let bearer = format!("Bearer {}", token);
+        clerk.set_client_authorization_header(Some(bearer.clone()));
     }
 
     if let Some(ref token) = db_jwt {
@@ -2733,7 +2545,7 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
     let mut user_json = serde_json::Value::Null;
 
     let synthesize_client_from_deep_link = || -> Option<serde_json::Value> {
-        let token = clerk_token.as_ref()?;
+        let _token = clerk_token.as_ref()?;
         let user_id = deep_link_user_id.as_ref()?;
         let session_id = session_id.as_ref()?;
 
@@ -2840,10 +2652,7 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
             "expire_at": expire_at_ms,
             "abandon_at": expire_at_ms,
             "last_active_at": now_ms,
-            "last_active_token": {
-                "object": "token",
-                "jwt": token,
-            },
+            "last_active_token": null,
             "actor": null,
             "tasks": null,
             "last_active_organization_id": null,
@@ -2945,10 +2754,8 @@ async fn handle_clerk_auth_callback(app: AppHandle, url_str: String) {
     // Explicitly fetch /v1/me so we always have the user profile for the UI.
     if success {
         match app.clerk().get_token(None, None).await {
-            Ok(Some(jwt)) => {
-                let header = format!("Bearer {}", jwt);
-                app.clerk().set_client_authorization_header(Some(header));
-                log_info!("Refreshed and persisted durable cloud auth token after Clerk callback");
+            Ok(Some(_jwt)) => {
+                log_info!("Clerk callback succeeded; token available via Clerk JS");
             }
             Ok(None) => {
                 log_warn!("Clerk callback succeeded but get_token returned no active token");
@@ -3210,10 +3017,7 @@ pub fn run() {
             send_to_device,
             accept_incoming,
             decline_incoming,
-            register_cloud_device,
-            get_cloud_authorization_header,
-            set_cloud_authorization_header,
-            clear_cloud_authorization_header,
+            set_clerk_dev_browser_token,
             set_cloud_connected,
             update_cloud_state,
             stop_cloud_presence,
@@ -3245,19 +3049,16 @@ async fn accept_cloud_ticket(
     log_info!("☁️ ACCEPT_CLOUD_TICKET: {}", ticket_id);
 
     // Find the ticket in the current snapshot
-    let (ticket_str, api_origin) = {
+    let ticket_str = {
         let guard = cloud.read().await;
-        let ticket = guard
+        guard
             .snapshot
             .tickets
             .iter()
             .find(|t| t.id == ticket_id)
-            .ok_or_else(|| format!("Cloud ticket not found: {}", ticket_id))?;
-        let origin = guard
-            .api_origin
+            .ok_or_else(|| format!("Cloud ticket not found: {}", ticket_id))?
+            .ticket
             .clone()
-            .ok_or_else(|| "Cloud API origin not configured".to_string())?;
-        (ticket.ticket.clone(), origin)
     };
 
     // Start the file receive using the existing receive_file logic
@@ -3266,21 +3067,6 @@ async fn accept_cloud_ticket(
         output_dir,
     };
     let transfer_id = receive_file(app.clone(), transfers, request).await?;
-
-    // Mark ticket as received on the server (best-effort)
-    let mark_url =
-        build_cloud_api_url(&api_origin, &format!("/api/tickets/{}/receive", ticket_id))?;
-    let authorization = current_cloud_authorization_header(&app).await.ok();
-    tokio::spawn(async move {
-        if let Some(auth) = authorization {
-            let client = reqwest::Client::new();
-            let _ = client
-                .post(&mark_url)
-                .header(reqwest::header::AUTHORIZATION, auth)
-                .send()
-                .await;
-        }
-    });
 
     Ok(transfer_id)
 }

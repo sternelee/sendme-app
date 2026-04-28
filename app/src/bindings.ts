@@ -149,7 +149,6 @@ export interface DirectoryInfo {
   name: string;
 }
 
-
 export interface CloudDevice {
   id: string;
   deviceId?: string | null;
@@ -249,13 +248,6 @@ export async function pick_directory(options?: {
   });
 }
 
-export async function register_cloud_device(
-  deviceId: string,
-  apiOrigin: string,
-): Promise<void> {
-  return await invoke("register_cloud_device", { deviceId, apiOrigin });
-}
-
 export async function set_cloud_connected(
   connected: boolean,
   deviceId?: string | null,
@@ -270,9 +262,7 @@ export async function set_cloud_connected(
   });
 }
 
-export async function update_cloud_state(
-  messageJson: string,
-): Promise<void> {
+export async function update_cloud_state(messageJson: string): Promise<void> {
   return await invoke("update_cloud_state", { messageJson });
 }
 

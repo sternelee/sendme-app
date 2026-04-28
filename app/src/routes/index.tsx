@@ -80,6 +80,7 @@ import {
   getTransferStatus,
 } from "~/lib/utils";
 import { useAuth } from "~/lib/auth";
+import { requestCloudApi, getCloudApiUrl } from "~/lib/cloud-api";
 import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
 import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
 import { i18n } from "~/lib/i18n";
@@ -392,6 +393,12 @@ export default function MainPage() {
       setTransferView("receive");
       setActiveTab("transfer");
       toast.success(t("nearby.transferComplete"));
+
+      // Mark ticket as received on the server (best-effort)
+      const ticketId = ticket.id;
+      requestCloudApi(getCloudApiUrl(`/api/tickets/${ticketId}/receive`), {
+        method: "POST",
+      }).catch(() => {});
     } catch (e) {
       globalStore.cloudReceive.setError(String(e));
       globalStore.cloudReceive.setTransferState("idle");
