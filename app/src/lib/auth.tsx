@@ -519,6 +519,17 @@ export function AuthProvider(props: { children: JSX.Element }) {
         debugError("auth", "clerk.session.getToken() failed", error);
       }
     }
+    // Clerk JS session not yet hydrated (e.g. right after deep link OAuth callback
+    // before setActive has propagated). Fall back to the JWT we captured from the
+    // deep link URL (__clerk_token), which is a fresh short-lived session token.
+    const cached = session();
+    if (hasUsableCachedAuthSession(cached)) {
+      debugInfo(
+        "auth",
+        "getToken: using cached session token (Clerk JS session not hydrated)",
+      );
+      return cached.token;
+    }
     return null;
   };
 
