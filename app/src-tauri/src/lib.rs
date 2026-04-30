@@ -704,11 +704,21 @@ async fn get_nearby_profile(
 
 #[tauri::command]
 async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyState>) -> Result<(), String> {
-    let mut guard = nearby.write().await;
-    guard.discovery = None;
-    guard.pending_requests.clear();
-    guard.endpoint = None;
-    guard.listener_started = false;
+    // Take the endpoint and other state out while holding the lock, then
+    // release the lock before awaiting close() so we don't hold a write
+    // guard across an await point.
+    let endpoint = {
+        let mut guard = nearby.write().await;
+        guard.discovery = None;
+        guard.pending_requests.clear();
+        guard.listener_started = false;
+        guard.endpoint.take()
+    };
+    // Gracefully close the iroh Endpoint so it doesn't log
+    // "Endpoint dropped without calling close".
+    if let Some(ep) = endpoint {
+        ep.close().await;
+    }
     Ok(())
 }
 
