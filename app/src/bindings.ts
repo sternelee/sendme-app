@@ -248,6 +248,14 @@ export async function pick_directory(options?: {
   });
 }
 
+/**
+ * Get the size of a file in bytes (desktop only).
+ * tauri-plugin-dialog's open() returns only paths, not metadata.
+ */
+export async function get_file_size(path: string): Promise<number> {
+  return await invoke<number>("get_file_size", { path });
+}
+
 export async function set_cloud_connected(
   connected: boolean,
   deviceId?: string | null,

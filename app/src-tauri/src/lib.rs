@@ -1121,12 +1121,17 @@ async fn ensure_nearby_runtime(app: &AppHandle, nearby: NearbyState) -> Result<(
     if endpoint_needs_init {
         let secret_key = sendme_lib::get_or_create_secret(false)
             .map_err(|e| format!("Failed to create nearby secret: {e}"))?;
-        let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
+        // Endpoint::bind() can hang on macOS under flaky network conditions
+        // (IPv6 routing weirdness, captive portals, restricted firewalls).
+        // Cap it so a stuck bind never blocks app init.
+        let bind_fut = Endpoint::builder(iroh::endpoint::presets::N0)
             .secret_key(secret_key)
             .relay_mode(RelayMode::Disabled)
             .alpns(vec![sendme_lib::nearby::ALPN.to_vec()])
-            .bind()
+            .bind();
+        let endpoint = tokio::time::timeout(std::time::Duration::from_secs(8), bind_fut)
             .await
+            .map_err(|_| "Nearby endpoint bind timed out after 8s".to_string())?
             .map_err(|e| format!("Failed to bind nearby endpoint: {e}"))?;
 
         let mut guard = nearby.write().await;
@@ -1726,9 +1731,22 @@ fn set_clerk_dev_browser_token(app: AppHandle, token: Option<String>) -> Result<
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_default();
-    app.clerk()
+    let clerk = app.clerk();
+    clerk
         .get_fapi_client()
         .set_dev_browser_token_id(normalized.clone());
+
+    // Persist into the Clerk config store so that `Clerk::load()` finds it on
+    // the next startup. Without this, only the in-memory FAPI client knows
+    // about the token and `load()` will read a stale value (or `None`,
+    // forcing a brand-new dev_browser to be minted, which silently
+    // invalidates any sessions tied to the previous dev_browser).
+    if !normalized.is_empty() {
+        clerk
+            .config()
+            .set_store_value("dev_browser_token_id", serde_json::json!(normalized.clone()));
+    }
+
     log_info!(
         "[cloud-auth] set_clerk_dev_browser_token len={}",
         normalized.len()
@@ -3009,6 +3027,7 @@ pub fn run() {
             list_received_files,
             pick_file,
             pick_directory,
+            get_file_size,
             // Nearby discovery commands
             start_nearby_discovery,
             get_nearby_devices,
@@ -4766,6 +4785,15 @@ fn pick_file(
         "File picking is only available on mobile platforms. Use tauri-plugin-dialog on desktop."
             .to_string(),
     )
+}
+
+/// Get the size of a file in bytes. Used by the desktop frontend after
+/// file picker (tauri-plugin-dialog open() returns only the path, not metadata).
+#[tauri::command]
+fn get_file_size(path: String) -> Result<u64, String> {
+    std::fs::metadata(&path)
+        .map(|m| m.len())
+        .map_err(|e| format!("Failed to get file size for '{}': {}", path, e))
 }
 
 /// Pick a directory (desktop stub)

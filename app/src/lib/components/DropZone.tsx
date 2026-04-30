@@ -2,9 +2,8 @@ import { Component, Show, For, createSignal } from "solid-js";
 import { Upload, X } from "lucide-solid";
 import { formatFileSize } from "~/lib/utils";
 import { open } from "@tauri-apps/plugin-dialog";
-import { stat } from "@tauri-apps/plugin-fs";
 import { platform } from "@tauri-apps/plugin-os";
-import { pick_file } from "~/bindings";
+import { pick_file, get_file_size } from "~/bindings";
 import { i18n } from "~/lib/i18n";
 
 const t = i18n.t;
@@ -64,10 +63,9 @@ export const DropZone: Component<DropZoneProps> = (props) => {
             typeof p === "string" ? p.split(/[\\/]/).pop() || p : p.name;
           let fileSize = 0;
           try {
-            const meta = await stat(filePath);
-            fileSize = meta.size ?? 0;
+            fileSize = await get_file_size(filePath);
           } catch {
-            // stat failed — keep size 0
+            // get_file_size failed — keep size 0
           }
           return { name: fileName, size: fileSize, path: filePath };
         }),
