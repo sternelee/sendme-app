@@ -275,23 +275,19 @@ function createWebSocketStore(getToken: () => Promise<string | null>) {
 
   /**
    * Delete a ticket from the server (receiver-initiated dismiss).
+   * Uses DELETE /api/tickets/:id — no request body to avoid
+   * framework-level body-stripping on DELETE requests.
    * Removes from local state on success.
    */
-  const deleteTicket = async (ticketString: string): Promise<boolean> => {
+  const deleteTicket = async (ticketId: string): Promise<boolean> => {
     try {
       const token = await getToken();
-      const res = await fetch("/api/tickets", {
+      const res = await fetch(`/api/tickets/${ticketId}`, {
         method: "DELETE",
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            }
-          : { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticket: ticketString }),
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error("Failed to delete ticket");
-      setTickets((prev) => prev.filter((t) => t.ticket !== ticketString));
+      setTickets((prev) => prev.filter((t) => t.id !== ticketId));
       return true;
     } catch (err) {
       console.error("[useWebSocket] deleteTicket failed:", err);

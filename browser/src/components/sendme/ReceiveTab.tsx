@@ -62,7 +62,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
   const [dismissedIds, setDismissedIds] = createSignal<Set<string>>(new Set());
 
   async function dismissTicket(ticketItem: Ticket) {
-    const ok = await deleteTicket(ticketItem.ticket);
+    const ok = await deleteTicket(ticketItem.id);
     if (ok) {
       setDismissedIds((prev) => new Set([...prev, ticketItem.id]));
     } else {
@@ -73,7 +73,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
   async function dismissAllTickets() {
     const list = rawTickets();
     const results = await Promise.allSettled(
-      list.map((t) => deleteTicket(t.ticket)),
+      list.map((t) => deleteTicket(t.id)),
     );
     const failed = results.filter((r) => r.status === "rejected" || !r.value)
       .length;
@@ -160,6 +160,8 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
       // Mark the incoming ticket as consumed so it disappears from all devices
       if (incomingTicketId) {
         await markTicketReceived(incomingTicketId);
+        // Also hide it locally immediately without waiting for WebSocket update
+        setDismissedIds((prev) => new Set([...prev, incomingTicketId]));
       }
 
       toast.success(t("receive.downloadComplete"));
@@ -241,11 +243,22 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
               const isFromFriend = !!senderName;
 
               return (
-                <button
-                  type="button"
-                  disabled={isReceiving()}
-                  class="flex items-center gap-3 p-3 rounded-xl bg-base-300/50 hover:bg-base-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors w-full text-left group"
-                  onClick={() => handleIncomingTicketClick(incomingTicket)}
+                <div
+                  role="button"
+                  tabindex={isReceiving() ? -1 : 0}
+                  aria-disabled={isReceiving()}
+                  class="flex items-center gap-3 p-3 rounded-xl bg-base-300/50 hover:bg-base-300 disabled:opacity-50 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed cursor-pointer transition-colors w-full text-left group"
+                  onClick={() => {
+                    if (isReceiving()) return;
+                    handleIncomingTicketClick(incomingTicket);
+                  }}
+                  onKeyDown={(e) => {
+                    if (isReceiving()) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleIncomingTicketClick(incomingTicket);
+                    }
+                  }}
                 >
                   <div
                     class={`w-8 h-8 rounded-lg flex items-center justify-center ${
@@ -286,7 +299,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
                   >
                     <TbOutlineX size={14} />
                   </button>
-                </button>
+                </div>
               );
             }}
           </For>

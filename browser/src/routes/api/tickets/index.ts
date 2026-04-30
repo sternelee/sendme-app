@@ -105,7 +105,13 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     let targetDeviceId: string | null = null;
 
     if (body.deviceId) {
-      const targetDevice = await getUserDeviceById(db, userId, body.deviceId);
+      // Accept either the row PK (`devices.id`) or the persistent client-side
+      // `devices.deviceId`. Older app builds pass the persistent id; browser and
+      // newer builds pass the row PK. Look up by row PK first, then fall back.
+      let targetDevice = await getUserDeviceById(db, userId, body.deviceId);
+      if (!targetDevice) {
+        targetDevice = await getUserDeviceByPersistentId(db, userId, body.deviceId);
+      }
 
       if (!targetDevice) {
         return new Response(JSON.stringify({ error: "Device not found" }), {
