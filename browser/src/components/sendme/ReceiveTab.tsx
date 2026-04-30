@@ -1,21 +1,15 @@
-import { Show, For, createMemo, onCleanup, createSignal } from "solid-js";
+import { Show, createMemo, onCleanup } from "solid-js";
 import toast from "solid-toast";
 import { receiveFile, downloadFile } from "../../lib/commands";
 import { i18n } from "../../lib/i18n";
 import { useGlobalStore } from "../../lib/store";
-import { useWebSocket } from "../../lib/composables/useWebSocket";
 import {
   TbOutlineDownload,
   TbOutlineCheck,
   TbOutlineAlertCircle,
   TbOutlineClipboard,
   TbOutlineShieldLock,
-  TbOutlineSparkles,
-  TbOutlineDeviceMobile,
-  TbOutlineUsers,
-  TbOutlineX,
 } from "solid-icons/tb";
-import type { Ticket, EnrichedFriend } from "~/lib/composables/useWebSocket";
 
 const t = i18n.t;
 
@@ -40,110 +34,27 @@ function isPreviewable(filename: string): boolean {
   return mime.startsWith("image/") || mime.startsWith("video/");
 }
 
-export default function ReceiveTab(props: { isActive?: boolean }) {
+export default function ReceiveTab() {
   const globalStore = useGlobalStore();
-  // P2-1: Use WebSocket directly — no intermediate useTicketPolling wrapper
-  const {
-    friends,
-    tickets: allTickets,
-    markTicketReceived,
-    deleteTicket,
-  } = useWebSocket();
 
   const ticket = () => globalStore.receive.state().ticket;
   const isReceiving = () => globalStore.receive.state().isReceiving;
   const receivedFile = () => globalStore.receive.state().receivedFile;
   const error = () => globalStore.receive.state().error;
 
-  // Only surface incoming tickets when this tab is active
-  const rawTickets = createMemo(() => (props.isActive ? allTickets() : []));
-
-  // Dismissed ticket IDs — local only; survives re-render but not page refresh
-  const [dismissedIds, setDismissedIds] = createSignal<Set<string>>(new Set());
-
-  async function dismissTicket(ticketItem: Ticket) {
-    const ok = await deleteTicket(ticketItem.id);
-    if (ok) {
-      setDismissedIds((prev) => new Set([...prev, ticketItem.id]));
-    } else {
-      toast.error(t("receive.dismissFailed") || "Failed to dismiss ticket");
-    }
-  }
-
-  async function dismissAllTickets() {
-    const list = rawTickets();
-    const results = await Promise.allSettled(
-      list.map((t) => deleteTicket(t.id)),
-    );
-    const failed = results.filter((r) => r.status === "rejected" || !r.value)
-      .length;
-    setDismissedIds(
-      (prev) => new Set([...prev, ...list.map((t) => t.id)]),
-    );
-    if (failed > 0) {
-      toast.error(
-        (t("receive.dismissFailed") || "Failed to dismiss") +
-          ` ${failed} ticket${failed > 1 ? "s" : ""}`,
-      );
-    }
-  }
-
-  const tickets = createMemo(() => {
-    const dismissed = dismissedIds();
-    return rawTickets().filter((t) => !dismissed.has(t.id));
-  });
-
-  // Create a map of friend's actual user ID → EnrichedFriend for sender lookup.
-  // Must use f.friend.id (always the other person's ID), NOT f.friendUserId which
-  // is the raw DB column and may point to the current user when they received the request.
-  const friendByUserId = createMemo(() => {
-    const map = new Map<string, EnrichedFriend>();
-    for (const f of friends()) {
-      if (f.status === "accepted") {
-        map.set(f.friend.id, f);
-      }
-    }
-    return map;
-  });
-
-  // P2-4: Blob URL memory management — revoke the previous URL whenever the
-  // received file changes, and revoke on component unmount.
+  // P2-4: Blob URL memory management
   const previewUrl = createMemo(() => {
     const file = receivedFile();
     if (!file || !isPreviewable(file.filename)) return null;
     const mime = getMimeType(file.filename);
     const blob = new Blob([file.data as BlobPart], { type: mime });
     const url = URL.createObjectURL(blob);
-    // onCleanup inside createMemo fires before the next recalculation or on dispose
     onCleanup(() => URL.revokeObjectURL(url));
     return url;
   });
 
-  /**
-   * Get sender info for a ticket (for friend-to-friend transfers)
-   */
-  function getSenderName(ticketItem: Ticket) {
-    if (ticketItem.fromUserId) {
-      const friend = friendByUserId().get(ticketItem.fromUserId);
-      if (friend) {
-        return friend.friend.name;
-      }
-    }
-    return null; // Own device transfer
-  }
-
-  /**
-   * Core receive handler.
-   * @param overrideTicket - When called from an incoming ticket click, pass the
-   *   ticket string directly so we don't rely on the signal having updated yet.
-   * @param incomingTicketId - DB UUID of the incoming ticket; when provided the
-   *   ticket is marked as received in the backend on successful download.
-   */
-  async function handleReceive(
-    overrideTicket?: string,
-    incomingTicketId?: string,
-  ) {
-    const ticketValue = (overrideTicket ?? ticket()).trim();
+  async function handleReceive() {
+    const ticketValue = ticket().trim();
     if (!ticketValue) {
       toast.error(t("receive.invalidTicket"));
       return;
@@ -156,14 +67,6 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
     try {
       const result = await receiveFile(ticketValue);
       globalStore.receive.setReceivedFile(result);
-
-      // Mark the incoming ticket as consumed so it disappears from all devices
-      if (incomingTicketId) {
-        await markTicketReceived(incomingTicketId);
-        // Also hide it locally immediately without waiting for WebSocket update
-        setDismissedIds((prev) => new Set([...prev, incomingTicketId]));
-      }
-
       toast.success(t("receive.downloadComplete"));
     } catch (err) {
       const errorMsg = (err as Error).message || t("receive.invalidTicket");
@@ -186,15 +89,9 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
       const text = await navigator.clipboard.readText();
       globalStore.receive.setTicket(text);
       toast.success(t("receive.pasteTicket") + "!");
-    } catch (err) {
+    } catch {
       toast.error(t("receive.clipboardError") || "Failed to read clipboard.");
     }
-  }
-
-  // P2-3: Auto-start download when user clicks an incoming ticket
-  function handleIncomingTicketClick(incomingTicket: Ticket) {
-    globalStore.receive.setTicket(incomingTicket.ticket);
-    void handleReceive(incomingTicket.ticket, incomingTicket.id);
   }
 
   function formatFileSize(data: Uint8Array): string {
@@ -213,105 +110,10 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
         <p class="text-base-content/60 text-sm mt-1">{t("receive.subtitle")}</p>
       </div>
 
-      {/* Incoming Tickets */}
-      <Show when={tickets().length > 0}>
-        <div class="alert alert-warning">
-          <TbOutlineSparkles size={18} />
-          <div class="flex-1">
-            <span class="font-semibold">
-              {tickets().length}{" "}
-              {t("receive.incomingTickets") || "Incoming Ticket"}
-              {tickets().length > 1 ? "s" : ""}
-            </span>
-            <p class="text-xs opacity-75 mt-0.5">
-              Click a ticket below to download it automatically.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={dismissAllTickets}
-            class="btn btn-ghost btn-xs btn-circle shrink-0"
-            title={t("common.close") || "Close"}
-          >
-            <TbOutlineX size={16} />
-          </button>
-        </div>
-        <div class="space-y-2 max-h-40 overflow-y-auto">
-          <For each={tickets()}>
-            {(incomingTicket) => {
-              const senderName = getSenderName(incomingTicket);
-              const isFromFriend = !!senderName;
-
-              return (
-                <div
-                  role="button"
-                  tabindex={isReceiving() ? -1 : 0}
-                  aria-disabled={isReceiving()}
-                  class="flex items-center gap-3 p-3 rounded-xl bg-base-300/50 hover:bg-base-300 disabled:opacity-50 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed cursor-pointer transition-colors w-full text-left group"
-                  onClick={() => {
-                    if (isReceiving()) return;
-                    handleIncomingTicketClick(incomingTicket);
-                  }}
-                  onKeyDown={(e) => {
-                    if (isReceiving()) return;
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      handleIncomingTicketClick(incomingTicket);
-                    }
-                  }}
-                >
-                  <div
-                    class={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                      isFromFriend
-                        ? "bg-secondary/20 text-secondary"
-                        : "bg-primary/20 text-primary"
-                    }`}
-                  >
-                    {isFromFriend ? (
-                      <TbOutlineUsers size={16} />
-                    ) : (
-                      <TbOutlineDeviceMobile size={16} />
-                    )}
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium truncate">
-                      {incomingTicket.filename ||
-                        t("receive.unnamedFile") ||
-                        "Unnamed file"}
-                    </p>
-                    <p class="text-xs text-base-content/50">
-                      {isFromFriend ? `From ${senderName}` : "From your device"}
-                      {" • "}
-                      {incomingTicket.fileSize
-                        ? `${(incomingTicket.fileSize / 1024 / 1024).toFixed(2)} MB`
-                        : t("receive.unknownSize") || "Unknown size"}
-                    </p>
-                  </div>
-                  <TbOutlineDownload size={16} class="text-primary shrink-0" />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      dismissTicket(incomingTicket);
-                    }}
-                    class="btn btn-ghost btn-xs btn-circle shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title={t("common.cancel") || "Cancel"}
-                  >
-                    <TbOutlineX size={14} />
-                  </button>
-                </div>
-              );
-            }}
-          </For>
-        </div>
-      </Show>
-
       {/* Ticket Input */}
       <div class="space-y-2">
         <div class="flex items-center justify-between gap-3">
-          <label class="text-sm font-medium">
-            {t("receive.pasteTicket")}
-          </label>
+          <label class="text-sm font-medium">{t("receive.pasteTicket")}</label>
           <button
             onClick={pasteTicket}
             class="btn btn-ghost btn-xs"
@@ -327,9 +129,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
           <input
             type="text"
             value={ticket()}
-            onInput={(e) =>
-              globalStore.receive.setTicket(e.currentTarget.value)
-            }
+            onInput={(e) => globalStore.receive.setTicket(e.currentTarget.value)}
             placeholder={t("receive.ticketPlaceholder") || "Paste ticket here..."}
             class="grow font-mono text-sm"
             disabled={isReceiving()}
@@ -340,7 +140,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
       <button
         onClick={() => void handleReceive()}
         disabled={!ticket().trim() || isReceiving()}
-        class={`btn btn-primary btn-block`}
+        class="btn btn-primary btn-block"
       >
         <TbOutlineDownload size={18} /> {t("receive.receiveFile")}
       </button>
@@ -377,10 +177,7 @@ export default function ReceiveTab(props: { isActive?: boolean }) {
           </div>
         </Show>
 
-        <button
-          onClick={downloadReceivedFile}
-          class="btn btn-success btn-block"
-        >
+        <button onClick={downloadReceivedFile} class="btn btn-success btn-block">
           <TbOutlineDownload size={18} /> {t("receive.saveFile")}
         </button>
       </Show>

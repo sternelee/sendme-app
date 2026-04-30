@@ -24,6 +24,7 @@ import {
   TbOutlineUser,
 } from "solid-icons/tb";
 import { SignInButton } from "clerk-solidjs";
+import IncomingTicketsBanner from "../../components/sendme/IncomingTicketsBanner";
 
 const t = i18n.t;
 
@@ -190,6 +191,9 @@ export default function AppPage() {
                 </div>
               }
             >
+            {/* Global incoming-tickets banner — visible on all tabs */}
+            <IncomingTicketsBanner />
+
             {/* Tab Navigation */}
             <div class="tabs tabs-boxed bg-base-200 flex" role="tablist" aria-label={t("common.navigation") || "Navigation"}>
               {tabs().map((tab) => (
@@ -234,7 +238,7 @@ export default function AppPage() {
                   </Show>
                   <Show when={activeTab() === "receive"}>
                     <div role="tabpanel" id="panel-receive" aria-labelledby="tab-receive">
-                      <ReceiveTab isActive={true} />
+                      <ReceiveTab />
                     </div>
                   </Show>
                   <Show when={activeTab() === "friends"}>
