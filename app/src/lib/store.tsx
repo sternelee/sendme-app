@@ -15,6 +15,7 @@ import type {
 
 export interface SendState {
   path: string;
+  fileSize: number;
   ticketType: string;
   ticket: string;
   ticketQrCode: string;
@@ -81,6 +82,7 @@ interface GlobalStore {
   send: {
     state: Accessor<SendState>;
     setPath: (path: string) => void;
+    setFileSize: (size: number) => void;
     setTicketType: (ticketType: string) => void;
     setTicket: (ticket: string) => void;
     setTicketQrCode: (qrCode: string) => void;
@@ -129,6 +131,7 @@ interface GlobalStore {
 
 const defaultSendState: SendState = {
   path: "",
+  fileSize: 0,
   ticketType: "relay_and_addresses",
   ticket: "",
   ticketQrCode: "",
@@ -195,6 +198,7 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
     send: {
       state: () => sendState,
       setPath: (path) => setSendState("path", path),
+      setFileSize: (size) => setSendState("fileSize", size),
       setTicketType: (ticketType) => setSendState("ticketType", ticketType),
       setTicket: (ticket) => setSendState("ticket", ticket),
       setTicketQrCode: (qrCode) => setSendState("ticketQrCode", qrCode),

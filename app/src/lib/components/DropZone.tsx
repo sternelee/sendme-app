@@ -2,6 +2,7 @@ import { Component, Show, For, createSignal } from "solid-js";
 import { Upload, X } from "lucide-solid";
 import { formatFileSize } from "~/lib/utils";
 import { open } from "@tauri-apps/plugin-dialog";
+import { stat } from "@tauri-apps/plugin-fs";
 import { platform } from "@tauri-apps/plugin-os";
 import { pick_file } from "~/bindings";
 import { i18n } from "~/lib/i18n";
@@ -56,11 +57,21 @@ export const DropZone: Component<DropZoneProps> = (props) => {
       if (!selected) return;
 
       const paths = Array.isArray(selected) ? selected : [selected];
-      const fileInfos = paths.map((p) => ({
-        name: typeof p === "string" ? p.split(/[\\/]/).pop() || p : p.name,
-        size: 0,
-        path: typeof p === "string" ? p : p.path,
-      }));
+      const fileInfos = await Promise.all(
+        paths.map(async (p) => {
+          const filePath = typeof p === "string" ? p : p.path;
+          const fileName =
+            typeof p === "string" ? p.split(/[\\/]/).pop() || p : p.name;
+          let fileSize = 0;
+          try {
+            const meta = await stat(filePath);
+            fileSize = meta.size ?? 0;
+          } catch {
+            // stat failed — keep size 0
+          }
+          return { name: fileName, size: fileSize, path: filePath };
+        }),
+      );
       props.onFilesSelected(fileInfos);
     } catch (e) {
       console.error("Failed to open file picker:", e);
@@ -88,9 +99,9 @@ export const DropZone: Component<DropZoneProps> = (props) => {
           <div class="space-y-2">
             <For each={props.files}>
               {(file, index) => (
-                <div class="bg-base-200 flex items-center justify-between rounded-lg px-3 py-2">
-                  <span class="truncate text-sm">{file.name}</span>
-                  <span class="text-xs opacity-60">
+                <div class="bg-base-200 flex items-center gap-2 rounded-lg px-3 py-2">
+                  <span class="flex-1 min-w-0 truncate text-sm">{file.name}</span>
+                  <span class="text-xs opacity-60 shrink-0">
                     {formatFileSize(file.size)}
                   </span>
                   <Show when={props.onRemoveFile}>

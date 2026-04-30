@@ -160,6 +160,7 @@ export default function MainPage() {
   const [shareSubTab, setShareSubTab] = createSignal<ShareSubTab>("nearby");
 
   const sendPath = () => globalStore.send.state().path;
+  const sendFileSize = () => globalStore.send.state().fileSize;
   const sendTicketType = () => globalStore.send.state().ticketType;
   const sendTicket = () => globalStore.send.state().ticket;
   const sendTicketQrCode = () => globalStore.send.state().ticketQrCode;
@@ -572,6 +573,7 @@ export default function MainPage() {
   });
 
   onMount(async () => {
+    // Synchronous setup first - never blocks
     try {
       const p = platform();
       setIsMobile(p === "android" || p === "ios");
@@ -587,8 +589,27 @@ export default function MainPage() {
     const savedOutputDir = localStorage.getItem("receive-output-dir");
     if (savedOutputDir) globalStore.receive.setOutputDir(savedOutputDir);
 
-    await loadTransfers();
-    await start_nearby_discovery().catch(() => {});
+    // CRITICAL: release UI as early as possible. Any IPC below may hang
+    // (network bind, mDNS, Tauri command stuck) — never let init block render.
+    setIsInitializing(false);
+
+    // Background, fault-tolerant init. Each promise is independent.
+    const withTimeout = <T,>(p: Promise<T>, ms: number, label: string) =>
+      Promise.race([
+        p,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(`${label} timed out`)), ms),
+        ),
+      ]);
+
+    void withTimeout(loadTransfers(), 5000, "loadTransfers").catch((e) =>
+      console.warn("[init] loadTransfers failed:", e),
+    );
+    void withTimeout(
+      start_nearby_discovery(),
+      5000,
+      "start_nearby_discovery",
+    ).catch((e) => console.warn("[init] start_nearby_discovery failed:", e));
 
     const unlisten = await listen<ProgressUpdate>("progress", (event) => {
       const { transfer_id, ...data } = event.payload.data;
@@ -727,7 +748,6 @@ export default function MainPage() {
       unlistenCloudTickets();
       stop_nearby_discovery().catch(() => {});
     });
-    setIsInitializing(false);
   });
 
   createEffect(() => {
@@ -976,7 +996,7 @@ export default function MainPage() {
                                     ? [
                                         {
                                           name: getDisplayName(sendPath()),
-                                          size: 0,
+                                          size: sendFileSize(),
                                           path: sendPath(),
                                         },
                                       ]
@@ -985,6 +1005,7 @@ export default function MainPage() {
                                 onFilesSelected={(files) => {
                                   if (files.length > 0) {
                                     globalStore.send.setPath(files[0].path);
+                                    globalStore.send.setFileSize(files[0].size);
                                     globalStore.send.setTicket("");
                                     globalStore.send.setIsTextMode(false);
                                     globalStore.send.setIsFolder(false);
@@ -992,6 +1013,7 @@ export default function MainPage() {
                                 }}
                                 onRemoveFile={() => {
                                   globalStore.send.setPath("");
+                                  globalStore.send.setFileSize(0);
                                   globalStore.send.setTicket("");
                                 }}
                               />
