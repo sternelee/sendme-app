@@ -78,10 +78,12 @@ export const DropZone: Component<DropZoneProps> = (props) => {
 
   return (
     <div
-      class={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
+      class={`cursor-pointer rounded-lg border-2 border-dashed transition-colors overflow-hidden min-w-0 ${
         isDragover()
           ? "border-primary bg-primary/5"
           : "border-base-300 bg-base-300/30 hover:border-primary/50"
+      } ${
+        props.files.length > 0 ? "p-2" : "p-8 text-center"
       }`}
       onClick={handleClick}
       onDragOver={(e) => {
@@ -94,18 +96,22 @@ export const DropZone: Component<DropZoneProps> = (props) => {
       <Show
         when={props.files.length === 0}
         fallback={
-          <div class="space-y-2">
+          <div class="space-y-1">
             <For each={props.files}>
               {(file, index) => (
-                <div class="bg-base-200 flex items-center gap-2 rounded-lg px-3 py-2">
+                <div class="bg-base-200 flex items-center gap-2 overflow-hidden rounded-lg px-3 py-2">
                   <span class="flex-1 min-w-0 truncate text-sm">{file.name}</span>
-                  <span class="text-xs opacity-60 shrink-0">
+                  <span class="text-xs opacity-60 shrink-0 whitespace-nowrap">
                     {formatFileSize(file.size)}
                   </span>
                   <Show when={props.onRemoveFile}>
                     <button
-                      onClick={() => props.onRemoveFile?.(index())}
-                      class="btn btn-ghost btn-xs"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        props.onRemoveFile?.(index());
+                      }}
+                      class="btn btn-ghost btn-xs shrink-0"
                     >
                       <X size={14} />
                     </button>
