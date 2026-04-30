@@ -2943,7 +2943,10 @@ pub fn run() {
         }
     });
 
-    builder
+    // Clone nearby before the builder chain moves it into the setup closure.
+    let nearby_for_exit = nearby.clone();
+
+    let app = builder
         .on_page_load(|window, _payload| {
             if window.label() != "main" {
                 return;
@@ -3063,8 +3066,27 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             menubar_cmd::hide_menubar_panel,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error building tauri application");
+
+    app.run(move |_app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            // Gracefully close the nearby iroh Endpoint so it doesn't log
+            // "Endpoint dropped without calling Endpoint::close".
+            let nearby = nearby_for_exit.clone();
+            tauri::async_runtime::block_on(async move {
+                let endpoint = {
+                    let mut guard = nearby.write().await;
+                    guard.discovery = None;
+                    guard.listener_started = false;
+                    guard.endpoint.take()
+                };
+                if let Some(ep) = endpoint {
+                    ep.close().await;
+                }
+            });
+        }
+    });
 }
 
 #[tauri::command]

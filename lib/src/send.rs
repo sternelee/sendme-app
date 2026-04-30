@@ -152,7 +152,9 @@ async fn send_internal(
     apply_options(&mut addr, args.ticket_type);
     let ticket = iroh_blobs::ticket::BlobTicket::new(addr, hash, BlobFormat::HashSeq);
 
-    // Spawn a task to keep the router alive for connections
+    // Spawn a task to keep the router alive for connections.
+    // AGENTS.md: "Never replace with sleep loop. Dropping the router breaks
+    // all subsequent incoming connections."
     tokio::spawn(async move {
         let _router = router;
         std::future::pending::<()>().await;
