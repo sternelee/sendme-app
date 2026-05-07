@@ -1,0 +1,17 @@
+# Fix Android startup crash:
+#   UnsatisfiedLinkError: cannot locate symbol "sodium_memcmp" in libsendme_app.so
+#
+# Root cause: tauri-plugin-stronghold → libsodium-sys-stable cross-compiles libsodium
+# for Android, but macOS ./configure falls back to /usr/bin/ar (not NDK llvm-ar),
+# producing an empty libsodium.a (96 bytes). Sodium symbols stay UND and crash at runtime.
+#
+# Fix: pre-build libsodium 1.0.22 with the correct NDK toolchain once, then point here.
+# See ANDROID_DEBUG_GUIDE.md → "Android 启动崩溃" for the one-time build steps.
+#
+# IMPORTANT: SODIUM_LIB_DIR is an absolute path.
+# After cloning to a new machine, run the manual libsodium build from the guide and
+# update this path accordingly.
+
+[env]
+SODIUM_STATIC = "1"
+SODIUM_LIB_DIR = "/Users/sternelee/www/github/sendme-app/.sodium-android-arm64/lib"

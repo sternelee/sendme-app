@@ -337,3 +337,120 @@ chmod +x debug.sh
 2. 前端控制台的截图
 3. 操作的详细步骤
 4. 设备和网络信息
+
+---
+
+## 已知问题：Android 启动崩溃 — `sodium_memcmp` 符号未找到
+
+### 症状
+
+安装 APK 后 app 无法启动，adb logcat 显示：
+
+```
+FATAL EXCEPTION: main
+java.lang.UnsatisfiedLinkError: dlopen failed:
+  cannot locate symbol "sodium_memcmp" referenced by
+  ".../base.apk!/lib/arm64-v8a/libsendme_app.so"
+```
+
+### 根本原因
+
+依赖链：`tauri-plugin-stronghold` → `libsodium-sys-stable`
+
+在 macOS 上交叉编译 Android 时，libsodium 的 `./configure` 找不到
+`aarch64-linux-android-ar`（NDK 只提供 `llvm-ar`），回退到 macOS 的
+`/usr/bin/ar`。macOS ar 无法正确归档 ARM64 ELF 目标文件，产生一个
+**96 字节的空 `libsodium.a`**。链接器用 `--allow-undefined` 放行，
+运行时找不到符号而崩溃。
+
+验证方法（用 NDK 的 readelf 检查 APK 内的 .so）：
+
+```bash
+NDK_READELF=~/Library/Android/sdk/ndk/28.0.12433566/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf
+unzip -p path/to/app.apk lib/arm64-v8a/libsendme_app.so > /tmp/lib.so
+$NDK_READELF -s /tmp/lib.so | grep sodium   # 若显示 UND 则未修复
+```
+
+### 修复步骤
+
+#### 第一步：手动预编译 libsodium（只需一次）
+
+```bash
+cd /path/to/sendme-app
+
+NDK28=~/Library/Android/sdk/ndk/28.0.12433566/toolchains/llvm/prebuilt/darwin-x86_64/bin
+SODIUM_SRC=target/aarch64-linux-android/release/build/libsodium-sys-stable-*/out/source/libsodium-stable
+
+# 先跑一次 cargo build 让 libsodium-sys-stable 下载并解压源码
+cd app && ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/28.0.12433566 \
+  pnpm run tauri android build --target aarch64 2>/dev/null || true
+cd ..
+
+# 用 NDK 正确工具链编译
+export CC="$NDK28/aarch64-linux-android24-clang"
+export AR="$NDK28/llvm-ar"
+export RANLIB="$NDK28/llvm-ranlib"
+
+cd $SODIUM_SRC
+./configure --host=aarch64-linux-android \
+            --prefix="$(pwd)/../../../../../../../../.sodium-android-arm64" \
+            --disable-shared --enable-static --with-pic
+make -j$(sysctl -n hw.logicalcpu) install
+cd -
+
+# 验证：应为几百 KB
+ls -lh .sodium-android-arm64/lib/libsodium.a
+```
+
+#### 第二步：`.cargo/config.toml` 已配置（已提交）
+
+项目根目录的 `.cargo/config.toml` 设置了：
+
+```toml
+[env]
+SODIUM_STATIC = "1"
+SODIUM_LIB_DIR = "/path/to/sendme-app/.sodium-android-arm64/lib"
+```
+
+> **注意**：`SODIUM_LIB_DIR` 是绝对路径，克隆到新机器需要重新运行第一步，
+> 然后更新 `.cargo/config.toml` 中的路径。
+
+#### 第三步：清除旧缓存并重建
+
+```bash
+rm -rf target/aarch64-linux-android/release/build/libsodium-sys-stable-*
+rm -rf target/aarch64-linux-android/release/.fingerprint/libsodium-sys-stable-*
+rm -f  target/aarch64-linux-android/release/libsendme_app.so
+
+cd app
+export ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/28.0.12433566
+pnpm run tauri android build --target aarch64
+```
+
+---
+
+## 已知问题：`CHANGE_WIFI_MULTICAST_STATE` 权限缺失导致后台线程崩溃
+
+### 症状
+
+app 启动后立即崩溃（第二个崩溃，libsodium 修复后出现）：
+
+```
+FATAL EXCEPTION: Thread-5
+java.lang.SecurityException: WifiService: Neither user 10249 nor current
+process has android.permission.CHANGE_WIFI_MULTICAST_STATE
+```
+
+### 原因
+
+iroh 的 mDNS 本地发现功能需要 WiFi 组播锁，需要此权限。
+
+### 修复
+
+在 `app/src-tauri/gen/android/app/src/main/AndroidManifest.xml` 中添加：
+
+```xml
+<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+```
+
+已在本次提交中修复。
