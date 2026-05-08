@@ -99,13 +99,47 @@ xcodegen generate
 
 ### 5. Build the iOS app
 
+> **⚠️ Before running xcodebuild for the first time on a machine:**
+> Open the project in Xcode GUI once (`open app/src-tauri/gen/apple/app.xcodeproj`),
+> navigate to the **app_iOS** target → **Signing & Capabilities**, confirm the Team
+> is set, and let Xcode create the provisioning profile. Without this step,
+> `xcodebuild` will fail with **"No Accounts"** because the daemon cannot access
+> Apple credentials that haven't been unlocked by the GUI.
+
+**Run in the background** — the script phase re-runs `pnpm run build` (~6 min)
+and `cargo build` (~2–4 min with cache). Killing the terminal mid-link will
+leave you with a stale build. Use `nohup` so the build survives terminal close:
+
 ```bash
-xcodebuild -project app.xcodeproj \
+cd app/src-tauri/gen/apple
+
+nohup xcodebuild \
+  -project app.xcodeproj \
   -scheme app_iOS \
   -sdk iphoneos \
   -configuration release \
   -derivedDataPath build-ios \
-  build
+  -allowProvisioningUpdates \
+  -allowProvisioningDeviceRegistration \
+  CODE_SIGN_STYLE=Automatic \
+  DEVELOPMENT_TEAM=UJ8NW4N779 \
+  CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
+  build > /tmp/xcodebuild.log 2>&1 &
+
+echo "Build running in background (PID $!)"
+echo "Monitor: tail -f /tmp/xcodebuild.log"
+echo "Or watch vite: watch -n5 'ps aux | grep vite | grep -v grep'"
+```
+
+Wait for completion:
+
+```bash
+# Poll until done
+while ! grep -q 'BUILD SUCCEEDED\|BUILD FAILED' /tmp/xcodebuild.log 2>/dev/null; do
+  sleep 10
+  echo "$(date '+%H:%M:%S') still building..."
+done
+tail -5 /tmp/xcodebuild.log
 ```
 
 Successful output ends with:
@@ -120,13 +154,29 @@ The built app will be at:
 app/src-tauri/gen/apple/build-ios/Build/Products/release-iphoneos/Sendme.app
 ```
 
+**Expected build times** (M-series Mac, warm cargo cache):
+
+| Phase | Time |
+|---|---|
+| `pnpm run build` (Vite) | ~6 min |
+| `cargo build` (cached) | ~2–4 min |
+| Xcode link + sign | ~1–2 min |
+| **Total** | **~10–12 min** |
+
+First-time build (cold Rust cache) can take 20+ minutes.
+
 ### 6. Find the connected iPhone
 
 ```bash
 xcrun devicectl list devices
 ```
 
-Copy the device **Identifier** and use it as `<device-id>` below.
+Copy the device **Identifier** (UUID format, e.g. `03B551C1-4405-5372-891F-F72A02716CF7`)
+and use it as `<device-id>` below.
+
+> **Note:** `xcrun devicectl` uses the CoreDevice UUID (from `devicectl list devices`).
+> `idevicesyslog` uses the legacy UDID (from `xcrun xctrace list devices`,
+> the hex string in parentheses like `00008030-000A21391A83802E`). These are different.
 
 ### 7. Install to the iPhone
 
@@ -149,11 +199,14 @@ First unlock the iPhone, then either tap the app manually or launch it from the 
 
 ```bash
 xcrun devicectl device process launch \
-  --console \
   --terminate-existing \
   --device <device-id> \
   io.sendme.app
 ```
+
+> **Note:** `--console` streams the app's stdout/stderr but kills the app when
+> the terminal session ends. For passive monitoring use `idevicesyslog` instead
+> (see Troubleshooting below).
 
 ## Rebuild After Code Changes
 
@@ -178,6 +231,83 @@ xcrun devicectl device install app \
 ```
 
 ## Troubleshooting
+
+### "No Accounts" error from xcodebuild
+
+```text
+error: No Accounts: Add a new account in Accounts settings. (in target 'app_iOS')
+error: No profiles for 'io.sendme.app' were found
+```
+
+**Root cause:** `xcodebuild` runs via a background daemon that cannot access
+Apple account credentials until Xcode GUI has been opened and signed in on
+this machine.
+
+**Fix:**
+1. `open -a Xcode app/src-tauri/gen/apple/app.xcodeproj`
+2. Select the **app_iOS** target → **Signing & Capabilities** tab
+3. Ensure the Team is selected and Xcode shows a valid signing certificate
+4. If a **Fix Issue** button appears, click it
+5. Close Xcode, then re-run `xcodebuild`
+
+This is a one-time setup per machine.
+
+### Build takes a very long time (or seems stuck)
+
+The Xcode build script (`project.yml` → **Build Rust Code** phase) always runs
+uncached because "Based on dependency analysis" is unchecked. It:
+1. Runs `pnpm run build` (Vite, ~6 min)
+2. Runs `cargo build` (~2–4 min with cache, 15+ min cold)
+3. Links and signs (~1–2 min)
+
+**Don’t** kill the terminal — use `nohup` as shown above and monitor with:
+
+```bash
+# Is vite still compiling?
+ps aux | grep vite | grep -v grep
+
+# Is cargo still compiling?
+ps aux | grep cargo | grep -v grep
+
+# Overall progress
+tail -5 /tmp/xcodebuild.log
+```
+
+### How to capture app logs from the iPhone
+
+`devicectl device log stream` is not available. Use `idevicesyslog` instead
+(install with `brew install libimobiledevice`):
+
+```bash
+# Get UDID from:
+xcrun xctrace list devices   # hex string in parentheses
+
+# Stream logs filtered to Sendme
+idevicesyslog -u <UDID> | grep -i "sendme\|ERROR\|FATAL"
+
+# Or save to file and inspect
+idevicesyslog -u <UDID> > /tmp/ios.log &
+# ... run the app ...
+kill %1
+grep -i sendme /tmp/ios.log | grep -iv wifid
+```
+
+### Healthy startup log indicators
+
+When the app starts normally you will see in `idevicesyslog`:
+
+```text
+Sendme(<pid>)          → app process alive
+com.apple.WebKit.WebContent  → WebView rendering the SolidJS UI
+WebURLSchemeTaskProxy::startLoading  → Tauri serving bundled assets
+WebURLSchemeTaskProxy::didComplete   → assets loaded OK
+```
+
+Network flows (TCP4 to relay servers, UDP6 for mDNS) are expected and
+indicate iroh is running.
+
+Sandbox denials for `/private/etc/resolv.conf` and
+`process-info-codesignature` are expected and non-fatal.
 
 ### "No provider was found" warning
 
@@ -246,7 +376,10 @@ xcrun devicectl device install app ...
 | Action | Command |
 | --- | --- |
 | Generate project | `cd app/src-tauri/gen/apple && xcodegen generate` |
-| Build iOS app | `xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build` |
-| List devices | `xcrun devicectl list devices` |
-| Install app | `xcrun devicectl device install app --device <device-id> app/src-tauri/gen/apple/build-ios/Build/Products/release-iphoneos/Sendme.app` |
-| Launch app | `xcrun devicectl device process launch --console --terminate-existing --device <device-id> io.sendme.app` |
+| Build iOS app (background) | `nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" build > /tmp/xcodebuild.log 2>&1 &` |
+| Watch build log | `tail -f /tmp/xcodebuild.log` |
+| List devices (CoreDevice UUID) | `xcrun devicectl list devices` |
+| List devices (legacy UDID) | `xcrun xctrace list devices` |
+| Install app | `xcrun devicectl device install app --device <UUID> app/src-tauri/gen/apple/build-ios/Build/Products/release-iphoneos/Sendme.app` |
+| Launch app | `xcrun devicectl device process launch --terminate-existing --device <UUID> io.sendme.app` |
+| Stream device logs | `idevicesyslog -u <UDID> \| grep -i sendme` |
