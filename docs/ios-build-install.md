@@ -70,10 +70,19 @@ cd app
 pnpm install
 ```
 
-### 2. Export the Clerk key
+### 2. Verify the Clerk key
+
+`CLERK_PUBLISHABLE_KEY` is expected to be set in your system environment.
+Verify it is available before building:
 
 ```bash
-export CLERK_PUBLISHABLE_KEY='pk_test_...'
+echo $CLERK_PUBLISHABLE_KEY   # should print your pk_live_... or pk_test_... key
+```
+
+If it is empty, set it for the current session:
+
+```bash
+export CLERK_PUBLISHABLE_KEY='pk_live_...'  # or pk_test_... for development
 ```
 
 ### 3. Optional: enable Safari inspection on iOS
@@ -213,8 +222,9 @@ xcrun devicectl device process launch \
 ```bash
 cd app
 pnpm install
-export CLERK_PUBLISHABLE_KEY='pk_test_...'
-export SENDME_IOS_INSPECTOR=1
+# CLERK_PUBLISHABLE_KEY should already be in your system environment.
+# Verify: echo $CLERK_PUBLISHABLE_KEY
+export SENDME_IOS_INSPECTOR=1   # optional: enable Safari Web Inspector
 
 cd src-tauri/gen/apple
 xcodegen generate

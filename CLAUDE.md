@@ -53,13 +53,13 @@ pnpm run tauri build
 pnpm run format
 pnpm run test         # vitest
 
-CLERK_PUBLISHABLE_KEY='pk_test_...' pnpm run tauri android build
-export CLERK_PUBLISHABLE_KEY='pk_test_...'
+# CLERK_PUBLISHABLE_KEY is set in system environment
+pnpm run tauri android build
 cd src-tauri/gen/apple
 xcodegen generate
-xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
+nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" build > /tmp/xcodebuild.log 2>&1 &
 xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
-xcrun devicectl device process launch --console --terminate-existing --device <device-id> io.sendme.app
+xcrun devicectl device process launch --terminate-existing --device <device-id> io.sendme.app
 ```
 
 ### Browser app (`browser/`)
@@ -277,13 +277,14 @@ If you encounter "recursion limit reached" compilation errors, add to `app/src-t
 Android/iOS apps cannot access runtime environment variables. The Clerk publishable key must be embedded at compile time:
 
 ```bash
-# Build with Clerk publishable key
-CLERK_PUBLISHABLE_KEY='pk_test_YOUR_KEY_HERE' pnpm run tauri android build
+# CLERK_PUBLISHABLE_KEY is set in system environment
+# Android
+pnpm run tauri android build
+# iOS — see docs/ios-build-install.md for full guide
 cd app
-export CLERK_PUBLISHABLE_KEY='pk_test_YOUR_KEY_HERE'
 cd src-tauri/gen/apple
 xcodegen generate
-xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
+nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" build > /tmp/xcodebuild.log 2>&1 &
 xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
 ```
 

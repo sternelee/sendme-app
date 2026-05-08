@@ -98,17 +98,18 @@ After changing WASM API or Rust browser logic, rebuild artifacts with `pnpm run 
 ### Mobile Builds
 ```bash
 # Android
-CLERK_PUBLISHABLE_KEY='pk_test_...' pnpm run tauri android build
+# CLERK_PUBLISHABLE_KEY is read from system environment
+pnpm run tauri android build
 
 # iOS (preferred: direct xcodebuild + devicectl, NOT pnpm run tauri ios build)
 # tauri ios build can fail during archive/export due to unsupported entitlements for personal-team signing
+# See docs/ios-build-install.md for the full step-by-step guide.
 cd app
-export CLERK_PUBLISHABLE_KEY='pk_test_...'
 cd src-tauri/gen/apple
 xcodegen generate
-xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
+nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" build > /tmp/xcodebuild.log 2>&1 &
 xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
-xcrun devicectl device process launch --console --terminate-existing --device <device-id> io.sendme.app
+xcrun devicectl device process launch --terminate-existing --device <device-id> io.sendme.app
 ```
 
 ## Critical Patterns
@@ -210,7 +211,7 @@ Enable `ios-web-inspector` feature in `app/src-tauri/Cargo.toml` to debug the iO
 - `IROH_FORCE_STAGING_RELAYS=1`: Use staging relays (CI/tests)
 - `RUSTFLAGS=-Dwarnings`: All warnings are errors (CI)
 - `RUST_LOG`: Tracing level (debug, info, warn, error)
-- `CLERK_PUBLISHABLE_KEY`: Clerk key for mobile (compile-time required)
+- `CLERK_PUBLISHABLE_KEY`: Clerk key for mobile (compile-time required, set in system environment)
   - `pk_test_...` for development; `pk_live_...` for production release builds
 
 ## MSRV

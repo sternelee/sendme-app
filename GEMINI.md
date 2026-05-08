@@ -60,7 +60,7 @@ pnpm run tauri build
 pnpm run tauri android build
 
 # Build/install for iOS (preferred in this repo)
-export CLERK_PUBLISHABLE_KEY='pk_test_...'
+# CLERK_PUBLISHABLE_KEY is read from system environment
 cd src-tauri/gen/apple
 xcodegen generate
 xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios build
