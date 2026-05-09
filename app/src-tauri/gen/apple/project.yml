@@ -52,6 +52,9 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         CFBundleShortVersionString: 0.31.0
         CFBundleVersion: "0.31.0"
+        NSLocalNetworkUsageDescription: Sendme needs local network access to find and connect to nearby devices.
+        NSBonjourServices:
+          - _sendme._udp
     entitlements:
       path: app_iOS/app_iOS.entitlements
     scheme:

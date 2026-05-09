@@ -9,11 +9,10 @@
     <string>Sendme needs access to your photo library to select photos and videos to send</string>
     <!-- Network access permissions for P2P functionality -->
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Sendme needs local network access to establish P2P connections and share terminal sessions</string>
+    <string>Sendme needs local network access to find and connect to nearby devices.</string>
 
     <key>NSBonjourServices</key>
     <array>
-      <string>_sendme._tcp</string>
       <string>_sendme._udp</string>
     </array>
 

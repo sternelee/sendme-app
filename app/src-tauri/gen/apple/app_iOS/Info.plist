@@ -18,6 +18,12 @@
 	<string>0.31.0</string>
 	<key>CFBundleVersion</key>
 	<string>0.31.0</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Sendme needs local network access to find and connect to nearby devices.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_sendme._udp</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
