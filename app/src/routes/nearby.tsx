@@ -1,5 +1,10 @@
-import { Show, createSignal, onCleanup, onMount } from "solid-js";
+import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
+import { platform } from "@tauri-apps/plugin-os";
+import {
+  isPermissionGranted,
+  requestPermission,
+} from "@tauri-apps/plugin-notification";
 import {
   get_nearby_devices,
   get_nearby_profile,
@@ -34,12 +39,31 @@ export default function NearbyPage(props: NearbyPageProps) {
   let refreshInFlight = false;
 
   const nearbyState = () => store.nearbySend.state();
+  const hasActiveTransfer = createMemo(() =>
+    ["waiting", "transferring", "done", "error"].includes(
+      nearbyState().transferState,
+    ),
+  );
+
+  async function ensureNearbyNotificationPermission() {
+    const currentPlatform = platform();
+    const isMobile = currentPlatform === "android" || currentPlatform === "ios";
+    if (!isMobile) return;
+
+    try {
+      if (await isPermissionGranted()) return;
+      await requestPermission();
+    } catch {
+      // Best-effort only; nearby should continue working without blocking on this.
+    }
+  }
 
   async function refreshDevices(options?: {
     showSpinner?: boolean;
     restartDiscovery?: boolean;
   }) {
     if (refreshInFlight) return;
+    if (hasActiveTransfer() && !options?.restartDiscovery) return;
 
     refreshInFlight = true;
     if (options?.showSpinner) {
@@ -73,6 +97,7 @@ export default function NearbyPage(props: NearbyPageProps) {
   }
 
   onMount(async () => {
+    void ensureNearbyNotificationPermission();
     await refreshDevices({ showSpinner: true, restartDiscovery: true });
 
     const interval = setInterval(() => {
@@ -195,16 +220,18 @@ export default function NearbyPage(props: NearbyPageProps) {
         </Show>
       </div>
 
-      <NearbyDeviceList
-        devices={nearbyState().nearbyDevices}
-        isScanning={isScanning()}
-        selectedDeviceId={nearbyState().selectedDevice?.id ?? null}
-        onDeviceSelect={handleDeviceSelect}
-        onRefresh={() =>
-          void refreshDevices({ showSpinner: true, restartDiscovery: true })
-        }
-        error={nearbyState().error}
-      />
+      <Show when={!hasActiveTransfer()}>
+        <NearbyDeviceList
+          devices={nearbyState().nearbyDevices}
+          isScanning={isScanning()}
+          selectedDeviceId={nearbyState().selectedDevice?.id ?? null}
+          onDeviceSelect={handleDeviceSelect}
+          onRefresh={() =>
+            void refreshDevices({ showSpinner: true, restartDiscovery: true })
+          }
+          error={nearbyState().error}
+        />
+      </Show>
 
       <Show
         when={

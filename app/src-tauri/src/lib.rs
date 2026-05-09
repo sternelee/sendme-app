@@ -1371,6 +1371,22 @@ async fn handle_nearby_incoming(
     };
     let _ = app.emit("incoming_nearby_request", request_payload);
 
+    let notification_title = format!("{} wants to send you files", sender_name);
+    let notification_body = if files.len() == 1 {
+        format!("{} · {} bytes", files[0].path, files[0].size)
+    } else {
+        format!("{} files · {} bytes", files.len(), total_size)
+    };
+    if let Err(error) = app
+        .notification()
+        .builder()
+        .title(&notification_title)
+        .body(&notification_body)
+        .show()
+    {
+        tracing::warn!("Failed to send nearby request notification: {}", error);
+    }
+
     let decision = tokio::time::timeout(Duration::from_secs(300), decision_rx.recv())
         .await
         .ok()
