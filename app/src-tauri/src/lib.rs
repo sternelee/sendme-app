@@ -639,6 +639,7 @@ struct AndroidForegroundTransfer {
 #[derive(Debug, Default)]
 struct AndroidForegroundRuntime {
     active_receive: Option<AndroidForegroundTransfer>,
+    active_nearby: Option<AndroidForegroundTransfer>,
 }
 
 #[cfg(target_os = "android")]
@@ -666,7 +667,10 @@ async fn start_nearby_discovery(
     app: AppHandle,
     nearby: tauri::State<'_, NearbyState>,
 ) -> Result<(), String> {
-    ensure_nearby_runtime(&app, nearby.inner().clone()).await
+    let nearby_state = nearby.inner().clone();
+    ensure_nearby_runtime(&app, nearby_state).await?;
+    sync_android_nearby_foreground(&app).await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -703,7 +707,10 @@ async fn get_nearby_profile(
 }
 
 #[tauri::command]
-async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyState>) -> Result<(), String> {
+async fn stop_nearby_discovery(
+    app: AppHandle,
+    nearby: tauri::State<'_, NearbyState>,
+) -> Result<(), String> {
     // Take the endpoint and other state out while holding the lock, then
     // release the lock before awaiting close() so we don't hold a write
     // guard across an await point.
@@ -719,6 +726,7 @@ async fn stop_nearby_discovery(nearby: tauri::State<'_, NearbyState>) -> Result<
     if let Some(ep) = endpoint {
         ep.close().await;
     }
+    set_android_active_nearby(&app, None).await;
     Ok(())
 }
 
@@ -925,6 +933,18 @@ async fn send_to_device(
             }),
         },
     );
+    set_android_active_nearby(
+        &app,
+        Some(AndroidForegroundTransfer {
+            title: format!("Sending to {}", receiver_name),
+            message: "Waiting for device confirmation".to_string(),
+            detail: format!("{} · {} bytes", prepared.display_name, prepared.total_size),
+            progress_current: 0,
+            progress_total: 0,
+            indeterminate: true,
+        }),
+    )
+    .await;
 
     let response = read_nearby_message(&mut recv).await?;
     let session_id = match response {
@@ -952,6 +972,7 @@ async fn send_to_device(
             if let Some(cleanup_path) = &prepared.cleanup_path {
                 let _ = tokio::fs::remove_dir_all(cleanup_path).await;
             }
+            sync_android_nearby_foreground(&app).await;
             return Err(reason);
         }
         sendme_lib::nearby::Message::Cancel { reason, .. } => {
@@ -977,12 +998,14 @@ async fn send_to_device(
             if let Some(cleanup_path) = &prepared.cleanup_path {
                 let _ = tokio::fs::remove_dir_all(cleanup_path).await;
             }
+            sync_android_nearby_foreground(&app).await;
             return Err(reason);
         }
         _ => {
             if let Some(cleanup_path) = &prepared.cleanup_path {
                 let _ = tokio::fs::remove_dir_all(cleanup_path).await;
             }
+            sync_android_nearby_foreground(&app).await;
             return Err(format!("Unexpected nearby response from {fallback_name}"));
         }
     };
@@ -1031,9 +1054,13 @@ async fn send_to_device(
         rx,
     );
 
-    let send_result = sendme_lib::send_with_progress(args, tx)
-        .await
-        .map_err(|e| format!("Failed to prepare nearby transfer: {e}"))?;
+    let send_result = match sendme_lib::send_with_progress(args, tx).await {
+        Ok(send_result) => send_result,
+        Err(error) => {
+            sync_android_nearby_foreground(&app).await;
+            return Err(format!("Failed to prepare nearby transfer: {error}"));
+        }
+    };
 
     if let Some(cleanup_path) = prepared.cleanup_path {
         let _ = tokio::fs::remove_dir_all(cleanup_path).await;
@@ -1055,8 +1082,8 @@ async fn send_to_device(
             request_id: None,
             transfer_id: Some(transfer_id.clone()),
             state: "transferring".to_string(),
-            device_name: Some(receiver_name),
-            device_type: Some(receiver_type),
+            device_name: Some(receiver_name.clone()),
+            device_type: Some(receiver_type.clone()),
             message: Some("Receiver is downloading".to_string()),
             progress: Some(NearbyTransferProgressPayload {
                 transferred: 0,
@@ -1066,6 +1093,18 @@ async fn send_to_device(
             }),
         },
     );
+    set_android_active_nearby(
+        &app,
+        Some(AndroidForegroundTransfer {
+            title: format!("Sending to {}", receiver_name),
+            message: "Receiver is downloading".to_string(),
+            detail: format!("{} · {} bytes", prepared.display_name, prepared.total_size),
+            progress_current: 0,
+            progress_total: 0,
+            indeterminate: true,
+        }),
+    )
+    .await;
 
     Ok(transfer_id)
 }
@@ -1911,10 +1950,23 @@ async fn set_android_active_receive(
     refresh_android_foreground_notification(app).await;
 }
 
+async fn set_android_active_nearby(
+    app: &AppHandle,
+    active_nearby: Option<AndroidForegroundTransfer>,
+) {
+    let state = app.state::<AndroidForegroundState>().inner().clone();
+    {
+        let mut guard = state.write().await;
+        guard.active_nearby = active_nearby;
+    }
+    refresh_android_foreground_notification(app).await;
+}
+
 #[cfg(target_os = "android")]
 fn build_android_foreground_notification_payload(
     snapshot: &CloudPresenceSnapshotPayload,
     active_receive: Option<&AndroidForegroundTransfer>,
+    active_nearby: Option<&AndroidForegroundTransfer>,
 ) -> Option<AndroidForegroundNotificationPayload> {
     if let Some(active_receive) = active_receive {
         return Some(AndroidForegroundNotificationPayload {
@@ -1924,6 +1976,17 @@ fn build_android_foreground_notification_payload(
             progress_current: active_receive.progress_current,
             progress_total: active_receive.progress_total,
             indeterminate: active_receive.indeterminate,
+        });
+    }
+
+    if let Some(active_nearby) = active_nearby {
+        return Some(AndroidForegroundNotificationPayload {
+            title: active_nearby.title.clone(),
+            message: active_nearby.message.clone(),
+            detail: active_nearby.detail.clone(),
+            progress_current: active_nearby.progress_current,
+            progress_total: active_nearby.progress_total,
+            indeterminate: active_nearby.indeterminate,
         });
     }
 
@@ -1967,8 +2030,15 @@ async fn refresh_android_foreground_notification(app: &AppHandle) {
     let cloud = app.state::<CloudPresenceState>().inner().clone();
     let android_state = app.state::<AndroidForegroundState>().inner().clone();
     let snapshot = cloud.read().await.snapshot.clone();
-    let active_receive = android_state.read().await.active_receive.clone();
-    let payload = build_android_foreground_notification_payload(&snapshot, active_receive.as_ref());
+    let android_guard = android_state.read().await;
+    let active_receive = android_guard.active_receive.clone();
+    let active_nearby = android_guard.active_nearby.clone();
+    drop(android_guard);
+    let payload = build_android_foreground_notification_payload(
+        &snapshot,
+        active_receive.as_ref(),
+        active_nearby.as_ref(),
+    );
 
     match payload {
         Some(payload) => match serde_json::to_string(&payload) {
@@ -1994,6 +2064,32 @@ async fn refresh_android_foreground_notification(app: &AppHandle) {
 
 #[cfg(not(target_os = "android"))]
 async fn refresh_android_foreground_notification(_app: &AppHandle) {}
+
+async fn sync_android_nearby_foreground(app: &AppHandle) {
+    let nearby = app.state::<NearbyState>().inner().clone();
+    let payload = {
+        let guard = nearby.read().await;
+        if guard.discovery.is_some() {
+            Some(AndroidForegroundTransfer {
+                title: "Nearby sharing active".to_string(),
+                message: if guard.device_name.trim().is_empty() {
+                    "Visible to nearby devices".to_string()
+                } else {
+                    format!("{} is visible to nearby devices", guard.device_name)
+                },
+                detail: "Keep Sendme open to discover, send, and receive nearby transfers."
+                    .to_string(),
+                progress_current: 0,
+                progress_total: 0,
+                indeterminate: true,
+            })
+        } else {
+            None
+        }
+    };
+
+    set_android_active_nearby(app, payload).await;
+}
 
 fn transfer_label_for_notification(transfer_type: &str, path: Option<&str>) -> String {
     match transfer_type {
@@ -2255,6 +2351,7 @@ fn spawn_nearby_send_progress_listener(
                             )),
                         },
                     );
+                    sync_android_nearby_foreground(&app).await;
                 }
                 _ => {}
             }
