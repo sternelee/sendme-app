@@ -220,6 +220,43 @@ export function AuthProvider(props: { children: JSX.Element }) {
     }
   };
 
+  const syncSessionFromClerk = async (
+    clerk: Clerk,
+    reason: string,
+    nextUser?: UserInfo | null,
+  ): Promise<boolean> => {
+    const activeSession = clerk.session;
+    if (!activeSession) {
+      debugInfo("auth", `${reason}: Clerk has no active session`);
+      await applySession(null, nextUser);
+      return false;
+    }
+
+    try {
+      const token = await activeSession.getToken();
+      if (!token?.trim()) {
+        debugWarn(
+          "auth",
+          `${reason}: Clerk active session ${activeSession.id} returned no token`,
+        );
+        return false;
+      }
+
+      await applySession(
+        createCachedAuthSession(token, { sessionId: activeSession.id }),
+        nextUser,
+      );
+      debugInfo(
+        "auth",
+        `${reason}: synced Clerk active session ${activeSession.id} into cached auth state`,
+      );
+      return true;
+    } catch (error) {
+      debugWarn("auth", `${reason}: failed to read Clerk session token`, error);
+      return false;
+    }
+  };
+
   const handleDeepLinkCallback = async (url: string) => {
     setIsCloudReady(false);
     const { session: callbackSession, user: callbackUser } =
@@ -337,15 +374,34 @@ export function AuthProvider(props: { children: JSX.Element }) {
           }
         }
 
+        const recoveredUser = clerk.user
+          ? {
+              id: clerk.user.id,
+              email: clerk.user.emailAddresses[0]?.emailAddress || "",
+              name: clerk.user.fullName || clerk.user.username || "",
+              imageUrl: clerk.user.imageUrl,
+            }
+          : user();
+        await syncSessionFromClerk(clerk, "startup recovery", recoveredUser);
+
         if (!clerkUnsubscribe) {
           clerkUnsubscribe = clerk.addListener(({ user: clerkUser }) => {
-            if (!clerkUser || disposed) return;
-            setUser({
-              id: clerkUser.id,
-              email: clerkUser.emailAddresses[0]?.emailAddress || "",
-              name: clerkUser.fullName || clerkUser.username || "",
-              imageUrl: clerkUser.imageUrl,
-            });
+            if (disposed) return;
+
+            const nextUser = clerkUser
+              ? {
+                  id: clerkUser.id,
+                  email: clerkUser.emailAddresses[0]?.emailAddress || "",
+                  name: clerkUser.fullName || clerkUser.username || "",
+                  imageUrl: clerkUser.imageUrl,
+                }
+              : null;
+
+            if (nextUser) {
+              setUser(nextUser);
+            }
+
+            void syncSessionFromClerk(clerk, "clerk listener", nextUser);
           });
         }
       } catch (error) {
@@ -379,6 +435,15 @@ export function AuthProvider(props: { children: JSX.Element }) {
                 rustSession,
                 rustUser ? rustUserToUserInfo(rustUser) : user(),
               );
+            } else {
+              const clerk = clerkInstance();
+              if (clerk) {
+                await syncSessionFromClerk(
+                  clerk,
+                  "plugin-clerk-auth-cb",
+                  rustUser ? rustUserToUserInfo(rustUser) : user(),
+                );
+              }
             }
           },
         );
