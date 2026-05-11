@@ -46,7 +46,6 @@ interface AuthContextValue {
   signIn: () => Promise<void>;
   signUp: () => Promise<void>;
   signOut: () => Promise<void>;
-  clerk: () => null;
   getToken: () => Promise<string | null>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (
@@ -345,7 +344,6 @@ export function AuthProvider(props: { children: JSX.Element }) {
     signIn,
     signUp,
     signOut,
-    clerk: () => null,
     getToken,
     signInWithEmail,
     signUpWithEmail,
