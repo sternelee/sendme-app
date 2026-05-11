@@ -10,8 +10,7 @@ import { ThemeSwitcher } from "../../lib/ThemeSwitcher";
 import { LanguageSwitcher } from "../../lib/LanguageSwitcher";
 import { i18n } from "../../lib/i18n";
 import { Presence } from "solid-motionone";
-import { useAuth } from "../../lib/contexts/user-clerk";
-import { useUser } from "clerk-solidjs";
+import { useAuth } from "../../lib/contexts/user-auth";
 import {
   TbOutlineSparkles,
   TbOutlineUpload,
@@ -23,7 +22,6 @@ import {
   TbOutlineLogout,
   TbOutlineUser,
 } from "solid-icons/tb";
-import { SignInButton } from "clerk-solidjs";
 import IncomingTicketsBanner from "../../components/sendme/IncomingTicketsBanner";
 
 const t = i18n.t;
@@ -41,7 +39,6 @@ export default function AppPage() {
   const [isInitializing, setIsInitializing] = createSignal(true);
   const [initError, setInitError] = createSignal<string | null>(null);
   const auth = useAuth();
-  const { user: clerkUser } = useUser();
 
   const initApp = async () => {
     setIsInitializing(true);
@@ -115,28 +112,25 @@ export default function AppPage() {
         <div class="flex-none flex items-center gap-2">
           <LanguageSwitcher />
           <ThemeSwitcher />
-          <Show when={clerkUser()}>
+          <Show when={auth.user()}>
             {(u) => {
-              const primaryEmail =
-                u().emailAddresses.find(
-                  (e) => e.id === u().primaryEmailAddressId,
-                )?.emailAddress ?? u().emailAddresses[0]?.emailAddress ?? "";
+              const user = u();
               return (
                 <div class="dropdown dropdown-end">
-                  <div tabindex="0" role="button" class="tooltip tooltip-bottom" data-tip={primaryEmail} onKeyDown={(e) => { if (e.key === "Escape") (e.currentTarget as HTMLElement).blur(); }}>
+                  <div tabindex="0" role="button" class="tooltip tooltip-bottom" data-tip={user.email} onKeyDown={(e) => { if (e.key === "Escape") (e.currentTarget as HTMLElement).blur(); }}>
                     <div class="avatar cursor-pointer">
                       <div class="w-8 h-8 rounded-full">
                         <Show
-                          when={u().imageUrl}
+                          when={user.imageUrl}
                           fallback={
                             <div class="w-full h-full bg-primary text-primary-content flex items-center justify-center text-sm font-bold rounded-full">
-                              {(u().firstName?.charAt(0) || u().username?.charAt(0) || "?").toUpperCase()}
+                              {(user.name?.charAt(0) || "?").toUpperCase()}
                             </div>
                           }
                         >
                           <img
-                            src={u().imageUrl!}
-                            alt={u().fullName || "User"}
+                            src={user.imageUrl}
+                            alt={user.name || "User"}
                             class="w-full h-full object-cover"
                           />
                         </Show>
@@ -280,34 +274,32 @@ export default function AppPage() {
                                 <p class="text-sm text-base-content/60">{t("common.signInToSync")}</p>
                               </div>
                             </div>
-                            <SignInButton mode="modal">
-                              <button class="btn btn-primary btn-sm mt-3 w-full rounded-lg">
-                                {t("common.signIn")}
-                              </button>
-                            </SignInButton>
+                            <a href="/auth/sign-in" class="btn btn-primary btn-sm mt-3 w-full rounded-lg">
+                              {t("common.signIn")}
+                            </a>
                           </div>
                         }
                       >
                         <div class="bg-base-300 rounded-xl p-4">
                           <div class="flex items-center gap-3">
-                            <Show when={clerkUser()?.imageUrl}>
+                            <Show when={auth.user()?.imageUrl}>
                               <img
-                                src={clerkUser()!.imageUrl}
+                                src={auth.user()!.imageUrl}
                                 class="w-10 h-10 rounded-full object-cover"
                                 alt="avatar"
                               />
                             </Show>
-                            <Show when={!clerkUser()?.imageUrl}>
+                            <Show when={!auth.user()?.imageUrl}>
                               <div class="avatar placeholder">
                                 <div class="bg-primary text-primary-content w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold">
-                                  {(clerkUser()?.firstName?.charAt(0) || clerkUser()?.username?.charAt(0) || "?").toUpperCase()}
+                                  {(auth.user()?.name?.charAt(0) || "?").toUpperCase()}
                                 </div>
                               </div>
                             </Show>
                             <div class="min-w-0 flex-1">
-                              <p class="truncate font-semibold">{clerkUser()?.fullName || clerkUser()?.username || "User"}</p>
+                              <p class="truncate font-semibold">{auth.user()?.name || "User"}</p>
                               <p class="truncate text-sm text-base-content/60">
-                                {clerkUser()?.emailAddresses.find((e) => e.id === clerkUser()?.primaryEmailAddressId)?.emailAddress ?? ""}
+                                {auth.user()?.email ?? ""}
                               </p>
                             </div>
                             <button

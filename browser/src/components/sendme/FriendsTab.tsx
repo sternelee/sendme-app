@@ -1,7 +1,6 @@
 import { Show, For, createSignal, createEffect, createMemo } from "solid-js";
 import toast from "solid-toast";
-import { useAuth } from "../../lib/contexts/user-clerk";
-import { useAuth as useClerkAuth } from "clerk-solidjs";
+import { useAuth } from "../../lib/contexts/user-auth";
 import { useWebSocket, type EnrichedFriend } from "../../lib/composables/useWebSocket";
 import { i18n } from "../../lib/i18n";
 import {
@@ -95,8 +94,8 @@ function FriendRequestToast(props: {
 }
 
 export default function FriendsTab(props: FriendsTabProps) {
-  const auth = useAuth();
-  const { getToken, userId: clerkUserId } = useClerkAuth();
+  const { getToken, user } = useAuth();
+  const userId = () => user()?.id;
   const { friends, isConnected } = useWebSocket();
   const [email, setEmail] = createSignal("");
   const [isAdding, setIsAdding] = createSignal(false);
@@ -117,12 +116,12 @@ export default function FriendsTab(props: FriendsTabProps) {
   // friendUserId is the receiver; userId is the sender
   const incomingRequests = createMemo(() =>
     pendingFriends().filter(
-      (f) => f.friendUserId === clerkUserId()
+      (f) => f.friendUserId === userId()
     )
   );
   const outgoingRequests = createMemo(() =>
     pendingFriends().filter(
-      (f) => f.userId === clerkUserId()
+      (f) => f.userId === userId()
     )
   );
 
@@ -485,7 +484,7 @@ export default function FriendsTab(props: FriendsTabProps) {
           <div class="space-y-3">
             <For each={pendingFriends()}>
               {(friend) => {
-                const isIncoming = friend.friendUserId === clerkUserId();
+                const isIncoming = friend.friendUserId === userId();
 
                 return (
                   <div class="card bg-base-200 shadow-sm">

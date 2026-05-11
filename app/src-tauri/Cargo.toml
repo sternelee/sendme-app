@@ -34,7 +34,6 @@ tauri-plugin-fs = "2"
 tauri-plugin-sharesheet = { git = "https://github.com/rittme/tauri-plugin-sharesheet" }
 tauri-plugin-opener = "2"
 tauri-plugin-deep-link = "2"
-tauri-plugin-clerk = { path = "./plugins/tauri-plugin-clerk" }
 anyhow = "1"
 iroh.workspace = true
 iroh-blobs.workspace = true

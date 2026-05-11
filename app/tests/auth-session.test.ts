@@ -36,7 +36,7 @@ describe("auth-session", () => {
   it("parses the browser callback deep link payload", () => {
     const token = createJwt({ sid: "sess_456", iat: 1000, exp: 2000 });
     const { session, user } = extractAuthCallbackData(
-      `sendme://auth/callback?__clerk_token=${encodeURIComponent(token)}&session_id=sess_456&token_iat=1000&token_exp=2000&user_id=user_123&user_email=test%40example.com&user_name=Test%20User&user_image_url=https%3A%2F%2Fexample.com%2Favatar.png`,
+      `sendme://auth/callback?token=${encodeURIComponent(token)}&session_id=sess_456&token_iat=1000&token_exp=2000&user_id=user_123&user_email=test%40example.com&user_name=Test%20User&user_image_url=https%3A%2F%2Fexample.com%2Favatar.png`,
     );
 
     expect(session).toEqual({

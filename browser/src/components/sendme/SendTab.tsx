@@ -1,8 +1,7 @@
 import { Show, For, onCleanup, createSignal, createEffect } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
-import { useAuth as useClerkAuth } from "clerk-solidjs";
-import { useAuth } from "../../lib/contexts/user-clerk";
+import { useAuth } from "../../lib/contexts/user-auth";
 import { i18n } from "../../lib/i18n";
 import { useGlobalStore } from "../../lib/store";
 import QRCode from "../QRCode";
@@ -50,7 +49,7 @@ function isPreviewable(file: File): boolean {
 
 export default function SendTab() {
   const auth = useAuth();
-  const { getToken } = useClerkAuth();
+  const { getToken } = useAuth();
   const globalStore = useGlobalStore();
   const { friends } = useWebSocket();
   const [isFriendModalOpen, setIsFriendModalOpen] = createSignal(false);

@@ -4,7 +4,6 @@
   "windows": ["main", "splashscreen"],
   "permissions": [
     "core:default",
-    "clerk:default",
     "opener:allow-open-url",
     "deep-link:default",
     "clipboard-manager:default",

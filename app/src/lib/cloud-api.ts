@@ -1,5 +1,5 @@
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { debugError, debugInfo, debugWarn } from "./debug-log";
+import { debugInfo, debugWarn } from "./debug-log";
 
 // ---------------------------------------------------------------------------
 // Token provider — injected by AuthProvider via initCloudApi()
@@ -7,9 +7,9 @@ import { debugError, debugInfo, debugWarn } from "./debug-log";
 let _getToken: () => Promise<string | null> = () => Promise.resolve(null);
 
 /**
- * Called once from AuthProvider after the Clerk instance is ready.
+ * Called once from AuthProvider after auth is initialized.
  * After this point every outgoing cloud request obtains its token directly
- * from Clerk JS, with no Rust IPC hop.
+ * from the cached session, with no Rust IPC hop.
  */
 export function initCloudApi(getToken: () => Promise<string | null>): void {
   _getToken = getToken;
@@ -115,7 +115,7 @@ export async function getAuthorizationHeaderValue(): Promise<string | null> {
 }
 
 /**
- * Clerk JS refreshes tokens automatically; calling getToken() again is sufficient.
+ * The cached session token is used directly; there is no separate refresh step.
  */
 export async function refreshAuthorizationHeaderValue(): Promise<
   string | null

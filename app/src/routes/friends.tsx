@@ -1,6 +1,7 @@
 import { createSignal, createMemo, createEffect, onMount, onCleanup, Show, For } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "solid-sonner";
+import AuthPanel from "~/components/AuthPanel";
 import { get_cloud_presence_state, send_file, send_text, type CloudFriend } from "~/bindings";
 import { useAuth } from "~/lib/auth";
 import { useFriends, type Friend } from "~/lib/friends";
@@ -344,17 +345,8 @@ export default function FriendsPage(props: FriendsPageProps) {
       <Show
         when={isLoggedIn()}
         fallback={
-          <div class="text-center py-12">
-            <Users size={48} class="mx-auto mb-4 opacity-40" />
-            <p class="text-base-content/60 font-medium">
-              {t("common.signInToSync")}
-            </p>
-            <button
-              onClick={() => auth.signIn()}
-              class="btn btn-primary mt-4"
-            >
-              {t("common.signIn")}
-            </button>
+          <div class="py-4">
+            <AuthPanel icon={<Users size={20} />} />
           </div>
         }
       >

@@ -1,7 +1,6 @@
 import { Motion } from "solid-motionone";
 import { createSignal, Show } from "solid-js";
-import { SignedIn, SignedOut, SignInButton, SignUpButton } from "clerk-solidjs";
-import { useAuth } from "~/lib/contexts/user-clerk";
+import { useAuth } from "~/lib/contexts/user-auth";
 import toast from "solid-toast";
 import {
   TbOutlineSparkles,
@@ -64,24 +63,20 @@ export default function HomePage() {
                 tabindex="-1"
                 class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-box w-42 border border-base-200 absolute right-0 mt-2"
               >
-                <SignedOut>
+                <Show when={!auth.isSignedIn()}>
                   <li>
                     <a href="/app" class="font-bold">
                       {t("landing.menu.launchApp")}
                     </a>
                   </li>
                   <li>
-                    <SignInButton mode="modal">
-                      {t("landing.menu.signIn")}
-                    </SignInButton>
+                    <a href="/auth/sign-in">{t("landing.menu.signIn")}</a>
                   </li>
                   <li>
-                    <SignUpButton mode="modal">
-                      {t("landing.menu.signUp")}
-                    </SignUpButton>
+                    <a href="/auth/sign-up">{t("landing.menu.signUp")}</a>
                   </li>
-                </SignedOut>
-                <SignedIn>
+                </Show>
+                <Show when={auth.isSignedIn()}>
                   <li>
                     <a href="/app" class="font-bold">
                       {t("landing.menu.goToApp")}
@@ -92,7 +87,7 @@ export default function HomePage() {
                       {t("common.signOut")}
                     </button>
                   </li>
-                </SignedIn>
+                </Show>
               </ul>
             </div>
           </div>

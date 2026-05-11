@@ -20,7 +20,7 @@ import {
   TbOutlineAlertTriangle,
   TbOutlineRefresh,
 } from "solid-icons/tb";
-import { useAuth as useClerkAuth } from "clerk-solidjs";
+import { useAuth } from "~/lib/contexts/user-auth";
 import { i18n } from "~/lib/i18n";
 
 const t = i18n.t;
@@ -81,7 +81,7 @@ function formatDate(ts: number | null): string {
 }
 
 export default function ApiKeysPanel() {
-  const { getToken, isSignedIn } = useClerkAuth();
+  const { getToken, isSignedIn } = useAuth();
 
   const [keys, { refetch }] = createResource(isSignedIn, async (signedIn) => {
     if (!signedIn) return [] as ApiKeyMeta[];

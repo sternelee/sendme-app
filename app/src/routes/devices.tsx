@@ -7,6 +7,7 @@ import { useFriends } from "~/lib/friends";
 import { i18n } from "~/lib/i18n";
 import { Smartphone, Laptop, Monitor, RefreshCw, Send } from "lucide-solid";
 import { toast } from "solid-sonner";
+import AuthPanel from "~/components/AuthPanel";
 
 const t = i18n.t;
 
@@ -105,17 +106,8 @@ export default function DevicesPage(props: DevicesPageProps) {
       <Show
         when={isLoggedIn()}
         fallback={
-          <div class="text-center py-12">
-            <Smartphone size={48} class="mx-auto mb-4 opacity-40" />
-            <p class="text-base-content/60 font-medium">
-              {t("common.signInToSync")}
-            </p>
-            <button
-              onClick={() => auth.signIn()}
-              class="btn btn-primary mt-4"
-            >
-              {t("common.signIn")}
-            </button>
+          <div class="py-4">
+            <AuthPanel icon={<Smartphone size={20} />} />
           </div>
         }
       >

@@ -62,7 +62,7 @@ export async function GET(event: RequestEvent) {
 
 /**
  * POST /api/keys — Create a new API key.
- * Only accessible via Clerk JWT auth (not via API key).
+ * Only accessible via better-auth session token (not via API key).
  * The full key is returned ONLY in this response.
  */
 export async function POST(event: RequestEvent) {
@@ -76,7 +76,7 @@ export async function POST(event: RequestEvent) {
     });
   }
 
-  // Only allow key creation via Clerk JWT, not via another API key
+  // Only allow key creation via better-auth session token, not via another API key
   const authHeader = event.request.headers.get("authorization");
   const token = authHeader?.split(" ")[1];
   if (token?.startsWith("sk_")) {

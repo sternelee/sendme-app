@@ -1,17 +1,20 @@
 /**
- * Clerk Authentication Helper
+ * Authentication Helper
  * Backend utilities for authenticating requests in Cloudflare Workers
  */
 
-import { verifyToken } from "@clerk/backend";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import { apiKeys } from "./db/schema";
 
 export interface Env {
-  CLERK_SECRET_KEY?: string;
-  CLERK_PUBLISHABLE_KEY?: string;
-  CLERK_JWT_KEY?: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
+  BETTER_AUTH_TRUSTED_ORIGINS?: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   DB: D1Database;
   USER_DO: DurableObjectNamespace;
 }
@@ -50,7 +53,7 @@ function getBearerToken(request: Request): string | null {
 }
 
 /**
- * Authenticate a request using a verified Clerk JWT.
+ * Authenticate a request using better-auth session or API key.
  * Returns the userId if authenticated, null otherwise.
  */
 export async function authenticateRequest(
@@ -69,24 +72,20 @@ export async function authenticateRequest(
       return await authenticateApiKey(sessionToken, env);
     }
 
-    // Clerk JWT authentication path
-    if (!env.CLERK_SECRET_KEY && !env.CLERK_JWT_KEY) {
-      console.error("[Clerk Auth] Missing CLERK_SECRET_KEY or CLERK_JWT_KEY");
-      return { userId: null, status: "missing-clerk-config" };
-    }
-
-    const payload = await verifyToken(sessionToken, {
-      secretKey: env.CLERK_SECRET_KEY,
-      jwtKey: env.CLERK_JWT_KEY,
+    // Better-auth session token authentication path
+    const { createAuth } = await import("./auth-server");
+    const auth = createAuth(env);
+    const session = await auth.api.getSession({
+      headers: request.headers,
     });
 
-    if (!payload.sub) {
+    if (!session) {
       return { userId: null, status: "invalid-token" };
     }
 
-    return { userId: payload.sub, status: "authenticated" };
+    return { userId: session.user.id, status: "authenticated" };
   } catch (error) {
-    console.error("[Clerk Auth] Error:", error);
+    console.error("[Auth] Error:", error);
     return { userId: null, status: "invalid-token" };
   }
 }

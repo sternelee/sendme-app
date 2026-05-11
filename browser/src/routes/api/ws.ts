@@ -4,7 +4,7 @@
  *
  * Query params:
  *   - deviceId: string (current device's persistent client-side device ID)
- *   - token: string (Clerk session token for browser WS handshakes)
+ *   - token: string (better-auth session token for browser WS handshakes)
  */
 
 import { drizzle } from "drizzle-orm/d1";

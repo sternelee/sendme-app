@@ -14,7 +14,7 @@ export interface CachedAuthSession {
 
 export const USER_CACHE_KEY = "sendme_cached_user";
 export const SESSION_CACHE_KEY = "sendme_cached_auth_session";
-export const DEV_BROWSER_TOKEN_CACHE_KEY = "sendme_clerk_dev_browser_token";
+export const DEV_BROWSER_TOKEN_CACHE_KEY = "sendme_dev_browser_token";
 
 function parseInteger(value: string | null): number | undefined {
   if (!value) return undefined;
@@ -187,7 +187,7 @@ export function extractAuthCallbackData(url: string): {
 } {
   try {
     const parsed = new URL(url);
-    const token = parsed.searchParams.get("__clerk_token")?.trim();
+    const token = parsed.searchParams.get("token")?.trim();
     const session = token
       ? createCachedAuthSession(token, {
           sessionId: parsed.searchParams.get("session_id") || undefined,

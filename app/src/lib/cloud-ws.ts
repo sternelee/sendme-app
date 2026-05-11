@@ -134,7 +134,7 @@ export async function connectCloudWebSocket(): Promise<void> {
     if (!token) {
       debugInfo(
         "cloud-ws",
-        "No auth token on first attempt; forcing Clerk refresh",
+        "No auth token on first attempt; attempting refresh",
       );
       authHeader = await refreshAuthorizationHeaderValue();
       token = extractBearerToken(authHeader);

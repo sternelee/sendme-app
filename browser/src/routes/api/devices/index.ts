@@ -15,7 +15,7 @@ import {
   upsertDevice,
 } from "~/lib/api/devices";
 import { authenticateRequest, getAuthTraceId, type Env } from "~/lib/auth";
-import { createClerkClient } from "@clerk/backend";
+import { createAuth } from "~/lib/auth-server";
 
 interface CloudflareContext {
   env: Env;
@@ -132,67 +132,53 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
     const db = drizzle(env.DB!, { schema });
 
     // Ensure the user record exists in our local DB (required for friends feature)
+    // Sync user info from the better-auth session.
     try {
-      const clerk = createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
-      const clerkUser = await clerk.users.getUser(userId);
-      const primaryEmail =
-        clerkUser.emailAddresses.find(
-          (e) => e.id === clerkUser.primaryEmailAddressId,
-        )?.emailAddress ??
-        clerkUser.emailAddresses[0]?.emailAddress ??
-        "";
-      const displayName =
-        [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
-        clerkUser.username ||
-        primaryEmail;
+      const auth = createAuth(env);
+      const session = await auth.api.getSession({ headers: requestEvent.request.headers });
+      if (session?.user) {
+        const existingRows = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
 
-      // D1 does not support table-qualified column targets in ON CONFLICT (e.g.
-      // `on conflict ("user"."id")`).  Use a plain SELECT + INSERT/UPDATE dance
-      // instead so the query never contains an `on conflict` clause.
-      const existingRows = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-      if (existingRows.length === 0) {
-        try {
-          await db.insert(users).values({
-            id: userId,
-            name: displayName,
-            email: primaryEmail,
-            emailVerified: true,
-            image: clerkUser.imageUrl,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        } catch {
-          // If the record already exists (same email but different id), fall
-          // back to UPDATE by email so we don't block the flow.
+        if (existingRows.length === 0) {
+          try {
+            await db.insert(users).values({
+              id: userId,
+              name: session.user.name || session.user.email,
+              email: session.user.email,
+              emailVerified: session.user.emailVerified || true,
+              image: session.user.image || null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          } catch {
+            await db
+              .update(users)
+              .set({
+                id: userId,
+                name: session.user.name || session.user.email,
+                image: session.user.image || null,
+                updatedAt: new Date(),
+              })
+              .where(eq(users.email, session.user.email));
+          }
+        } else {
           await db
             .update(users)
             .set({
-              id: userId,
-              name: displayName,
-              image: clerkUser.imageUrl,
+              name: session.user.name || session.user.email,
+              email: session.user.email,
+              image: session.user.image || null,
               updatedAt: new Date(),
             })
-            .where(eq(users.email, primaryEmail));
+            .where(eq(users.id, userId));
         }
-      } else {
-        await db
-          .update(users)
-          .set({
-            name: displayName,
-            email: primaryEmail,
-            image: clerkUser.imageUrl,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.id, userId));
       }
-    } catch (clerkErr) {
-      console.warn("[Devices API] Could not sync user from Clerk:", clerkErr);
-      // Non-blocking: friend search may fail if user record is missing
+    } catch (syncErr) {
+      console.warn("[Devices API] Could not sync user from session:", syncErr);
     }
 
     const device = await upsertDevice(db, userId, {

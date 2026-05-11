@@ -1,0 +1,168 @@
+import { createSignal, Show, JSX } from "solid-js";
+import { useAuth } from "~/lib/auth";
+import { i18n } from "~/lib/i18n";
+import { User, Mail, Lock, KeyRound } from "lucide-solid";
+
+const t = i18n.t;
+
+interface AuthPanelProps {
+  icon?: JSX.Element;
+}
+
+export default function AuthPanel(props: AuthPanelProps) {
+  const auth = useAuth();
+  const [authMode, setAuthMode] = createSignal<"sign-in" | "sign-up">(
+    "sign-in",
+  );
+  const [email, setEmail] = createSignal("");
+  const [password, setPassword] = createSignal("");
+  const [name, setName] = createSignal("");
+  const [authLoading, setAuthLoading] = createSignal(false);
+  const [authError, setAuthError] = createSignal<string | null>(null);
+
+  const handleSubmit = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      if (authMode() === "sign-in") {
+        await auth.signInWithEmail(email(), password());
+      } else {
+        await auth.signUpWithEmail(name(), email(), password());
+      }
+      setEmail("");
+      setPassword("");
+      setName("");
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : t("common.authFailed"));
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  return (
+    <div class="surface-card space-y-4 p-5">
+      <div class="flex items-center gap-3">
+        <div class="avatar placeholder">
+          <div class="bg-primary text-primary-content flex w-12 items-center justify-center rounded-2xl">
+            {props.icon ?? <User size={20} />}
+          </div>
+        </div>
+        <div class="flex-1">
+          <p class="font-semibold">{t("common.account")}</p>
+          <p class="text-xs opacity-60">{t("common.signInToSync")}</p>
+        </div>
+      </div>
+
+      <Show when={authError()}>
+        <div class="bg-error/10 border-error/20 text-error rounded-xl border p-3 text-sm">
+          {authError()}
+        </div>
+      </Show>
+
+      <Show when={authMode() === "sign-up"}>
+        <div>
+          <label class="label text-sm font-medium">{t("common.name")}</label>
+          <div class="relative">
+            <KeyRound
+              size={16}
+              class="text-base-content/40 absolute top-1/2 left-3 -translate-y-1/2"
+            />
+            <input
+              type="text"
+              class="input input-bordered w-full pl-10"
+              placeholder="Your name"
+              value={name()}
+              onInput={(e) => setName(e.currentTarget.value)}
+            />
+          </div>
+        </div>
+      </Show>
+
+      <div>
+        <label class="label text-sm font-medium">{t("common.email")}</label>
+        <div class="relative">
+          <Mail
+            size={16}
+            class="text-base-content/40 absolute top-1/2 left-3 -translate-y-1/2"
+          />
+          <input
+            type="email"
+            class="input input-bordered w-full pl-10"
+            placeholder="you@example.com"
+            value={email()}
+            onInput={(e) => setEmail(e.currentTarget.value)}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label class="label text-sm font-medium">{t("common.password")}</label>
+        <div class="relative">
+          <Lock
+            size={16}
+            class="text-base-content/40 absolute top-1/2 left-3 -translate-y-1/2"
+          />
+          <input
+            type="password"
+            class="input input-bordered w-full pl-10"
+            placeholder="••••••••"
+            value={password()}
+            onInput={(e) => setPassword(e.currentTarget.value)}
+          />
+        </div>
+      </div>
+
+      <button
+        class="btn btn-primary w-full rounded-2xl"
+        disabled={authLoading()}
+        onClick={handleSubmit}
+      >
+        {authLoading()
+          ? t("common.loading")
+          : authMode() === "sign-in"
+            ? t("common.signIn")
+            : t("common.signUp")}
+      </button>
+
+      <div class="text-center">
+        <button
+          class="link link-primary text-sm"
+          onClick={() => {
+            setAuthMode(authMode() === "sign-in" ? "sign-up" : "sign-in");
+            setAuthError(null);
+          }}
+        >
+          {authMode() === "sign-in"
+            ? t("common.dontHaveAccount")
+            : t("common.alreadyHaveAccount")}
+        </button>
+      </div>
+
+      <div class="relative">
+        <div class="absolute inset-0 flex items-center">
+          <div class="border-base-300 w-full border-t" />
+        </div>
+        <div class="relative flex justify-center text-xs">
+          <span class="bg-base-100 text-base-content/50 px-2">
+            {t("common.orContinueWith")}
+          </span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <button
+          class="btn btn-outline gap-2 rounded-2xl"
+          onClick={() => auth.signIn()}
+        >
+          GitHub
+        </button>
+        <button
+          class="btn btn-outline gap-2 rounded-2xl"
+          onClick={() => auth.signIn()}
+        >
+          Google
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -487,7 +487,7 @@ export class UserDO extends DurableObject<Env> {
             .limit(1);
           const friendUser = friendUserRows[0];
 
-          // If friend user record is missing (e.g. Clerk sync failed), use placeholder
+          // If friend user record is missing, use placeholder
           // so the friendship is still visible in the UI.
           const resolvedFriend = friendUser ?? {
             id: friendUserId,

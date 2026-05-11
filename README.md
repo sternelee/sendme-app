@@ -97,7 +97,6 @@ pnpm run tauri build
 #### iOS
 ```bash
 cd app
-# CLERK_PUBLISHABLE_KEY is read from system environment
 cd src-tauri/gen/apple
 xcodegen generate
 xcodebuild -project app.xcodeproj \

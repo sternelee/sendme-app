@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
 import toast from "solid-toast";
-import { useAuth as useClerkAuth } from "clerk-solidjs";
+import { useAuth } from "../../lib/contexts/user-auth";
 import { i18n } from "../../lib/i18n";
 import { useGlobalStore } from "../../lib/store";
 import { getDeviceId } from "../../lib/composables/useWebSocket";
@@ -27,7 +27,7 @@ function formatTime(timestamp: number): string {
 
 export default function HistoryTab() {
   const globalStore = useGlobalStore();
-  const { getToken, isSignedIn } = useClerkAuth();
+  const { getToken, isSignedIn } = useAuth();
 
   const entries = () => globalStore.history.state().entries;
 

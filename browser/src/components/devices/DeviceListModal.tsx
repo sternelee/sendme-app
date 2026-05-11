@@ -17,7 +17,7 @@ import {
   TbOutlineSend,
   TbOutlineClock,
 } from "solid-icons/tb";
-import { useAuth } from "clerk-solidjs";
+import { useAuth } from "~/lib/contexts/user-auth";
 import { useWebSocket, getDeviceId } from "~/lib/composables/useWebSocket";
 import type { Device } from "~/lib/composables/useWebSocket";
 import { i18n } from "~/lib/i18n";
@@ -128,9 +128,6 @@ export default function DeviceListModal(props: DeviceListModalProps) {
                   press={{ scale: 0.95 }}
                   onClick={() => {
                     // WS auto-reconnects; force a reconnect to refresh data
-                    const { destroy } = useWebSocket();
-                    destroy();
-                    // Re-init will happen on next component mount
                     window.location.reload();
                   }}
                   disabled={isLoading()}

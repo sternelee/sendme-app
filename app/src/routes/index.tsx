@@ -92,6 +92,7 @@ import NearbyPage from "~/routes/nearby";
 import FriendsPage from "~/routes/friends";
 import DevicesPage from "~/routes/devices";
 import { DropZone } from "~/lib/components/DropZone";
+import AuthPanel from "~/components/AuthPanel";
 
 
 const t = i18n.t;
@@ -1458,29 +1459,7 @@ export default function MainPage() {
 
                 <Show
                   when={auth.isSignedIn()}
-                  fallback={
-                    <div class="surface-card p-5">
-                      <div class="flex items-center gap-3">
-                        <div class="avatar placeholder">
-                          <div class="bg-primary text-primary-content flex w-12 items-center justify-center rounded-2xl">
-                            <User size={20} />
-                          </div>
-                        </div>
-                        <div class="flex-1">
-                          <p class="font-semibold">{t("common.account")}</p>
-                          <p class="text-xs opacity-60">
-                            {t("common.signInToSync")}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => auth.signIn()}
-                        class="btn btn-primary mt-4 rounded-2xl"
-                      >
-                        {t("common.signIn")}
-                      </button>
-                    </div>
-                  }
+                  fallback={<AuthPanel />}
                 >
                   <div class="surface-card p-5">
                     <div class="flex items-center gap-3">

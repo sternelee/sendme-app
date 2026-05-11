@@ -13,7 +13,6 @@ There are four distinct products in this repo:
 - `browser/` + `browser-lib/` — browser app plus WASM bindings
 
 Additional crates:
-- `app/src-tauri/plugins/tauri-plugin-clerk/` — custom Tauri plugin for Clerk auth on mobile
 - `app/src-tauri/plugins/tauri-plugin-media-picker/` — custom Tauri plugin for iOS photo/video picking
 
 `browser-lib/` is intentionally a separate Cargo workspace from the root workspace because the native workspace dependencies are not WASM-compatible.
@@ -130,7 +129,7 @@ That file contains:
 - progress emission to the frontend via Tauri events
 - platform-specific mobile file handling
 - desktop system tray (`menubar.rs`) and menubar panel commands (`menubar_cmd.rs`)
-- Clerk auth deep link callback handler (`handle_clerk_auth_callback`)
+- auth deep link callback handler (`handle_auth_callback`)
 
 Nearby-device support crosses layers:
 - protocol/discovery primitives are in `lib/src/nearby/*`
@@ -156,7 +155,7 @@ The browser-specific backend stack is Cloudflare-based:
 - `browser/src/routes/api/ws.ts` upgrades to a WebSocket and routes it into a user-scoped Durable Object
 - `browser/src/worker/durable-objects/user.ts` is the real-time hub for device presence, pending tickets, and friend updates
 
-Real-time state is managed on the client by `browser/src/lib/composables/useWebSocket.ts`, which maintains a singleton WebSocket connection with automatic reconnect, heartbeat, and device registration deduplication (via `deviceRegistration.ts`). The Clerk JWT is passed as a query parameter because browsers cannot set custom headers on WebSocket connections.
+Real-time state is managed on the client by `browser/src/lib/composables/useWebSocket.ts`, which maintains a singleton WebSocket connection with automatic reconnect, heartbeat, and device registration deduplication (via `deviceRegistration.ts`). The bearer token is passed as a query parameter because browsers cannot set custom headers on WebSocket connections.
 
 `browser/app.config.ts` contains two custom Rollup plugins that are critical for Cloudflare deployment:
 - `cloudflareDoExportsPlugin` — injects the `UserDO` named export into the worker entry so Wrangler can bind it
@@ -174,12 +173,12 @@ If you change the WASM API or Rust browser logic, rebuild the generated artifact
 
 ## Critical Repo-Specific Details
 
-- Keep the sender router alive. `lib/src/send.rs` intentionally parks the router with `std::future::pending()`; dropping the router breaks later incoming connections.
 - Use `CommonConfig.temp_dir` on sandboxed platforms instead of assuming the current directory. This matters for Android/macOS temp storage and file import/export flows.
 - Android file picking is URI-based, not normal-path-based. The Tauri backend copies `content://` URIs into temp files before sending and writes received files back through the Android FS plugin.
 - Do not add `browser-lib` to the root Cargo workspace.
 - The two Solid frontends serve different runtimes: `app/` is the Tauri UI, `browser/` is the Cloudflare web app. Similar-looking UI code in one does not imply shared state or shared build configuration with the other.
 - For Tauri commands, convert Rust errors to `String` for the frontend (for example, `map_err(|e| format!("Failed to send: {}", e))?`).
+- **iOS mDNS limitation**: iOS cannot publish mDNS services without the `com.apple.developer.networking.multicast` entitlement, which requires an Apple Developer Program membership. On personal-team signing, iOS can receive nearby broadcasts but other devices may not see it. This is a platform limit, not a code bug.
 
 ### Async Patterns
 
@@ -272,36 +271,40 @@ If you encounter "recursion limit reached" compilation errors, add to `app/src-t
 
 ## Mobile Development
 
-### Clerk Authentication (Required)
+### Authentication (better-auth)
 
-Android/iOS apps cannot access runtime environment variables. The Clerk publishable key must be embedded at compile time:
+The Tauri app authenticates via the browser app's better-auth instance using system-browser OAuth + deep links. No compile-time keys are required in the Tauri app.
 
 ```bash
-# CLERK_PUBLISHABLE_KEY is set in system environment
 # Android
 pnpm run tauri android build
 # iOS — see docs/ios-build-install.md for full guide
 cd app
 cd src-tauri/gen/apple
 xcodegen generate
-nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" build > /tmp/xcodebuild.log 2>&1 &
+nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 build > /tmp/xcodebuild.log 2>&1 &
 xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
 ```
 
-- Test key (`pk_test_...`) for development
-- Production key (`pk_live_...`) for release builds
 - Prefer direct `xcodebuild` over `pnpm run tauri ios build` in this repo; the latter can fail during archive/export by reintroducing unsupported entitlements for personal-team signing.
+- **First-time setup**: Before running `xcodebuild` on a new machine, open the project once in Xcode GUI (`open app/src-tauri/gen/apple/app.xcodeproj`), select the app_iOS target → Signing & Capabilities, and confirm the Team is set. Otherwise `xcodebuild` fails with "No Accounts" because the daemon cannot access credentials that haven't been unlocked by the GUI.
+- **Empty entitlements**: `app/src-tauri/gen/apple/app_iOS/app_iOS.entitlements` must remain empty (`<dict></dict>`) for personal-team signing.
+- **Safari Web Inspector**: Set `SENDME_IOS_INSPECTOR=1` before building to enable Safari DevTools on the iOS WebView. This toggles the `ios-web-inspector` feature in `app/src-tauri/Cargo.toml`.
+- **Background builds**: iOS builds take 10–12 minutes (warm cache). Use `nohup` as shown above and monitor with `tail -f /tmp/xcodebuild.log`; killing the terminal mid-link leaves a stale build.
 
-### Clerk Auth Flow (System Browser + Deep Link)
+### Auth Flow (System Browser + Deep Link)
 
 The Tauri app uses system-browser OAuth instead of an in-app WebView:
-1. Frontend calls `open_system_browser(url)` to open the OAuth page in the system browser
-2. User authenticates with the OAuth provider
-3. Clerk redirects to the app via a deep link (`sendme://auth-callback?__clerk_db_jwt=...`)
-4. `handle_clerk_auth_callback` in `lib.rs` extracts the `__clerk_db_jwt` token, sets it on the FAPI client, refreshes the Clerk session, and emits `clerk-auth-callback-complete`
-5. Frontend listens for `clerk-auth-callback-complete` and refreshes auth state
+1. Frontend calls `open_system_browser(url)` to open the browser app's OAuth page (`/auth/callback?mode=tauri`)
+2. User authenticates via better-auth (GitHub, Google, or email/password) in the system browser
+3. The browser callback page establishes a better-auth session, then reads the bearer token and deep-links back to the app (`sendme://auth/callback?token=...&user_id=...`)
+4. `handle_auth_callback` in `lib.rs` extracts the token and user info, then emits `auth-callback-complete`
+5. Frontend listens for `auth-callback-complete` and caches the bearer token for API/WebSocket auth
 
-This avoids a 30-second timeout that occurs when `handshake_client` follows a 302 redirect into an OAuth page inside reqwest.
+### Android Build Notes
+
+- **`sodium_memcmp` crash on launch**: When cross-compiling Android on macOS, `libsodium-sys-stable` may produce an empty static library because the NDK's `llvm-ar` is not detected. This causes a runtime `UnsatisfiedLinkError`. The fix requires manually pre-building libsodium with the NDK toolchain and pointing `.cargo/config.toml` to it. See `ANDROID_DEBUG_GUIDE.md` for the full one-time setup.
+- **`CHANGE_WIFI_MULTICAST_STATE` permission**: Required for iroh mDNS discovery on Android. Must be present in `app/src-tauri/gen/android/app/src/main/AndroidManifest.xml`.
 
 ### Platform-Specific File Picking
 
@@ -327,7 +330,9 @@ When enabled, the app calls `setInspectable:true` on the `WKWebView` at startup.
 - **`IROH_FORCE_STAGING_RELAYS`**: Set to `1` to use staging relays (CI tests)
 - **`RUST_LOG`**: Tracing level (debug, info, warn, error)
 - **`RUSTFLAGS=-Dwarnings`**: Treat all warnings as errors (CI)
-- **`CLERK_PUBLISHABLE_KEY`**: Clerk key for mobile builds (compile-time)
+- **`BETTER_AUTH_SECRET`**: better-auth secret for session signing (browser backend)
+- **`GITHUB_CLIENT_ID`** / **`GITHUB_CLIENT_SECRET`**: GitHub OAuth credentials (browser backend)
+- **`GOOGLE_CLIENT_ID`** / **`GOOGLE_CLIENT_SECRET`**: Google OAuth credentials (browser backend)
 
 ## MSRV
 
@@ -335,5 +340,7 @@ Minimum Supported Rust Version: **1.81**
 
 ## Additional Documentation
 
-- **`ANDROID_DEBUG_GUIDE.md`**: Step-by-step Android debugging workflow
+- **`docs/ios-build-install.md`**: Full iOS build, install, and troubleshooting guide (device pairing, provisioning, logs)
+- **`ANDROID_DEBUG_GUIDE.md`**: Step-by-step Android debugging workflow and the `libsodium` cross-compile fix
 - **`ANDROID_FIX_SUMMARY.md`**: Details on Android temp directory fixes
+- **`docs/nearby-discovery.md`**: mDNS service naming and iOS multicast entitlement limitations

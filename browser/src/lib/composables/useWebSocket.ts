@@ -8,7 +8,7 @@
  */
 
 import { createSignal, createRoot } from "solid-js";
-import { useAuth } from "clerk-solidjs";
+import { useAuth } from "~/lib/contexts/user-auth";
 import toast from "solid-toast";
 import type { Device, Ticket, Friend } from "~/lib/db/schema";
 import { createDeviceRegistrationGuard } from "./deviceRegistration";
@@ -86,7 +86,7 @@ let sharedRootDispose: (() => void) | null = null;
 
 /**
  * Internal store — created once, shared across all consumers.
- * @param getToken  stable async fn that returns the current Clerk JWT (or null)
+ * @param getToken  stable async fn that returns the current auth token (or null)
  */
 function createWebSocketStore(getToken: () => Promise<string | null>) {
   const [devices, setDevices] = createSignal<Device[]>([]);
@@ -133,7 +133,7 @@ function createWebSocketStore(getToken: () => Promise<string | null>) {
 
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     // Browsers can't set custom headers on WebSocket connections,
-    // so the Clerk JWT is passed as a query parameter.
+    // so the auth token is passed as a query parameter.
     const urlWithToken = `${protocol}//${location.host}/api/ws?deviceId=${encodeURIComponent(deviceId)}&token=${encodeURIComponent(token)}`;
 
     try {
@@ -316,7 +316,7 @@ function createWebSocketStore(getToken: () => Promise<string | null>) {
  */
 export function useWebSocket() {
   if (!sharedInstance) {
-    // useAuth() must be called in component context (needs ClerkProvider in tree).
+    // useAuth() must be called in component context (needs AuthProvider in tree).
     // We capture getToken here and pass it into the permanent root scope.
     const auth = useAuth();
     const getToken = () => auth.getToken();

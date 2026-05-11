@@ -9,7 +9,6 @@ import { friends, users } from "~/lib/db/schema";
 import { eq, and, or, desc } from "drizzle-orm";
 import { getOnlineDevices } from "~/lib/api/devices";
 import { authenticateRequest, getAuthTraceId, type Env } from "~/lib/auth";
-import { createClerkClient } from "@clerk/backend";
 
 /**
  * D1 may return snake_case or camelCase field names depending on the adapter version.
@@ -154,7 +153,7 @@ export async function GET(requestEvent: RequestEvent): Promise<Response> {
         .limit(1);
       const friendUser = friendUserRows[0];
 
-      // Use placeholder if user record is missing (Clerk sync may have failed)
+      // Use placeholder if user record is missing
       const resolvedFriend = friendUser ?? {
         id: friendUserId,
         name: "Unknown User",
@@ -266,62 +265,6 @@ export async function POST(requestEvent: RequestEvent): Promise<Response> {
       targetUser = rows[0];
     }
 
-    // Fallback: if target user is not in local DB, try to fetch from Clerk and create
-    if (!targetUser && body.email && env.CLERK_SECRET_KEY) {
-      try {
-        const clerk = createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
-        const clerkUsers = await clerk.users.getUserList({
-          emailAddress: [body.email],
-        });
-        const clerkUser = clerkUsers.data[0];
-        if (clerkUser) {
-          const primaryEmail = clerkUser.emailAddresses[0]?.emailAddress ?? "";
-          const displayName =
-            [clerkUser.firstName, clerkUser.lastName]
-              .filter(Boolean)
-              .join(" ") ||
-            clerkUser.username ||
-            primaryEmail;
-
-          const existingRows = await db
-            .select({ id: users.id })
-            .from(users)
-            .where(eq(users.id, clerkUser.id))
-            .limit(1);
-
-          if (existingRows.length === 0) {
-            await db.insert(users).values({
-              id: clerkUser.id,
-              name: displayName,
-              email: primaryEmail,
-              emailVerified: true,
-              image: clerkUser.imageUrl,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            });
-          } else {
-            await db
-              .update(users)
-              .set({
-                name: displayName,
-                email: primaryEmail,
-                image: clerkUser.imageUrl,
-                updatedAt: new Date(),
-              })
-              .where(eq(users.id, clerkUser.id));
-          }
-
-          targetUser = {
-            id: clerkUser.id,
-            name: displayName,
-            email: primaryEmail,
-            image: clerkUser.imageUrl,
-          };
-        }
-      } catch (clerkErr) {
-        console.warn("[Friends API] Clerk fallback failed:", clerkErr);
-      }
-    }
 
     if (!targetUser) {
       return new Response(JSON.stringify({ error: "User not found" }), {

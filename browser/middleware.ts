@@ -1,16 +1,11 @@
 /**
- * Clerk Middleware for SolidStart
- * Provides authentication middleware for protected routes
+ * SolidStart middleware
+ * Placeholder — better-auth does not require request-level middleware.
+ * All auth state is handled via cookies / bearer tokens and the /api/auth/* routes.
  */
 
 import { createMiddleware } from "@solidjs/start/middleware";
-import { clerkMiddleware } from "clerk-solidjs/start/server";
 
 export default createMiddleware({
-  onRequest: [
-    clerkMiddleware({
-      publishableKey: process.env.VITE_CLERK_PUBLISHABLE_KEY,
-      secretKey: process.env.CLERK_SECRET_KEY,
-    }),
-  ],
+  onRequest: [],
 });

@@ -1,20 +1,5 @@
+/// <reference types="@cloudflare/workers-types" />
 /// <reference types="@solidjs/start/env" />
-import type { AuthObject } from "@clerk/backend";
-
-declare module "@solidjs/start/server" {
-  export interface RequestEventLocals {
-    auth: AuthObject;
-  }
-}
-
-declare namespace App {
-  interface RequestEventLocals {
-    /**
-     * Clerk auth object from middleware
-     */
-    auth: AuthObject;
-  }
-}
 
 declare module "*/sendme_browser.js" {
   export interface SendmeNodeWasm {
