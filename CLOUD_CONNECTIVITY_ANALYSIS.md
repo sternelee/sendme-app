@@ -23,7 +23,6 @@ getCloudWebSocketUrl(path: string = "/api/ws"): string
 #### Authentication
 ```typescript
 getAuthorizationHeaderValue(): Promise<string | null>
-// Invokes Tauri Clerk plugin: "plugin:clerk|get_client_authorization_header"
 // Returns the full header string (e.g., "Bearer <JWT_TOKEN>")
 
 extractBearerToken(authorizationHeader: string | null): string | null
@@ -42,10 +41,10 @@ getPersistentDeviceId(): string
 ```
 
 ### Authentication Flow
-1. Clerk plugin provides JWT token via Tauri IPC: `plugin:clerk|get_client_authorization_header`
+1. Tauri app obtains bearer token via better-auth OAuth + deep link callback
 2. Token extracted and used in `Authorization: Bearer <JWT>` header for all API calls
 3. WebSocket connection includes token as query parameter: `?token=<JWT>`
-4. Clerk JWT authenticates user identity to cloud backend
+4. better-auth session validates user identity on cloud backend
 
 ---
 
@@ -203,7 +202,7 @@ connectCloudWebSocket(): Promise<void>
 ```
 
 **Steps:**
-1. Get Clerk JWT from plugin
+1. Get bearer token from better-auth session cache
 2. Extract bearer token
 3. Register device: `invoke("register_cloud_device", { deviceId, apiOrigin })`
 4. Build WebSocket URL: `wss://sendme.leeapp.dev/api/ws?deviceId={id}&token={jwt}`
@@ -666,20 +665,20 @@ function PresenceConnector() {
 ## 7. Authentication Details
 
 ### JWT Token Source
-- **Provider**: Clerk (managed via `tauri-plugin-clerk`)
-- **Obtained via**: Tauri IPC call to `plugin:clerk|get_client_authorization_header`
+- **Provider**: better-auth (browser app OAuth instance)
+- **Obtained via**: Tauri app uses system-browser OAuth + deep link callback
 - **Format**: `"Bearer <JWT>"`
 - **Scopes**: Manages user identity and device registration
 
 ### Token Lifecycle
-1. **On sign-in**: Clerk provides JWT
+1. **On sign-in**: better-auth provides JWT via browser callback
 2. **On WebSocket connect**: Extracted and sent as query param + header
 3. **On device register**: Sent in Authorization header
 4. **On API calls**: Sent in Authorization header
 5. **On sign-out**: Connection drops, token becomes invalid
 
 ### Token Refresh
-- Handled by Clerk plugin automatically
+- Frontend caches bearer token in localStorage
 - WebSocket reconnect uses latest token
 - No explicit refresh mechanism in cloud-ws.ts
 
@@ -735,8 +734,7 @@ tokio::spawn(async move {
 - Sign-out immediately disconnects
 
 ### Missing Auth
-- `getAuthorizationHeaderValue()` catches Clerk plugin errors
-- Returns `null` on failure
+- `getAuthorizationHeaderValue()` returns `null` when no token is available
 - WebSocket refuses to connect without token
 
 ### Device Registration Failure

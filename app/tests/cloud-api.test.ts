@@ -69,10 +69,10 @@ describe("cloud-api", () => {
 
   it("returns bearer header from the registered token provider", async () => {
     const mod = await import("~/lib/cloud-api");
-    mod.initCloudApi(async () => "clerk-issued-jwt");
+    mod.initCloudApi(async () => "test-jwt");
 
     await expect(mod.getAuthorizationHeaderValue()).resolves.toBe(
-      "Bearer clerk-issued-jwt",
+      "Bearer test-jwt",
     );
   });
 
@@ -89,7 +89,7 @@ describe("cloud-api", () => {
     const { fetch } = await import("@tauri-apps/plugin-http");
     const seenAuthorizationHeaders: Array<string | null> = [];
 
-    // Simulate Clerk returning an expired token first, then a fresh one on retry
+    // Simulate token provider returning an expired token first, then a fresh one on retry
     let callCount = 0;
     const mod = await import("~/lib/cloud-api");
     mod.initCloudApi(async () => {

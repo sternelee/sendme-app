@@ -20,7 +20,7 @@ sendme-app/
 ├── lib/                    # sendme-lib - Core library (send/receive/nearby)
 ├── cli/                    # sendme CLI - Binary using sendme-lib
 ├── app/src-tauri/          # Tauri backend
-│   └── plugins/            # tauri-plugin-clerk, tauri-plugin-media-picker, clerk-fapi-rs
+│   └── plugins/            # tauri-plugin-media-picker
 ├── browser-lib/            # WASM bindings (separate workspace - NOT in main)
 └── browser/                # Browser/Cloudflare app (separate SolidStart, NOT the Tauri UI)
 ```
@@ -186,20 +186,16 @@ const [devices, setDevices] = createSignal<NearbyDevice[]>([]);
 - **iOS**: `tauri_plugin_fs_ios` + Documents directory (no directory picking); custom `tauri-plugin-media-picker` (Swift + Rust, `PHPickerViewController`) for photo/video
 - **Desktop**: `tauri_plugin_dialog`
 
-## Clerk Auth (Mobile)
+## Auth (Mobile)
 
-Android/iOS cannot access runtime env vars — `CLERK_PUBLISHABLE_KEY` must be embedded at compile time.
-
-Auth flow uses system browser + deep link, NOT in-app WebView:
+Auth flow uses system browser + deep link via better-auth, NOT in-app WebView:
 1. Frontend calls `open_system_browser(url)` → system browser OAuth
-2. Clerk redirects to `sendme://auth-callback?__clerk_db_jwt=...`
-3. `handle_clerk_auth_callback` in `lib.rs` extracts token, sets it on FAPI client, emits `clerk-auth-callback-complete`
-4. Frontend refreshes auth state on that event
+2. better-auth redirects to `sendme://auth/callback?token=...&user_id=...`
+3. `handle_auth_callback` in `lib.rs` extracts token and user info, emits `auth-callback-complete`
+4. Frontend listens for `auth-callback-complete` and caches the bearer token
 
 Custom plugins in `app/src-tauri/plugins/`:
-- `tauri-plugin-clerk` — Clerk auth integration
 - `tauri-plugin-media-picker` — iOS photo/video selection
-- `clerk-fapi-rs` — Clerk FAPI client
 
 ## iOS Safari Web Inspector
 
@@ -211,8 +207,9 @@ Enable `ios-web-inspector` feature in `app/src-tauri/Cargo.toml` to debug the iO
 - `IROH_FORCE_STAGING_RELAYS=1`: Use staging relays (CI/tests)
 - `RUSTFLAGS=-Dwarnings`: All warnings are errors (CI)
 - `RUST_LOG`: Tracing level (debug, info, warn, error)
-- `CLERK_PUBLISHABLE_KEY`: Clerk key for mobile (compile-time required, set in system environment)
-  - `pk_test_...` for development; `pk_live_...` for production release builds
+- `BETTER_AUTH_SECRET`: better-auth secret for session signing (browser backend)
+- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`: GitHub OAuth credentials (browser backend)
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: Google OAuth credentials (browser backend)
 
 ## MSRV
 

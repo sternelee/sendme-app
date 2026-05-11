@@ -208,7 +208,7 @@ Complementary APIs
 
 ## 🔐 Authentication & Security
 
-- **Method**: Clerk JWT passed as query parameter (browser limitation)
+- **Method**: Bearer token passed as query parameter (browser limitation)
 - **Validation**: Server validates JWT before WebSocket upgrade
 - **Device Registration**: Must be registered before WebSocket handshake
 - **Durable Object ID**: Keyed by userId (prevents cross-user access)
