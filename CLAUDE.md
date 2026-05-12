@@ -51,6 +51,7 @@ pnpm run tauri dev    # Tauri shell + frontend
 pnpm run tauri build
 pnpm run format
 pnpm run test         # vitest
+pnpm test -- <path-or-pattern>  # single test file/name
 
 pnpm run tauri android build
 cd src-tauri/gen/apple
@@ -78,6 +79,7 @@ pnpm run db:migrate
 pnpm run db:migrate:prod
 pnpm run db:studio
 pnpm run test               # vitest
+pnpm test -- <path-or-pattern>  # single test file/name
 ```
 
 `browser/package.json` requires Node `>=22`.

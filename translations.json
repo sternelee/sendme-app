@@ -181,10 +181,11 @@
       "received": "Received"
     },
     "history": {
-      "title": "Transfer History",
-      "subtitle": "Tickets from files you've sent",
+      "title": "Received Files",
+      "subtitle": "Received files",
+      "receivedFiles": "Files you have received",
       "empty": "No transfers yet",
-      "emptyDesc": "Your shared and received files will appear here",
+      "emptyDesc": "Received files will appear here",
       "sent": "Sent",
       "received": "Received",
       "clear": "Clear All",
@@ -494,10 +495,11 @@
       "received": "已接收"
     },
     "history": {
-      "title": "传输历史",
-      "subtitle": "您已发送文件的票据",
+      "title": "已接收文件",
+      "subtitle": "已接收文件",
+      "receivedFiles": "这里显示您接收到的文件",
       "empty": "暂无传输记录",
-      "emptyDesc": "您共享和接收的文件将显示在这里",
+      "emptyDesc": "接收到的文件将显示在这里",
       "sent": "已发送",
       "received": "已接收",
       "clear": "清空全部",

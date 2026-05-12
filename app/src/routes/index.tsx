@@ -75,6 +75,7 @@ import { Toaster, toast } from "solid-sonner";
 import {
   formatDate,
   formatFileSize,
+  formatDuration,
   getDisplayName,
   getFileIcon,
   getTransferStatus,
@@ -104,6 +105,10 @@ interface Transfer {
   status: string;
   created_at: number;
   ticket?: string;
+  filename?: string;
+  file_size?: number;
+  completed_at?: number;
+  duration_ms?: number;
 }
 
 interface ProgressData {
@@ -179,9 +184,26 @@ export default function MainPage() {
   >(null);
 
   const [transfers, setTransfers] = createSignal<Transfer[]>([]);
+  const [selectedHistory, setSelectedHistory] = createSignal<Set<string>>(
+    new Set(),
+  );
   const [progressData, setProgressData] = createSignal<
     Record<string, ProgressData>
   >({});
+
+  // Only completed receives for history tab, sorted by completed_at desc
+  const historyTransfers = createMemo(() =>
+    transfers()
+      .filter(
+        (t) =>
+          t.transfer_type === "receive" && t.status === "completed",
+      )
+      .sort(
+        (a, b) =>
+          (b.completed_at ?? b.created_at) -
+          (a.completed_at ?? a.created_at),
+      ),
+  );
 
   const receiveProgressPercent = createMemo(() => {
     const id = currentReceivingId();
@@ -433,6 +455,35 @@ export default function MainPage() {
     try {
       await clear_transfers();
       setTransfers([]);
+      setSelectedHistory(new Set());
+      toast.success(t("common.clear") + "!");
+    } catch (e) {}
+  }
+
+  function toggleHistorySelection(id: string) {
+    setSelectedHistory((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllHistory() {
+    const items = historyTransfers();
+    setSelectedHistory((prev) => {
+      if (prev.size === items.length) return new Set();
+      return new Set(items.map((t) => t.id));
+    });
+  }
+
+  async function handleDeleteSelectedHistory() {
+    const ids = [...selectedHistory()];
+    if (ids.length === 0) return;
+    try {
+      await Promise.all(ids.map((id) => delete_transfer(id)));
+      await loadTransfers();
+      setSelectedHistory(new Set());
       toast.success(t("common.clear") + "!");
     } catch (e) {}
   }
@@ -617,12 +668,22 @@ export default function MainPage() {
       setProgressData((prev) => {
         const prevData = prev[transfer_id];
         let downloadPercent = prevData?.downloadPercent ?? 0;
+        let speed = prevData?.progress?.speed ?? 0;
+        const now = Date.now();
         // Keep the max download percentage across download events
         if (data.progress?.type === "downloading" && data.progress.total > 0) {
           downloadPercent = Math.max(
             downloadPercent,
             (data.progress.offset / data.progress.total) * 100,
           );
+          // Exponentially-weighted average speed: alpha = 0.3
+          const alpha = 0.3;
+          const offset = data.progress.offset as number;
+          const lastOffset = prevData?.lastOffset ?? offset;
+          const lastTime = prevData?.lastTime ?? now;
+          const dt = Math.max(now - lastTime, 1);
+          const rawSpeed = ((offset - lastOffset) / dt) * 1000;
+          speed = Math.max(0, speed * (1 - alpha) + rawSpeed * alpha);
         }
         return {
           ...prev,
@@ -630,7 +691,17 @@ export default function MainPage() {
             transfer_id,
             event_type: event.payload.event_type,
             downloadPercent,
+            lastOffset:
+              data.progress?.type === "downloading"
+                ? data.progress.offset
+                : prevData?.lastOffset,
+            lastTime:
+              data.progress?.type === "downloading" ? now : prevData?.lastTime,
             ...data,
+            progress: {
+              ...(data.progress ?? {}),
+              speed: Math.round(speed),
+            },
           },
         };
       });
@@ -924,13 +995,13 @@ export default function MainPage() {
                                       "downloading" ? (
                                         <p>
                                           {formatFileSize(
-                                            progressData()[id()]!.progress
-                                              .offset,
+                                            progressData()[id()]?.progress
+                                              ?.offset ?? 0,
                                           )}{" "}
                                           /{" "}
                                           {formatFileSize(
-                                            progressData()[id()]!.progress
-                                              .total,
+                                            progressData()[id()]?.progress
+                                              ?.total ?? 1,
                                           )}
                                         </p>
                                       ) : null}
@@ -1234,62 +1305,56 @@ export default function MainPage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                class="space-y-6"
+                class="space-y-4"
               >
-                <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div class="flex items-end justify-between">
                   <div>
-                    <p class="section-label">{t("common.activity")}</p>
+                    <p class="section-label">{t("history.title")}</p>
                     <p class="text-base-content/65 mt-2 text-sm leading-6">
-                      {t("history.emptyDesc")}
+                      {t("history.receivedFiles")}
                     </p>
                   </div>
-                  <div class="flex gap-2">
+                  <div class="flex items-center gap-2">
+                    <Show when={selectedHistory().size > 0}>
+                      <button
+                        onClick={handleDeleteSelectedHistory}
+                        class="btn btn-ghost btn-sm text-error rounded-xl"
+                      >
+                        {selectedHistory().size > 1
+                          ? `${t("common.clear")} (${selectedHistory().size})`
+                          : t("common.clear")}
+                      </button>
+                    </Show>
                     <button
                       onClick={handleClearTransfers}
                       class="btn btn-ghost btn-sm text-error rounded-xl"
+                      disabled={historyTransfers().length === 0}
                     >
-                      {t("common.clear")}
+                      {t("history.clear")}
                     </button>
                   </div>
                 </div>
 
-                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <div class="surface-card p-4">
-                    <p class="text-base-content/55 text-xs uppercase">
-                      {t("history.sent")}
-                    </p>
-                    <p class="mt-2 text-2xl font-semibold">
-                      {transferSummary().sent}
-                    </p>
+                <Show when={historyTransfers().length > 0}>
+                  <div class="flex items-center gap-3">
+                    <label class="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        class="checkbox checkbox-sm rounded"
+                        checked={selectedHistory().size === historyTransfers().length && historyTransfers().length > 0}
+                        onChange={toggleSelectAllHistory}
+                      />
+                      <span class="text-xs opacity-70">
+                        {selectedHistory().size > 0
+                          ? `${selectedHistory().size} / ${historyTransfers().length}`
+                          : `${historyTransfers().length} files`}
+                      </span>
+                    </label>
                   </div>
-                  <div class="surface-card p-4">
-                    <p class="text-base-content/55 text-xs uppercase">
-                      {t("history.received")}
-                    </p>
-                    <p class="mt-2 text-2xl font-semibold">
-                      {transferSummary().received}
-                    </p>
-                  </div>
-                  <div class="surface-card p-4">
-                    <p class="text-base-content/55 text-xs uppercase">
-                      {t("common.online")}
-                    </p>
-                    <p class="mt-2 text-2xl font-semibold">
-                      {transferSummary().active}
-                    </p>
-                  </div>
-                  <div class="surface-card p-4">
-                    <p class="text-base-content/55 text-xs uppercase">
-                      {t("common.done")}
-                    </p>
-                    <p class="mt-2 text-2xl font-semibold">
-                      {transferSummary().completed}
-                    </p>
-                  </div>
-                </div>
+                </Show>
 
                 <Show
-                  when={transfers().length > 0}
+                  when={historyTransfers().length > 0}
                   fallback={
                     <div class="surface-card flex flex-col items-center justify-center py-16 text-center opacity-70">
                       <History size={48} class="mb-3 opacity-30" />
@@ -1301,144 +1366,64 @@ export default function MainPage() {
                   }
                 >
                   <div class="space-y-3">
-                    <For each={transfers()}>
+                    <For each={historyTransfers()}>
                       {(transfer) => {
-                        const status = getTransferStatus(transfer.status);
-                        const isActiveReceive =
-                          transfer.transfer_type === "receive" &&
-                          status.label === "Downloading";
-                        const receivePercent = () => {
-                          const p = progressData()[transfer.id];
-                          return p?.progress?.type === "completed"
-                            ? 100
-                            : p?.progress?.type === "downloading"
-                              ? Math.round(
-                                  Math.min(
-                                    (p.progress.offset / p.progress.total) *
-                                      100,
-                                    99,
-                                  ),
-                                )
-                              : p?.event_type === "export" ||
-                                  [
-                                    "file_progress",
-                                    "file_started",
-                                    "file_completed",
-                                    "started",
-                                  ].includes(p?.progress?.type)
-                                ? 99
-                                : 0;
-                        };
-                        return (() => {
-                          const content = (
-                            <>
-                              <div class="flex flex-col gap-4 md:flex-row md:items-center">
-                                <div
-                                  class={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                                    transfer.transfer_type === "send"
-                                      ? "bg-primary/12 text-primary"
-                                      : "bg-secondary/12 text-secondary"
-                                  }`}
-                                >
-                                  <Show
-                                    when={transfer.transfer_type === "send"}
-                                    fallback={renderFileTypeIcon(transfer.path)}
-                                  >
-                                    <Send size={18} />
-                                  </Show>
-                                </div>
-
-                                <div class="min-w-0 flex-1">
-                                  <button
-                                    onClick={() => handleOpenFile(transfer)}
-                                    class="hover:text-primary truncate text-left text-sm font-semibold"
-                                  >
-                                    {getDisplayName(transfer.path)}
-                                  </button>
-                                  <div class="mt-2 flex flex-wrap items-center gap-2 text-xs opacity-70">
-                                    <span
-                                      class={`badge badge-sm border-0 ${
-                                        transfer.transfer_type === "send"
-                                          ? "bg-primary/12 text-primary"
-                                          : "bg-secondary/12 text-secondary"
-                                      }`}
-                                    >
-                                      {status.label}
-                                    </span>
-                                    <span>
-                                      {formatDate(transfer.created_at)}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div class="flex gap-2 md:self-start">
-                                  <Show
-                                    when={transfer.transfer_type === "send"}
-                                  >
-                                    <button
-                                      onClick={() => handleReshare(transfer)}
-                                      class="btn btn-ghost btn-sm text-primary rounded-xl"
-                                      title={t("common.share")}
-                                    >
-                                      <SendIcon size={16} />
-                                    </button>
-                                  </Show>
-                                  <button
-                                    onClick={() => handleCancel(transfer)}
-                                    class="btn btn-ghost btn-sm rounded-xl"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
+                        const isSelected = () => selectedHistory().has(transfer.id);
+                        return (
+                          <div class="surface-card p-4">
+                            <div class="flex items-center gap-3">
+                              <label
+                                class="cursor-pointer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  class="checkbox checkbox-sm rounded"
+                                  checked={isSelected()}
+                                  onChange={() =>
+                                    toggleHistorySelection(transfer.id)
+                                  }
+                                />
+                              </label>
+                              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/12 text-secondary">
+                                {renderFileTypeIcon(transfer.path)}
                               </div>
 
-                              {isActiveReceive &&
-                              progressData()[transfer.id] ? (
-                                <div class="mt-4">
-                                  <div class="mb-1 flex items-center justify-between text-xs">
-                                    <span class="text-secondary font-medium">
-                                      {receivePercent()}%
-                                    </span>
-                                    <span class="opacity-60">
-                                      {formatFileSize(
-                                        progressData()[transfer.id]?.progress
-                                          ?.offset ?? 0,
-                                      )}{" "}
-                                      /{" "}
-                                      {formatFileSize(
-                                        progressData()[transfer.id]?.progress
-                                          ?.total ?? 1,
-                                      )}
-                                    </span>
-                                  </div>
-                                  <progress
-                                    class="progress progress-secondary w-full"
-                                    value={
-                                      progressData()[transfer.id]?.progress
-                                        ?.offset ?? 0
-                                    }
-                                    max={
-                                      progressData()[transfer.id]?.progress
-                                        ?.total ?? 1
-                                    }
-                                  ></progress>
+                              <div class="min-w-0 flex-1">
+                                <button
+                                  onClick={() => handleOpenFile(transfer)}
+                                  class="hover:text-primary truncate text-left text-sm font-semibold"
+                                >
+                                  {transfer.filename ?? getDisplayName(transfer.path)}
+                                </button>
+                                <div class="mt-1 flex flex-wrap items-center gap-2 text-xs opacity-70">
+                                  <span>
+                                    {formatDate(transfer.completed_at ?? transfer.created_at)}
+                                  </span>
+                                  <Show when={transfer.file_size != null}>
+                                    <span>· {formatFileSize(transfer.file_size!)}</span>
+                                  </Show>
+                                  <Show when={transfer.duration_ms != null}>
+                                    <span>· {formatDuration(transfer.duration_ms!)}</span>
+                                  </Show>
                                 </div>
-                              ) : null}
-                            </>
-                          );
+                                <p
+                                  class="text-base-content/40 mt-0.5 truncate text-xs"
+                                  title={transfer.path}
+                                >
+                                  {transfer.path}
+                                </p>
+                              </div>
 
-                          if (isActiveReceive) {
-                            return (
-                              <ProgressBorder percent={receivePercent}>
-                                <div class="surface-card relative p-4">
-                                  {content}
-                                </div>
-                              </ProgressBorder>
-                            );
-                          }
-
-                          return <div class="surface-card p-4">{content}</div>;
-                        })();
+                              <button
+                                onClick={() => handleCancel(transfer)}
+                                class="btn btn-ghost btn-sm rounded-xl shrink-0"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        );
                       }}
                     </For>
                   </div>
