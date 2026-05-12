@@ -186,23 +186,55 @@ export function extractAuthCallbackData(url: string): {
   user: UserInfo | null;
 } {
   try {
-    const parsed = new URL(url);
-    const token = parsed.searchParams.get("token")?.trim();
+    let token: string | null = null;
+    let sessionId: string | null = null;
+    let issuedAt: number | undefined;
+    let expiresAt: number | undefined;
+    let userId: string | null = null;
+    let userEmail: string | null = null;
+    let userName: string | null = null;
+    let userImageUrl: string | null = null;
+
+    try {
+      const parsed = new URL(url);
+      token = parsed.searchParams.get("token")?.trim() ?? null;
+      sessionId = parsed.searchParams.get("session_id")?.trim() ?? null;
+      issuedAt = parseInteger(parsed.searchParams.get("token_iat"));
+      expiresAt = parseInteger(parsed.searchParams.get("token_exp"));
+      userId = parsed.searchParams.get("user_id")?.trim() ?? null;
+      userEmail = parsed.searchParams.get("user_email")?.trim() ?? null;
+      userName = parsed.searchParams.get("user_name")?.trim() ?? null;
+      userImageUrl = parsed.searchParams.get("user_image_url")?.trim() ?? null;
+    } catch {
+      // Fallback for environments where new URL doesn't support custom schemes
+      const queryStart = url.indexOf("?");
+      if (queryStart !== -1) {
+        const params = new URLSearchParams(url.slice(queryStart + 1));
+        token = params.get("token")?.trim() ?? null;
+        sessionId = params.get("session_id")?.trim() ?? null;
+        issuedAt = parseInteger(params.get("token_iat"));
+        expiresAt = parseInteger(params.get("token_exp"));
+        userId = params.get("user_id")?.trim() ?? null;
+        userEmail = params.get("user_email")?.trim() ?? null;
+        userName = params.get("user_name")?.trim() ?? null;
+        userImageUrl = params.get("user_image_url")?.trim() ?? null;
+      }
+    }
+
     const session = token
       ? createCachedAuthSession(token, {
-          sessionId: parsed.searchParams.get("session_id") || undefined,
-          issuedAt: parseInteger(parsed.searchParams.get("token_iat")),
-          expiresAt: parseInteger(parsed.searchParams.get("token_exp")),
+          sessionId: sessionId || undefined,
+          issuedAt,
+          expiresAt,
         })
       : null;
 
-    const userId = parsed.searchParams.get("user_id")?.trim();
     const user = userId
       ? {
           id: userId,
-          email: parsed.searchParams.get("user_email") || "",
-          name: parsed.searchParams.get("user_name") || "",
-          imageUrl: parsed.searchParams.get("user_image_url") || undefined,
+          email: userEmail || "",
+          name: userName || "",
+          imageUrl: userImageUrl || undefined,
         }
       : null;
 

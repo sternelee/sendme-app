@@ -13,7 +13,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import {
   createContext,
@@ -43,8 +43,8 @@ interface AuthContextValue {
   isLoaded: () => boolean;
   isSignedIn: () => boolean;
   isCloudReady: () => boolean;
-  signIn: () => Promise<void>;
-  signUp: () => Promise<void>;
+  signIn: (provider?: "github" | "google") => Promise<void>;
+  signUp: (provider?: "github" | "google") => Promise<void>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
@@ -74,7 +74,10 @@ async function apiEmailAuth(
 
   const signInRes = await tauriFetch(`${origin}/api/auth/${endpoint}/email`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+    },
     body: JSON.stringify(body),
   });
 
@@ -215,9 +218,15 @@ export function AuthProvider(props: { children: JSX.Element }) {
   };
 
   const handleDeepLinkCallback = async (url: string) => {
+    debugInfo("auth", `handleDeepLinkCallback: ${url.slice(0, 120)}...`);
     setIsCloudReady(false);
     const { session: callbackSession, user: callbackUser } =
       extractAuthCallbackData(url);
+
+    debugInfo(
+      "auth",
+      `extracted session=${callbackSession ? "yes" : "no"} user=${callbackUser ? "yes" : "no"}`,
+    );
 
     if (callbackUser) {
       setUser(callbackUser);
@@ -265,6 +274,27 @@ export function AuthProvider(props: { children: JSX.Element }) {
             }
           }
         });
+
+        // Handle cold-start deep links: the Rust backend may have already
+        // emitted auth-callback-complete before the WebView finished loading.
+        // Query getCurrent() so we don't miss the token.
+        try {
+          const initialUrls = await getCurrent();
+          debugInfo(
+            "auth",
+            `getCurrent returned ${initialUrls ? initialUrls.length : 0} urls`,
+          );
+          if (initialUrls) {
+            for (const url of initialUrls) {
+              debugInfo("auth", `cold-start url: ${url.slice(0, 120)}`);
+              if (url.startsWith("sendme://auth/callback")) {
+                await handleDeepLinkCallback(url);
+              }
+            }
+          }
+        } catch (e) {
+          debugError("auth", "getCurrent failed", e);
+        }
       } catch (error) {
         debugError("auth", "Failed to register auth listeners", error);
       }
@@ -290,12 +320,24 @@ export function AuthProvider(props: { children: JSX.Element }) {
     await invoke("open_system_browser", { url });
   };
 
-  const signIn = async () => {
-    await openAuthUrl(getAuthRedirectUrl());
+  const startOAuth = async (provider: "github" | "google") => {
+    const origin = getCloudApiOrigin();
+    // Open the OAuth bridge page in the system browser so the entire flow
+    // (state cookie → provider → callback) happens in the same browser
+    // context. Using tauriFetch would store the state cookie in an isolated
+    // cookie jar, causing "State mismatch" errors.
+    const url = new URL("/auth/oauth", origin);
+    url.searchParams.set("mode", "tauri");
+    url.searchParams.set("provider", provider);
+    await openAuthUrl(url.toString());
   };
 
-  const signUp = async () => {
-    await openAuthUrl(getAuthRedirectUrl());
+  const signIn = async (provider: "github" | "google" = "github") => {
+    await startOAuth(provider);
+  };
+
+  const signUp = async (provider: "github" | "google" = "github") => {
+    await startOAuth(provider);
   };
 
   const signOut = async () => {

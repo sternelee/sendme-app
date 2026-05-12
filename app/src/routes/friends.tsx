@@ -175,7 +175,7 @@ export default function FriendsPage(props: FriendsPageProps) {
         ...friend.friend,
         image: friend.friend.image ?? null,
       },
-      friendDevices: friend.friendDevices.map((device) => ({
+      friendDevices: (friend.friendDevices ?? []).map((device) => ({
         ...device,
         lastSeenAt: new Date(device.lastSeenAt),
       })),

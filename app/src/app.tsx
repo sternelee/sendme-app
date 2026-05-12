@@ -50,6 +50,13 @@ function PresenceConnector() {
         );
       }, CLOUD_WS_CONNECT_DEBOUNCE_MS);
       return;
+
+      // WORKAROUND: Uncomment below and comment out the setTimeout above
+      // to disable cloud WebSocket and test if login still freezes.
+      // This isolates whether the freeze is caused by WebSocket connect
+      // or message handling.
+      // debugInfo("PresenceConnector", "WebSocket connect disabled for debugging");
+      // return;
     }
 
     disconnectCloudWebSocket().catch((e) =>

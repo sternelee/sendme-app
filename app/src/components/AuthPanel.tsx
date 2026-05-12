@@ -152,13 +152,13 @@ export default function AuthPanel(props: AuthPanelProps) {
       <div class="grid grid-cols-2 gap-3">
         <button
           class="btn btn-outline gap-2 rounded-2xl"
-          onClick={() => auth.signIn()}
+          onClick={() => auth.signIn("github")}
         >
           GitHub
         </button>
         <button
           class="btn btn-outline gap-2 rounded-2xl"
-          onClick={() => auth.signIn()}
+          onClick={() => auth.signIn("google")}
         >
           Google
         </button>

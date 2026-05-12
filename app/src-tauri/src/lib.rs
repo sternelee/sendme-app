@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-#[cfg(desktop)]
-use tauri::WebviewWindowBuilder;
 use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_fs::FsExt;
@@ -2543,10 +2541,6 @@ fn app_ready(app: AppHandle) -> Result<(), String> {
 
 #[cfg(desktop)]
 fn close_splashscreen(app: &AppHandle) {
-    if let Some(splashscreen) = app.get_webview_window("splashscreen") {
-        let _ = splashscreen.close();
-    }
-
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.show();
         let _ = main_window.set_focus();
@@ -2719,7 +2713,10 @@ pub fn run() {
         if window.label() == "main" {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 #[cfg(target_os = "macos")]
-                let _ = window.app_handle().hide();
+                {
+                    let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    let _ = window.app_handle().hide();
+                }
                 #[cfg(not(target_os = "macos"))]
                 let _ = window.hide();
                 api.prevent_close();
@@ -2738,7 +2735,7 @@ pub fn run() {
 
             let app = window.app_handle().clone();
             tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(1400)).await;
+                tokio::time::sleep(Duration::from_millis(200)).await;
                 close_splashscreen(&app);
             });
         })
@@ -2753,21 +2750,7 @@ pub fn run() {
             #[cfg(all(target_os = "ios", feature = "ios-web-inspector"))]
             enable_ios_web_inspector(app.handle())?;
 
-            #[cfg(desktop)]
-            {
-                if let Some(splash_config) = app
-                    .config()
-                    .app
-                    .windows
-                    .iter()
-                    .find(|window| window.label == "splashscreen")
-                {
-                    WebviewWindowBuilder::from_config(app.handle(), splash_config)
-                        .map_err(|e| format!("Failed to configure splashscreen: {e}"))?
-                        .build()
-                        .map_err(|e| format!("Failed to create splashscreen: {e}"))?;
-                }
-            }
+            // Splashscreen removed — main window is shown immediately.
 
             // Create system tray icon on desktop
             #[cfg(desktop)]
