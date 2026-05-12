@@ -2719,7 +2719,10 @@ pub fn run() {
         if window.label() == "main" {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 #[cfg(target_os = "macos")]
-                let _ = window.app_handle().hide();
+                {
+                    let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    let _ = window.app_handle().hide();
+                }
                 #[cfg(not(target_os = "macos"))]
                 let _ = window.hide();
                 api.prevent_close();

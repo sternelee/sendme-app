@@ -34,3 +34,4 @@ wrangler.jsonc
 .env.local
 .env
 .omx/
+.alma-snapshots

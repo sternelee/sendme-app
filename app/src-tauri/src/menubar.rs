@@ -11,9 +11,10 @@ use tauri::{
 pub fn create_tray(app_handle: &AppHandle) -> tauri::Result<TrayIcon> {
     let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))?;
 
-    let show_i = MenuItem::with_id(app_handle, "show", "Show", true, None::<&str>)?;
-    let exit_i = MenuItem::with_id(app_handle, "exit", "Exit", true, None::<&str>)?;
-    let menu = Menu::with_items(app_handle, &[&show_i, &exit_i])?;
+    let show_i = MenuItem::with_id(app_handle, "show", "Show", true, Some("CmdOrCtrl+Shift+S"))?;
+    let hide_i = MenuItem::with_id(app_handle, "hide", "Hide", true, Some("CmdOrCtrl+W"))?;
+    let exit_i = MenuItem::with_id(app_handle, "exit", "Exit", true, Some("CmdOrCtrl+Q"))?;
+    let menu = Menu::with_items(app_handle, &[&show_i, &hide_i, &exit_i])?;
 
     TrayIconBuilder::with_id("tray")
         .icon(icon)
@@ -23,8 +24,15 @@ pub fn create_tray(app_handle: &AppHandle) -> tauri::Result<TrayIcon> {
         .on_menu_event(|app_handle, event| match event.id.as_ref() {
             "show" => {
                 if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
                     let _ = window.show();
                     let _ = window.set_focus();
+                }
+            }
+            "hide" => {
+                let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.hide();
                 }
             }
             "exit" => {
@@ -38,6 +46,7 @@ pub fn create_tray(app_handle: &AppHandle) -> tauri::Result<TrayIcon> {
             if let TrayIconEvent::Click { button_state, .. } = event {
                 if button_state == MouseButtonState::Up {
                     if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
