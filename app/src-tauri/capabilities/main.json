@@ -2,7 +2,7 @@
   "identifier": "main",
   "description": "permissions for desktop app",
   "local": true,
-  "windows": ["main", "splashscreen"],
+  "windows": ["main"],
   "permissions": [
     "dialog:default",
     "dialog:allow-ask",

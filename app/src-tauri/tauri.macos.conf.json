@@ -11,19 +11,6 @@
         "fullscreen": false,
         "visible": true,
         "backgroundColor": "#12151D"
-      },
-      {
-        "label": "splashscreen",
-        "create": false,
-        "title": "Sendme",
-        "url": "native-splash.html",
-        "width": 400,
-        "height": 560,
-        "resizable": false,
-        "alwaysOnTop": false,
-        "fullscreen": false,
-        "visible": true,
-        "backgroundColor": "#12151D"
       }
     ]
   }
