@@ -74,7 +74,10 @@ async function apiEmailAuth(
 
   const signInRes = await tauriFetch(`${origin}/api/auth/${endpoint}/email`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+    },
     body: JSON.stringify(body),
   });
 

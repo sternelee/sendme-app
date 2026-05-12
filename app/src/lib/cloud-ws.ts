@@ -115,6 +115,15 @@ async function registerCloudDevice(
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 export async function connectCloudWebSocket(): Promise<void> {
   if (isConnecting || (ws && shouldBeConnected)) return;
   shouldBeConnected = true;
@@ -162,7 +171,11 @@ export async function connectCloudWebSocket(): Promise<void> {
     );
 
     try {
-      await registerCloudDevice(deviceId, traceId);
+      await withTimeout(
+        registerCloudDevice(deviceId, traceId),
+        10_000,
+        "registerCloudDevice",
+      );
       debugInfo("cloud-ws", `register success trace=${traceId}`);
     } catch (e) {
       debugError("cloud-ws", "Device registration failed", e);
@@ -195,8 +208,12 @@ export async function connectCloudWebSocket(): Promise<void> {
     }
     clearTimers();
 
-    // Connect
-    ws = await WebSocket.connect(url.toString());
+    // Connect with timeout
+    ws = await withTimeout(
+      WebSocket.connect(url.toString()),
+      10_000,
+      "WebSocket.connect",
+    );
     debugInfo("cloud-ws", `websocket connected successfully trace=${traceId}`);
 
     ws.addListener((msg) => {
