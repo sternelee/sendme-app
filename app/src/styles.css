@@ -14,6 +14,11 @@
     box-sizing: border-box;
   }
 
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+
   html {
     font-family: system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -206,5 +211,7 @@ html {
 
   nav.dock {
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
   }
 }

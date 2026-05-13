@@ -761,7 +761,7 @@ export default function MainPage() {
   });
 
   return (
-    <div class="app-shell text-base-content flex min-h-screen flex-col">
+    <div class="app-shell text-base-content flex h-dvh flex-col">
       <Toaster position="top-center" />
 
       <Show when={isInitializing()}>
