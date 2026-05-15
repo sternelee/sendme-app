@@ -79,6 +79,7 @@ export interface FriendsPageProps {
   sendPath?: string;
   isTextMode?: boolean;
   textContent?: string;
+  fileSize?: number;
 }
 
 export default function FriendsPage(props: FriendsPageProps) {
@@ -312,7 +313,7 @@ export default function FriendsPage(props: FriendsPageProps) {
         ? undefined
         : props.sendPath?.split("/").pop() || undefined;
 
-      await friendsService.sendTicketToFriend(friend.friend.id, ticket, filename);
+      await friendsService.sendTicketToFriend(friend.friend.id, ticket, filename, props.fileSize);
       toast.success(t("friends.ticketSent", { name: friend.friend.name }));
     } catch (error) {
       console.error("Failed to send to friend:", error);

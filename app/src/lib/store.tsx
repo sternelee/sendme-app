@@ -14,6 +14,7 @@ import type {
 } from "~/bindings";
 
 export interface SendState {
+  files: SelectedFile[];
   path: string;
   fileSize: number;
   ticketType: string;
@@ -55,8 +56,15 @@ export interface NearbySendState {
   error: string | null;
 }
 
+export interface PendingRequestState {
+  requestId: string;
+  state: "pending" | "accepting" | "declining";
+}
+
 export interface NearbyReceiveState {
-  incomingRequest: IncomingRequest | null;
+  incomingRequests: IncomingRequest[];
+  activeRequestId: string | null;
+  pendingRequestStates: Record<string, "pending" | "accepting" | "declining">;
   transferState: "idle" | "review" | "receiving" | "done" | "error";
   transferProgress: TransferProgress | null;
   error: string | null;
@@ -81,6 +89,9 @@ interface GlobalStoreValue {
 interface GlobalStore {
   send: {
     state: Accessor<SendState>;
+    addFiles: (files: SelectedFile[]) => void;
+    removeFile: (index: number) => void;
+    clearFiles: () => void;
     setPath: (path: string) => void;
     setFileSize: (size: number) => void;
     setTicketType: (ticketType: string) => void;
@@ -113,10 +124,14 @@ interface GlobalStore {
   };
   nearbyReceive: {
     state: Accessor<NearbyReceiveState>;
-    setIncomingRequest: (request: IncomingRequest | null) => void;
+    addIncomingRequest: (request: IncomingRequest) => void;
+    removeIncomingRequest: (requestId: string) => void;
+    setActiveRequestId: (requestId: string | null) => void;
+    setPendingRequestState: (requestId: string, state: "pending" | "accepting" | "declining") => void;
     setTransferState: (state: NearbyReceiveState["transferState"]) => void;
     setTransferProgress: (progress: TransferProgress | null) => void;
     setError: (error: string | null) => void;
+    reset: () => void;
   };
   cloudReceive: {
     state: Accessor<CloudReceiveState>;
@@ -130,6 +145,7 @@ interface GlobalStore {
 }
 
 const defaultSendState: SendState = {
+  files: [],
   path: "",
   fileSize: 0,
   ticketType: "relay_and_addresses",
@@ -159,7 +175,9 @@ const defaultNearbySendState: NearbySendState = {
 };
 
 const defaultNearbyReceiveState: NearbyReceiveState = {
-  incomingRequest: null,
+  incomingRequests: [],
+  activeRequestId: null,
+  pendingRequestStates: {},
   transferState: "idle",
   transferProgress: null,
   error: null,
@@ -197,7 +215,18 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
   const store: GlobalStore = {
     send: {
       state: () => sendState,
-      setPath: (path) => setSendState("path", path),
+      addFiles: (files) => {
+        setSendState("files", (prev) => [...prev, ...files]);
+      },
+      removeFile: (index) => {
+        setSendState("files", (prev) => prev.filter((_, i) => i !== index));
+      },
+      clearFiles: () => {
+        setSendState("files", []);
+      },
+      setPath: (path) => {
+        setSendState("path", path);
+      },
       setFileSize: (size) => setSendState("fileSize", size),
       setTicketType: (ticketType) => setSendState("ticketType", ticketType),
       setTicket: (ticket) => setSendState("ticket", ticket),
@@ -208,6 +237,7 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
       setShowReshareModal: (show) => setSendState("showReshareModal", show),
       setIsFolder: (isFolder) => setSendState("isFolder", isFolder),
       prepareReshare: (path: string) => {
+        setSendState("files", [{ path, name: path.split(/[\\/]/).pop() || path, size: 0 }]);
         setSendState("path", path);
         setSendState("ticket", "");
         setSendState("ticketQrCode", "");
@@ -242,13 +272,40 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
     },
     nearbyReceive: {
       state: () => nearbyReceiveState,
-      setIncomingRequest: (request) =>
-        setNearbyReceiveState("incomingRequest", request),
+      addIncomingRequest: (request) => {
+        setNearbyReceiveState("incomingRequests", (prev) => [...prev, request]);
+        setNearbyReceiveState("pendingRequestStates", (prev) => ({
+          ...prev,
+          [request.id]: "pending" as const,
+        }));
+      },
+      removeIncomingRequest: (requestId) => {
+        setNearbyReceiveState("incomingRequests", (prev) =>
+          prev.filter((r) => r.id !== requestId),
+        );
+        setNearbyReceiveState("pendingRequestStates", (prev) => {
+          const next = { ...prev };
+          delete next[requestId];
+          return next;
+        });
+        const current = nearbyReceiveState.activeRequestId;
+        if (current === requestId) {
+          setNearbyReceiveState("activeRequestId", null);
+        }
+      },
+      setActiveRequestId: (requestId) =>
+        setNearbyReceiveState("activeRequestId", requestId),
+      setPendingRequestState: (requestId, state) =>
+        setNearbyReceiveState("pendingRequestStates", (prev) => ({
+          ...prev,
+          [requestId]: state,
+        })),
       setTransferState: (transferState) =>
         setNearbyReceiveState("transferState", transferState),
       setTransferProgress: (progress) =>
         setNearbyReceiveState("transferProgress", progress),
       setError: (error) => setNearbyReceiveState("error", error),
+      reset: () => setNearbyReceiveState(defaultNearbyReceiveState),
     },
     cloudReceive: {
       state: () => cloudReceiveState,

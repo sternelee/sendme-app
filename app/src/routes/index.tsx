@@ -254,6 +254,8 @@ export default function MainPage() {
     if (isTextMode() && !textContent().trim()) return;
     if (!isTextMode() && !sendPath()) return;
 
+    const currentFiles = globalStore.send.state().files;
+
     globalStore.send.setIsSending(true);
     try {
       const result = isTextMode()
@@ -271,6 +273,19 @@ export default function MainPage() {
       );
       setShowQrCode(true);
       await loadTransfers();
+
+      // Remove sent file from queue, advance to next
+      if (!isTextMode() && currentFiles.length > 0) {
+        globalStore.send.removeFile(0);
+        const remaining = globalStore.send.state().files;
+        if (remaining.length > 0) {
+          globalStore.send.setPath(remaining[0].path);
+          globalStore.send.setFileSize(remaining[0].size);
+        } else {
+          globalStore.send.setPath("");
+          globalStore.send.setFileSize(0);
+        }
+      }
     } catch (e) {
       toast.error(t("send.failed") + `: ${e}`);
     } finally {
@@ -295,6 +310,8 @@ export default function MainPage() {
     if (isTextMode() && !textContent().trim()) return;
     if (!isTextMode() && !sendPath()) return;
 
+    const currentFiles = globalStore.send.state().files;
+
     globalStore.send.setIsSending(true);
     try {
       const result = isTextMode()
@@ -311,6 +328,19 @@ export default function MainPage() {
         }),
       );
       await loadTransfers();
+
+      // Remove sent file from queue, advance to next
+      if (!isTextMode() && currentFiles.length > 0) {
+        globalStore.send.removeFile(0);
+        const remaining = globalStore.send.state().files;
+        if (remaining.length > 0) {
+          globalStore.send.setPath(remaining[0].path);
+          globalStore.send.setFileSize(remaining[0].size);
+        } else {
+          globalStore.send.setPath("");
+          globalStore.send.setFileSize(0);
+        }
+      }
     } catch (e) {
       toast.error(t("send.failed") + `: ${e}`);
     } finally {
@@ -356,30 +386,50 @@ export default function MainPage() {
     }
   }
 
-  async function handleAcceptNearbyRequest() {
-    const request = globalStore.nearbyReceive.state().incomingRequest;
+  async function handleAcceptNearbyRequest(requestId: string) {
+    const request = globalStore.nearbyReceive.state().incomingRequests.find((r) => r.id === requestId);
     if (!request) return;
 
     try {
-      await accept_incoming(request.id, receiveOutputDir() || undefined);
+      globalStore.nearbyReceive.setPendingRequestState(requestId, "accepting");
+      await accept_incoming(requestId, receiveOutputDir() || undefined);
+      globalStore.nearbyReceive.setActiveRequestId(requestId);
       globalStore.nearbyReceive.setTransferState("receiving");
       setTransferView("receive");
       setActiveTab("transfer");
     } catch (e) {
+      globalStore.nearbyReceive.setPendingRequestState(requestId, "pending");
       toast.error(`${t("nearby.acceptFailed")}: ${e}`);
     }
   }
 
-  async function handleDeclineNearbyRequest() {
-    const request = globalStore.nearbyReceive.state().incomingRequest;
+  async function handleDeclineNearbyRequest(requestId: string) {
+    const request = globalStore.nearbyReceive.state().incomingRequests.find((r) => r.id === requestId);
     if (!request) return;
 
     try {
-      await decline_incoming(request.id);
-      globalStore.nearbyReceive.setIncomingRequest(null);
-      globalStore.nearbyReceive.setTransferState("idle");
+      globalStore.nearbyReceive.setPendingRequestState(requestId, "declining");
+      await decline_incoming(requestId);
+      // Let the nearby_request_declined event listener handle removal.
+      // Only fall back if the event hasn't fired yet.
+      if (globalStore.nearbyReceive.state().incomingRequests.some((r) => r.id === requestId)) {
+        globalStore.nearbyReceive.removeIncomingRequest(requestId);
+        const remaining = globalStore.nearbyReceive.state().incomingRequests;
+        if (remaining.length === 0) {
+          globalStore.nearbyReceive.setTransferState("idle");
+        }
+      }
     } catch (e) {
+      globalStore.nearbyReceive.setPendingRequestState(requestId, "pending");
       toast.error(`${t("nearby.declineFailed")}: ${e}`);
+    }
+  }
+
+  async function handleDismissAllNearbyRequests() {
+    const requests = [...globalStore.nearbyReceive.state().incomingRequests];
+    globalStore.nearbyReceive.reset();
+    for (const r of requests) {
+      decline_incoming(r.id).catch(() => {});
     }
   }
 
@@ -414,15 +464,27 @@ export default function MainPage() {
 
     try {
       await decline_cloud_ticket(ticket.id);
-      globalStore.cloudReceive.setCurrentTicket(null);
-      globalStore.cloudReceive.setTransferState("idle");
-      // Show next pending ticket if any
+
+      // Remove from local tickets list FIRST (before any state transition)
+      // This prevents stale cloud_tickets_updated events from re-showing it.
       const remaining = globalStore.cloudReceive
         .state()
         .tickets.filter((t) => t.id !== ticket.id);
+      globalStore.cloudReceive.setTickets(remaining);
+
+      // Delete from server (fire-and-forget)
+      requestCloudApi(getCloudApiUrl(`/api/tickets/${ticket.id}`), {
+        method: "DELETE",
+      }).catch(() => {});
+
+      // Show next ticket or go idle — avoid setting "idle" then "review"
+      // to eliminate the gap where stale events can auto-show the declined ticket.
       if (remaining.length > 0) {
         globalStore.cloudReceive.setCurrentTicket(remaining[0]);
         globalStore.cloudReceive.setTransferState("review");
+      } else {
+        globalStore.cloudReceive.setCurrentTicket(null);
+        globalStore.cloudReceive.setTransferState("idle");
       }
     } catch (e) {
       toast.error(`Failed to decline: ${e}`);
@@ -653,22 +715,32 @@ export default function MainPage() {
     const unlistenNearby = await listen<IncomingRequest>(
       "incoming_nearby_request",
       (event) => {
-        globalStore.nearbyReceive.setIncomingRequest(event.payload);
+        const payload = event.payload;
+        // Deduplicate: skip if request already exists
+        if (globalStore.nearbyReceive.state().incomingRequests.some((r) => r.id === payload.id)) return;
+        globalStore.nearbyReceive.addIncomingRequest(payload);
         globalStore.nearbyReceive.setTransferProgress(null);
         globalStore.nearbyReceive.setError(null);
-        globalStore.nearbyReceive.setTransferState("review");
+        // Only auto-set to review if idle; if already receiving, just queue it
+        if (globalStore.nearbyReceive.state().transferState === "idle") {
+          globalStore.nearbyReceive.setTransferState("review");
+        }
       },
     );
 
     const unlistenNearbyCancel = await listen<{ requestId: string }>(
       "nearby_request_cancelled",
       (event) => {
-        if (
-          globalStore.nearbyReceive.state().incomingRequest?.id ===
-          event.payload.requestId
-        ) {
-          globalStore.nearbyReceive.setIncomingRequest(null);
-          globalStore.nearbyReceive.setTransferState("idle");
+        const requestId = event.payload.requestId;
+        const hasRequest = globalStore.nearbyReceive.state().incomingRequests.some((r) => r.id === requestId);
+        if (hasRequest) {
+          globalStore.nearbyReceive.removeIncomingRequest(requestId);
+          const state = globalStore.nearbyReceive.state();
+          // If no more pending requests, go idle; otherwise stay in review
+          if (state.incomingRequests.length === 1 && state.activeRequestId === requestId) {
+            globalStore.nearbyReceive.setTransferProgress(null);
+            globalStore.nearbyReceive.setTransferState("idle");
+          }
           toast.info(t("nearby.senderCancelled"));
         }
       },
@@ -677,15 +749,16 @@ export default function MainPage() {
     const unlistenNearbyDecline = await listen<{ requestId: string }>(
       "nearby_request_declined",
       (event) => {
-        if (
-          globalStore.nearbyReceive.state().incomingRequest?.id ===
-          event.payload.requestId
-        ) {
-          globalStore.nearbyReceive.setIncomingRequest(null);
+        const requestId = event.payload.requestId;
+        const exists = globalStore.nearbyReceive.state().incomingRequests.some((r) => r.id === requestId);
+        if (!exists) return;
+        globalStore.nearbyReceive.removeIncomingRequest(requestId);
+        const remaining = globalStore.nearbyReceive.state().incomingRequests;
+        if (remaining.length === 0) {
           globalStore.nearbyReceive.setTransferProgress(null);
           globalStore.nearbyReceive.setTransferState("idle");
-          toast.info(t("nearby.requestDeclined"));
         }
+        toast.info(t("nearby.requestDeclined"));
       },
     );
 
@@ -693,6 +766,13 @@ export default function MainPage() {
       "nearby_receive_state",
       (event) => {
         const payload = event.payload;
+        const requestId = payload.requestId;
+
+        // Only process events for the active receiving request (or events without a specific requestId)
+        if (requestId && requestId !== globalStore.nearbyReceive.state().activeRequestId) {
+          return;
+        }
+
         if (payload.progress) {
           globalStore.nearbyReceive.setTransferProgress(payload.progress);
         }
@@ -703,17 +783,23 @@ export default function MainPage() {
         }
 
         if (payload.state === "done") {
-          globalStore.nearbyReceive.setIncomingRequest(null);
+          if (requestId) {
+            globalStore.nearbyReceive.removeIncomingRequest(requestId);
+          }
           globalStore.nearbyReceive.setTransferProgress(null);
-          globalStore.nearbyReceive.setTransferState("idle");
+          const remaining = globalStore.nearbyReceive.state().incomingRequests;
+          globalStore.nearbyReceive.setTransferState(remaining.length > 0 ? "review" : "idle");
           toast.success(payload.message ?? t("nearby.transferComplete"));
           return;
         }
 
         if (payload.state === "error") {
-          globalStore.nearbyReceive.setIncomingRequest(null);
+          if (requestId) {
+            globalStore.nearbyReceive.removeIncomingRequest(requestId);
+          }
           globalStore.nearbyReceive.setTransferProgress(null);
-          globalStore.nearbyReceive.setTransferState("idle");
+          const remaining = globalStore.nearbyReceive.state().incomingRequests;
+          globalStore.nearbyReceive.setTransferState(remaining.length > 0 ? "review" : "idle");
           globalStore.nearbyReceive.setError(
             payload.message ?? t("nearby.transferFailed"),
           );
@@ -974,12 +1060,13 @@ export default function MainPage() {
                               }
                               isReceiving={true}
                               onCancel={async () => {
-                                globalStore.nearbyReceive.setIncomingRequest(
-                                  null,
-                                );
-                                globalStore.nearbyReceive.setTransferState(
-                                  "idle",
-                                );
+                                const activeId = globalStore.nearbyReceive.state().activeRequestId;
+                                if (activeId) {
+                                  globalStore.nearbyReceive.removeIncomingRequest(activeId);
+                                }
+                                globalStore.nearbyReceive.setTransferProgress(null);
+                                const remaining = globalStore.nearbyReceive.state().incomingRequests;
+                                globalStore.nearbyReceive.setTransferState(remaining.length > 0 ? "review" : "idle");
                               }}
                             />
                           </Show>
@@ -992,19 +1079,10 @@ export default function MainPage() {
                           fallback={
                             <div class="grid min-w-0 gap-3">
                               <DropZone
-                                files={
-                                  sendPath()
-                                    ? [
-                                        {
-                                          name: getDisplayName(sendPath()),
-                                          size: sendFileSize(),
-                                          path: sendPath(),
-                                        },
-                                      ]
-                                    : []
-                                }
+                                files={globalStore.send.state().files}
                                 onFilesSelected={(files) => {
                                   if (files.length > 0) {
+                                    globalStore.send.addFiles(files);
                                     globalStore.send.setPath(files[0].path);
                                     globalStore.send.setFileSize(files[0].size);
                                     globalStore.send.setTicket("");
@@ -1012,9 +1090,16 @@ export default function MainPage() {
                                     globalStore.send.setIsFolder(false);
                                   }
                                 }}
-                                onRemoveFile={() => {
-                                  globalStore.send.setPath("");
-                                  globalStore.send.setFileSize(0);
+                                onRemoveFile={(index) => {
+                                  globalStore.send.removeFile(index);
+                                  const remaining = globalStore.send.state().files;
+                                  if (remaining.length > 0) {
+                                    globalStore.send.setPath(remaining[0].path);
+                                    globalStore.send.setFileSize(remaining[0].size);
+                                  } else {
+                                    globalStore.send.setPath("");
+                                    globalStore.send.setFileSize(0);
+                                  }
                                   globalStore.send.setTicket("");
                                 }}
                               />
@@ -1115,9 +1200,8 @@ export default function MainPage() {
                   <div class="space-y-4">
                     <Show
                       when={
-                        globalStore.nearbyReceive.state().incomingRequest &&
-                        globalStore.nearbyReceive.state().transferState ===
-                          "review"
+                        globalStore.nearbyReceive.state().incomingRequests.length > 0 &&
+                        globalStore.nearbyReceive.state().transferState !== "receiving"
                       }
                     >
                       <div class="surface-card border-secondary/20 bg-secondary/10 p-5">
@@ -1127,7 +1211,9 @@ export default function MainPage() {
                               {t("nearby.transferRequest")}
                             </p>
                             <p class="text-base-content/75 mt-2 text-sm leading-6">
-                              {t("nearby.requestModalHint")}
+                              {globalStore.nearbyReceive.state().incomingRequests.length === 1
+                                ? t("nearby.requestModalHint")
+                                : t("nearby.requestModalHint") + ` (${globalStore.nearbyReceive.state().incomingRequests.length})`}
                             </p>
                           </div>
                           <button
@@ -1189,6 +1275,7 @@ export default function MainPage() {
                       sendPath={sendPath() || undefined}
                       isTextMode={isTextMode()}
                       textContent={textContent()}
+                      fileSize={globalStore.send.state().files[0]?.size}
                     />
                   </Show>
                   <Show when={shareSubTab() === "friends"}>
@@ -1196,6 +1283,7 @@ export default function MainPage() {
                       sendPath={sendPath() || undefined}
                       isTextMode={isTextMode()}
                       textContent={textContent()}
+                      fileSize={globalStore.send.state().files[0]?.size}
                     />
                   </Show>
                 </section>
@@ -1551,44 +1639,56 @@ export default function MainPage() {
         </Presence>
       </main>
 
-      <Show when={globalStore.nearbyReceive.state().incomingRequest}>
+      <Show when={globalStore.nearbyReceive.state().incomingRequests.length > 0 && globalStore.nearbyReceive.state().transferState !== "receiving"}>
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div class="card bg-base-100 w-full max-w-md shadow-2xl">
-            <div class="card-body gap-3">
+            <div class="card-body gap-3 overflow-y-auto max-h-[70vh]">
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <h3 class="text-base font-bold">
                     {t("nearby.transferRequest")}
+                    {globalStore.nearbyReceive.state().incomingRequests.length > 1 && (
+                      <> ({globalStore.nearbyReceive.state().incomingRequests.length})</>
+                    )}
                   </h3>
                   <p class="text-sm opacity-60">
-                    {t("nearby.requestModalHint")}
+                    {globalStore.nearbyReceive.state().incomingRequests.length === 1
+                      ? t("nearby.requestModalHint")
+                      : t("nearby.requestModalHint")}
                   </p>
                 </div>
                 <button
                   onClick={() => {
-                    setTransferView("receive");
-                    setActiveTab("transfer");
+                    handleDismissAllNearbyRequests();
                   }}
                   class="btn btn-ghost btn-sm"
                 >
-                  {t("nearby.openReceive")}
+                  <X size={16} />
                 </button>
               </div>
 
-              <IncomingRequestCard
-                request={globalStore.nearbyReceive.state().incomingRequest!}
-                onAccept={handleAcceptNearbyRequest}
-                onDecline={handleDeclineNearbyRequest}
-                disabled={
-                  globalStore.nearbyReceive.state().transferState !== "review"
-                }
-                state={
-                  globalStore.nearbyReceive.state().transferState ===
-                  "receiving"
-                    ? "accepting"
-                    : "pending"
-                }
-              />
+              <For each={globalStore.nearbyReceive.state().incomingRequests}>
+                {(request) => {
+                  const requestState = () => {
+                    return globalStore.nearbyReceive.state().pendingRequestStates[request.id] ?? "pending";
+                  };
+                  return (
+                    <IncomingRequestCard
+                      request={request}
+                      onAccept={() => handleAcceptNearbyRequest(request.id)}
+                      onDecline={() => handleDeclineNearbyRequest(request.id)}
+                      disabled={requestState() !== "pending"}
+                      state={
+                        requestState() === "accepting"
+                          ? "accepting"
+                          : requestState() === "declining"
+                            ? "declining"
+                            : "pending"
+                      }
+                    />
+                  );
+                }}
+              </For>
             </div>
           </div>
         </div>
