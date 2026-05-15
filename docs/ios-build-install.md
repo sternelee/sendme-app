@@ -19,7 +19,6 @@ Do **not** treat `pnpm run tauri ios build` as the primary release-install flow 
 - iPhone connected via USB, trusted by the Mac
 - `pnpm` installed
 - `xcodegen` available
-- A valid Clerk publishable key exported before mobile builds
 
 ## Important Repo-Specific Details
 
@@ -70,22 +69,7 @@ cd app
 pnpm install
 ```
 
-### 2. Verify the Clerk key
-
-`CLERK_PUBLISHABLE_KEY` is expected to be set in your system environment.
-Verify it is available before building:
-
-```bash
-echo $CLERK_PUBLISHABLE_KEY   # should print your pk_live_... or pk_test_... key
-```
-
-If it is empty, set it for the current session:
-
-```bash
-export CLERK_PUBLISHABLE_KEY='pk_live_...'  # or pk_test_... for development
-```
-
-### 3. Optional: enable Safari inspection on iOS
+### 2. Optional: enable Safari inspection on iOS
 
 If you want the installed iPhone app to appear in macOS Safari's **Develop** menu, export this before building:
 
@@ -97,7 +81,7 @@ This keeps the normal release packaging flow, but adds an iOS-only Rust feature 
 
 Leave it unset for a normal non-debuggable install.
 
-### 4. Generate the Xcode project
+### 3. Generate the Xcode project
 
 Run this whenever `app/src-tauri/gen/apple/project.yml` changes, and it is harmless to run before a normal iOS build:
 
@@ -106,7 +90,7 @@ cd src-tauri/gen/apple
 xcodegen generate
 ```
 
-### 5. Build the iOS app
+### 4. Build the iOS app
 
 > **⚠️ Before running xcodebuild for the first time on a machine:**
 > Open the project in Xcode GUI once (`open app/src-tauri/gen/apple/app.xcodeproj`),
@@ -132,7 +116,6 @@ nohup xcodebuild \
   -allowProvisioningDeviceRegistration \
   CODE_SIGN_STYLE=Automatic \
   DEVELOPMENT_TEAM=UJ8NW4N779 \
-  CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
   build > /tmp/xcodebuild.log 2>&1 &
 
 echo "Build running in background (PID $!)"
@@ -222,8 +205,6 @@ xcrun devicectl device process launch \
 ```bash
 cd app
 pnpm install
-# CLERK_PUBLISHABLE_KEY should already be in your system environment.
-# Verify: echo $CLERK_PUBLISHABLE_KEY
 export SENDME_IOS_INSPECTOR=1   # optional: enable Safari Web Inspector
 
 cd src-tauri/gen/apple
@@ -386,7 +367,7 @@ xcrun devicectl device install app ...
 | Action | Command |
 | --- | --- |
 | Generate project | `cd app/src-tauri/gen/apple && xcodegen generate` |
-| Build iOS app (background) | `nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" build > /tmp/xcodebuild.log 2>&1 &` |
+| Build iOS app (background) | `nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 build > /tmp/xcodebuild.log 2>&1 &` |
 | Watch build log | `tail -f /tmp/xcodebuild.log` |
 | List devices (CoreDevice UUID) | `xcrun devicectl list devices` |
 | List devices (legacy UDID) | `xcrun xctrace list devices` |

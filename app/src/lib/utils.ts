@@ -110,8 +110,21 @@ export function getTransferStatus(status: string): {
 }
 
 /**
- * Calculate progress percentage from progress data
+ * Format a duration in milliseconds to a human-readable string.
+ * e.g. 1500 → "1.5s", 65000 → "1m 5s", 3700000 → "1h 1m"
  */
+export function formatDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) return `${(ms / 1000).toFixed(1)}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+
 export function getProgressValue(data: any): number {
   if (data?.progress?.type === "downloading") {
     return (data.progress.offset / data.progress.total) * 100;

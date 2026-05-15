@@ -8,12 +8,12 @@ Sendme is a **cross-platform P2P file transfer system** built on [iroh](https://
 
 There are **four distinct products** in this repo:
 
-| Product | Location | Technology | Targets |
-|---------|----------|------------|---------|
-| Core library | `lib/` | Rust (`sendme-lib`) | CLI, Tauri, WASM |
-| CLI / TUI | `cli/` | Rust (`ratatui`, `clap`) | Linux, macOS, Windows |
-| Desktop / Mobile app | `app/` + `app/src-tauri/` | Tauri 2 + SolidJS | Desktop + Android + iOS |
-| Browser app | `browser/` + `browser-lib/` | SolidStart / Vinxi + WASM | Cloudflare Workers |
+| Product              | Location                    | Technology                | Targets                 |
+| -------------------- | --------------------------- | ------------------------- | ----------------------- |
+| Core library         | `lib/`                      | Rust (`sendme-lib`)       | CLI, Tauri, WASM        |
+| CLI / TUI            | `cli/`                      | Rust (`ratatui`, `clap`)  | Linux, macOS, Windows   |
+| Desktop / Mobile app | `app/` + `app/src-tauri/`   | Tauri 2 + SolidJS         | Desktop + Android + iOS |
+| Browser app          | `browser/` + `browser-lib/` | SolidStart / Vinxi + WASM | Cloudflare Workers      |
 
 **Package Manager**: Use **pnpm** for ALL JavaScript/TypeScript operations (NOT npm or yarn).
 
@@ -50,6 +50,7 @@ sendme-app/
 ```
 
 **Key rules:**
+
 - `browser-lib/` has its own `[workspace]` in `Cargo.toml` — **never add it to the root workspace**.
 - The pnpm workspace contains only `app` and `browser`.
 - `[patch.crates-io] n0-snafu = { path = "patches/n0-snafu" }` fixes a `color-backtrace` incompatibility; do not remove.
@@ -57,6 +58,7 @@ sendme-app/
 ## Technology Stack
 
 ### Rust
+
 - **MSRV**: 1.81
 - **iroh** 0.97 (P2P networking, endpoint, router, relay)
 - **iroh-blobs** 0.99 (content-addressed blob store, collections, tickets)
@@ -64,6 +66,7 @@ sendme-app/
 - **tauri** 2 (desktop/mobile app shell)
 
 ### JavaScript / TypeScript
+
 - **solid-js** 1.9.x (fine-grained reactivity)
 - **@solidjs/start** + **vinxi** (browser full-stack framework)
 - **@solidjs/router** (routing)
@@ -73,6 +76,7 @@ sendme-app/
 - **wrangler** (Cloudflare Workers deployment)
 
 ### Cloud Infrastructure (Browser App)
+
 - **Cloudflare Workers** (serverless compute)
 - **D1** (SQLite edge database)
 - **Durable Objects** (`UserDO` — per-user real-time hub)
@@ -80,6 +84,7 @@ sendme-app/
 ## Build Commands
 
 ### Rust Workspace
+
 ```bash
 cargo build --release
 cargo build -p sendme-lib              # Library only
@@ -92,6 +97,7 @@ cargo clippy --locked --workspace --all-targets --all-features
 ```
 
 ### Tests
+
 ```bash
 cargo test --locked --workspace --all-features
 IROH_FORCE_STAGING_RELAYS=1 cargo test  # Like CI
@@ -101,6 +107,7 @@ cargo test send_recv_file -- --nocapture
 ```
 
 ### Tauri App (`app/`)
+
 ```bash
 cd app
 pnpm install
@@ -112,11 +119,13 @@ pnpm test                   # Vitest
 ```
 
 **Linux Tauri build dependencies** (Ubuntu 22.04):
+
 ```bash
 sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 ```
 
 ### Browser App (`browser/`)
+
 ```bash
 cd browser
 pnpm install
@@ -133,25 +142,30 @@ pnpm run db:migrate:prod      # Apply D1 migrations to production
 pnpm run db:studio            # Drizzle Studio UI
 pnpm test                     # Vitest
 ```
+
 Node >=22 is required. Use `deploy:cf` not `deploy` — `deploy` internally calls `npm run build` which fails with pnpm.
 
 ### Browser WASM (separate workspace)
+
 ```bash
 cd browser-lib
 export CC=/opt/homebrew/opt/llvm/bin/clang   # macOS: LLVM Clang, NOT Apple Clang
 cargo build --target=wasm32-unknown-unknown --release
 ```
+
 After changing WASM API or Rust browser logic, rebuild artifacts with `pnpm run build:wasm` from `browser/`.
 
 ### Mobile Builds
 
 #### Android
+
 ```bash
 # From app/
 pnpm run tauri android build
 ```
 
 #### iOS
+
 Prefer direct `xcodebuild` + `devicectl` over `pnpm run tauri ios build`. The Tauri archive/export path can reintroduce unsupported entitlements for personal-team signing.
 
 ```bash
@@ -186,6 +200,7 @@ xcrun devicectl device process launch --terminate-existing --device <device-id> 
 ## Code Style & Conventions
 
 ### Rust
+
 - `cargo fmt --all` is **required before commit**.
 - Use `tokio::sync::RwLock`, NOT `std::sync::RwLock`, for async shared state.
 - Convert Rust errors to `String` for Tauri frontend consumption:
@@ -195,6 +210,7 @@ xcrun devicectl device process launch --terminate-existing --device <device-id> 
 - Path safety: always use `canonicalized_path_to_string()` from `sendme-lib` instead of manual path string conversion.
 
 ### TypeScript / SolidJS
+
 - Path alias: `~/*` maps to `src/` in both `app/` and `browser/`.
 - Explicit types for signals:
   ```typescript
@@ -203,10 +219,12 @@ xcrun devicectl device process launch --terminate-existing --device <device-id> 
 - The two SolidJS frontends are **completely separate**:
   - `app/src/` → Tauri UI
   - `browser/src/` → Cloudflare web app
-  No shared state, no shared build config.
+    No shared state, no shared build config.
 
 ### Commit Convention
+
 Prefix commit messages with the component when applicable:
+
 - `cli: fix progress bar`
 - `app: update send screen`
 - `lib: add nearby discovery`
@@ -215,6 +233,7 @@ Prefix commit messages with the component when applicable:
 ## Critical Patterns
 
 ### Router Keep-Alive (CRITICAL)
+
 The sender's iroh `Router` must never be dropped. Keep it alive forever in a spawned task:
 
 ```rust
@@ -227,6 +246,7 @@ tokio::spawn(async move {
 Never replace with a sleep loop. Dropping the router breaks all subsequent incoming connections.
 
 ### Android Temp Directory (CRITICAL)
+
 Android apps run in a sandbox where `std::env::current_dir()` is blocked. Always pass an explicit temp directory:
 
 ```rust
@@ -235,6 +255,7 @@ let base_dir = args.common.temp_dir.as_ref().cloned()
 ```
 
 In the Tauri backend:
+
 ```rust
 let temp_dir = app.path().temp_dir()?;
 let args = ReceiveArgs {
@@ -247,6 +268,7 @@ let args = ReceiveArgs {
 ```
 
 ### Async Patterns
+
 ```rust
 // Progress channels
 tokio::sync::mpsc::channel::<ProgressEvent>(32)
@@ -262,6 +284,7 @@ tokio::select! {
 ```
 
 ### File Picking Per Platform
+
 - **Android**: URI-based (`content://`) via `tauri-plugin-android-fs`. The backend copies URIs to temp files before processing and writes received files back through the Android FS plugin.
 - **iOS**: `file://` URLs via dialog + Documents directory; custom `tauri-plugin-media-picker` (Swift + Rust, `PHPickerViewController`) for photo/video.
 - **Desktop**: `tauri-plugin-dialog` returning real filesystem paths.
@@ -269,9 +292,11 @@ tokio::select! {
 ## Auth & Cloud Architecture
 
 ### Authentication
+
 Both the Tauri app and the browser app authenticate against the **same better-auth instance** hosted on the browser app's Cloudflare backend.
 
 **Tauri app flow (system browser + deep link):**
+
 1. Frontend calls `open_system_browser(url)` → opens OAuth page in system browser.
 2. User authenticates via better-auth (GitHub, Google, or email/password).
 3. Browser callback deep-links back to the app: `sendme://auth/callback?token=...&user_id=...`.
@@ -279,11 +304,13 @@ Both the Tauri app and the browser app authenticate against the **same better-au
 5. Frontend caches the bearer token for API/WebSocket auth.
 
 **Browser app flow:**
+
 - Standard better-auth session cookie (HttpOnly).
 - Custom `/api/auth/token` endpoint exposes a bearer token for WebSocket auth (browsers cannot set custom headers on WS connections).
 - API key auth (`sk_*` prefix) is supported for CLI/external clients; keys are SHA-256 hashed and stored in the `api_keys` table.
 
 ### Cloud Backend (Browser App)
+
 - **Database**: Cloudflare D1 (SQLite) with Drizzle ORM.
 - **Schema**: `user`, `session`, `account`, `verification`, `devices`, `tickets`, `friends`, `api_keys`, `transfers`.
 - **Real-time**: `UserDO` Durable Object (one per user) manages WebSocket pools, device presence, pending tickets, and friend list broadcasts.
@@ -293,7 +320,9 @@ Both the Tauri app and the browser app authenticate against the **same better-au
   - `cloudflareWsBypassPlugin` — intercepts `/api/ws` upgrade requests before Nitro's h3 pipeline reconstructs the `Response`, preserving Cloudflare's special `webSocket` property required for Durable Object handshakes.
 
 ### CLI Cloud Connectivity
+
 The CLI supports cloud sync via REST API + WebSocket:
+
 - Config stored at `~/.config/sendme/config.toml` (`dirs::config_dir()`).
 - REST client (`reqwest`) with `Authorization: Bearer <api_key>` and `X-Device-Id` headers.
 - WebSocket loop (`tokio-tungstenite`) with exponential backoff reconnect (1s → 30s cap) and 30s heartbeat.
@@ -302,37 +331,43 @@ The CLI supports cloud sync via REST API + WebSocket:
 ## Platform-Specific Notes
 
 ### iOS
+
 - `app_iOS.entitlements` must remain empty for personal-team signing.
 - iOS cannot publish mDNS services without the `com.apple.developer.networking.multicast` entitlement (requires Apple Developer Program membership). On personal-team signing, iOS can receive nearby broadcasts but other devices may not see it.
 - Enable `ios-web-inspector` feature in `app/src-tauri/Cargo.toml` for Safari DevTools debugging.
 
 ### Android
+
 - `CHANGE_WIFI_MULTICAST_STATE` permission is required for iroh mDNS discovery. Must be present in `AndroidManifest.xml`.
 - `sodium_memcmp` crash on launch: when cross-compiling Android on macOS, `libsodium-sys-stable` may produce an empty static library because the NDK's `llvm-ar` is not detected. See `ANDROID_DEBUG_GUIDE.md` for the one-time fix (pre-building libsodium with NDK toolchain).
 - JNI loops must use `push_local_frame()` / `pop_local_frame()` to prevent reference leaks.
 
 ### macOS (Desktop)
+
 - System tray / menubar integration via `app/src-tauri/src/menubar.rs`.
 - Close button hides the window (activation policy `Accessory`) rather than quitting the app.
 - `tauri-nspanel` plugin is integrated for future NSPanel support.
 
 ### WASM (Browser)
+
 - `browser-lib` uses `MemStore` (in-memory only) because filesystem access is unavailable in WASM.
 - `wasm-bindgen` is pinned to exactly `0.2.114`; `wasm-bindgen-cli` must match.
 - macOS builds require **LLVM Clang** (`/opt/homebrew/opt/llvm/bin/clang`), NOT Apple Clang.
 
 ## Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
-| `IROH_SECRET` | Hex-encoded 32-byte secret key (optional; auto-generates if not set) |
-| `IROH_FORCE_STAGING_RELAYS=1` | Use staging relays (CI / tests) |
-| `RUSTFLAGS=-Dwarnings` | Treat all warnings as errors (CI) |
-| `RUST_LOG` | Tracing level (`debug`, `info`, `warn`, `error`) |
-| `SENDME_IOS_INSPECTOR=1` | Enable Safari Web Inspector on iOS builds |
-| `BETTER_AUTH_SECRET` | better-auth session signing secret (browser backend) |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth credentials (browser backend) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials (browser backend) |
+| Variable                                    | Purpose                                                              |
+| ------------------------------------------- | -------------------------------------------------------------------- |
+| `IROH_SECRET`                               | Hex-encoded 32-byte secret key (optional; auto-generates if not set) |
+| `IROH_FORCE_STAGING_RELAYS=1`               | Use staging relays (CI / tests)                                      |
+| `RUSTFLAGS=-Dwarnings`                      | Treat all warnings as errors (CI)                                    |
+| `RUST_LOG`                                  | Tracing level (`debug`, `info`, `warn`, `error`)                     |
+| `SENDME_IOS_INSPECTOR=1`                    | Enable Safari Web Inspector on iOS builds                            |
+| `BETTER_AUTH_SECRET`                        | better-auth session signing secret (browser backend)                 |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth credentials (browser backend)                           |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials (browser backend)                           |
+
+> > > > > > > 1e042900bbf502a74b3b3015b2dacf100a3f8338
 
 **Legacy**: `CLERK_PUBLISHABLE_KEY` references still exist in some build scripts (`app/src-tauri/build.rs`, iOS xcodebuild docs) but the runtime auth system has migrated to better-auth. Passing this variable is currently harmless but unnecessary.
 

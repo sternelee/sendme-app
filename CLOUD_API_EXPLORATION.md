@@ -13,9 +13,9 @@
 - **Scheme conversion:** `https://` → `wss://` (WebSocket), `http://` → `ws://`
 
 ### Authentication
-- **Method:** Clerk JWT (Bearer tokens)
-- **Tauri:** `invoke("plugin:clerk|get_client_authorization_header")`
-- **Browser:** `useAuth().getToken()` (Solid-JS)
+- **Method:** better-auth JWT (Bearer tokens)
+- **Tauri:** System-browser OAuth + deep link callback (`sendme://auth/callback?token=...`)
+- **Browser:** `authClient.getSession()` (better-auth Solid-JS client)
 - **Header:** `Authorization: Bearer <token>`
 - **WebSocket:** Query param fallback for browsers (can't set headers)
 
@@ -121,7 +121,7 @@ Messages: Devices, Tickets, Friends, DeviceUpdate, Pong, Error, TransferReceived
 
 ### 1. Tauri App Initialization
 ```
-User signs in (Clerk)
+User signs in (better-auth OAuth)
   ↓
 PresenceConnector effect fires
   ↓
@@ -132,7 +132,7 @@ Tauri Backend (Rust):
   - spawn run_cloud_presence_loop()
   ↓
 Loop:
-  - Get Clerk token via plugin
+  - Get bearer token from cached better-auth session
   - register device: POST /api/devices
   - build WS URL: wss://sendme.leeapp.dev/api/ws?deviceId=X&token=Y
   - connect_async(url)
@@ -163,7 +163,7 @@ Client connects to wss://api.../api/ws?deviceId=X&token=Y
 Server (browser/src/routes/api/ws.ts):
   1. Validate WebSocket upgrade header
   2. Extract token from query or Authorization header
-  3. authenticateRequest() → verify Clerk JWT
+  3. authenticateRequest() → verify better-auth session token
   4. Get persistentDeviceId from header or query
   5. Query DB: getUserDeviceByPersistentId()
   6. Route to Durable Object: env.USER_DO.get(id).fetch()
@@ -216,7 +216,7 @@ let (stream, _) = connect_async(ws_url.as_str()).await?;
 
 ### Pattern 4: WebSocket Connection (Browser)
 ```typescript
-const token = await getToken();  // Clerk JWT
+const token = await authClient.getSession().token;  // better-auth JWT
 const urlWithToken = `${protocol}//${location.host}/api/ws?deviceId=${deviceId}&token=${token}`;
 const ws = new WebSocket(urlWithToken);
 ```
@@ -245,7 +245,7 @@ tokio-tungstenite = { version = "0.26", features = ["connect", "rustls-tls-webpk
 | Feature | Tauri App | Browser App |
 |---------|-----------|-------------|
 | **Cloud Origin** | `https://sendme.leeapp.dev` | Same |
-| **Auth Source** | Clerk plugin (desktop native) | Clerk Solid-JS hook |
+| **Auth Source** | better-auth browser OAuth + deep link | better-auth Solid-JS client |
 | **HTTP Client** | `reqwest::Client` | Browser `fetch()` |
 | **WebSocket Library** | `tokio-tungstenite` | Browser `WebSocket` API |
 | **Device ID Storage** | localStorage | localStorage |
@@ -267,21 +267,22 @@ tokio-tungstenite = { version = "0.26", features = ["connect", "rustls-tls-webpk
 **Tauri App** (`app/.env.local.example`):
 ```bash
 VITE_BROWSER_API_ORIGIN=https://sendme.leeapp.dev  # Optional; defaults to https://sendme.leeapp.dev
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...  # Server-side only!
 ```
 
 **Browser App** (`browser/.env.example`):
 ```bash
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+BETTER_AUTH_SECRET=...       # Session signing secret
+GITHUB_CLIENT_ID=...         # OAuth credentials
+GITHUB_CLIENT_SECRET=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
 ```
 
 ---
 
 ## Security Notes
 
-1. **Clerk Integration:** Both apps use Clerk for authentication; tokens are JWTs with user identity claims
+1. **better-auth Integration:** Both apps use better-auth for authentication; tokens are JWTs with user identity claims
 2. **Device Verification:** Server verifies device is registered before accepting WebSocket connections
 3. **Query Param Fallback:** Browsers can't set custom headers on WebSocket, so token is passed as query param
 4. **TLS Verification:** Both `reqwest` and `tokio-tungstenite` use `rustls-tls-webpki-roots` for cert validation

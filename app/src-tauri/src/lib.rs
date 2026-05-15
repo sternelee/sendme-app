@@ -415,6 +415,134 @@ pub struct TransferInfo {
     pub status: String,
     pub created_at: i64,
     pub ticket: Option<String>,
+    /// Final filename on disk (set after export completes)
+    pub filename: Option<String>,
+    /// Total bytes received (set after export completes)
+    pub file_size: Option<i64>,
+    /// Unix timestamp when the transfer completed (set after completion)
+    pub completed_at: Option<i64>,
+    /// Transfer duration in milliseconds
+    pub duration_ms: Option<i64>,
+}
+
+impl TransferInfo {
+    /// Returns true if this is a receive transfer that has completed successfully.
+    pub fn is_completed_receive(&self) -> bool {
+        self.transfer_type == "receive" && self.status == "completed"
+    }
+}
+
+/// Persistent storage for received file history.
+/// Only stores completed receive transfers. Send transfers are not persisted.
+type ReceiveHistory = Arc<RwLock<Vec<TransferInfo>>>;
+
+fn history_file_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+    Ok(data_dir.join("receive_history.json"))
+}
+
+async fn load_history(app: &AppHandle) -> Vec<TransferInfo> {
+    let path = match history_file_path(app) {
+        Ok(p) => p,
+        Err(e) => {
+            log_error!("Failed to get history file path: {}", e);
+            return Vec::new();
+        }
+    };
+    let contents = match tokio::fs::read_to_string(&path).await {
+        Ok(c) => c,
+        Err(_) => return Vec::new(), // File doesn't exist or unreadable — start empty
+    };
+    match serde_json::from_str::<Vec<TransferInfo>>(&contents) {
+        Ok(history) => history,
+        Err(e) => {
+            log_error!("Failed to parse receive history: {}. Starting fresh.", e);
+            Vec::new()
+        }
+    }
+}
+
+async fn save_history(app: &AppHandle, history: &[TransferInfo]) {
+    let path = match history_file_path(app) {
+        Ok(p) => p,
+        Err(e) => {
+            log_error!("Failed to get history file path: {}", e);
+            return;
+        }
+    };
+    let json = match serde_json::to_string_pretty(history) {
+        Ok(j) => j,
+        Err(e) => {
+            log_error!("Failed to serialize receive history: {}", e);
+            return;
+        }
+    };
+    if let Err(e) = tokio::fs::write(&path, json).await {
+        log_error!("Failed to write receive history: {}", e);
+    }
+}
+
+/// Append a completed receive transfer to persistent history.
+async fn append_to_history(app: &AppHandle, history: &ReceiveHistory, info: &TransferInfo) {
+    if !info.is_completed_receive() {
+        return;
+    }
+    let mut guard = history.write().await;
+    guard.push(info.clone());
+    save_history(app, &*guard).await;
+    drop(guard);
+}
+
+/// Remove a history entry by transfer id. Returns true if removed.
+async fn remove_from_history(app: &AppHandle, history: &ReceiveHistory, id: &str) -> bool {
+    let mut guard = history.write().await;
+    let before = guard.len();
+    guard.retain(|h| h.id != id);
+    let removed = guard.len() < before;
+    if removed {
+        save_history(app, &*guard).await;
+    }
+    drop(guard);
+    removed
+}
+
+/// Clear all history entries.
+async fn clear_all_history(app: &AppHandle, history: &ReceiveHistory) {
+    let mut guard = history.write().await;
+    guard.clear();
+    save_history(app, &*guard).await;
+    drop(guard);
+}
+
+/// Merge active completed-receive transfers with persistent history.
+/// Merge all active transfers with persistent completed-receive history.
+/// Active transfers override history entries with the same id.
+/// Sorted by created_at desc (newest first).
+async fn get_merged_transfers(transfers: &Transfers, history: &ReceiveHistory) -> Vec<TransferInfo> {
+    let active: Vec<TransferInfo> = {
+        let guard = transfers.read().await;
+        guard.values().map(|s| s.info.clone()).collect()
+    };
+
+    let mut historical: Vec<TransferInfo> = {
+        let guard = history.read().await;
+        guard
+            .iter()
+            .filter(|h| !active.iter().any(|a| a.id == h.id))
+            .cloned()
+            .collect()
+    };
+    historical.sort_by(|a, b| {
+        b.completed_at
+            .unwrap_or(b.created_at)
+            .cmp(&a.completed_at.unwrap_or(a.created_at))
+    });
+
+    let mut merged = active;
+    merged.extend(historical);
+    merged.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    merged
 }
 
 // Global state for tracking active transfers
@@ -860,6 +988,10 @@ async fn send_to_device(
             .unwrap()
             .as_secs() as i64,
         ticket: None,
+        filename: None,
+        file_size: None,
+        completed_at: None,
+        duration_ms: None,
     };
     {
         let mut transfers_guard = transfers.write().await;
@@ -1529,6 +1661,10 @@ async fn start_nearby_receive(
                         .unwrap()
                         .as_secs() as i64,
                     ticket: Some(ticket.to_string()),
+                    filename: None,
+                    file_size: None,
+                    completed_at: None,
+                    duration_ms: None,
                 },
                 abort_tx: None,
             },
@@ -2069,6 +2205,12 @@ fn transfer_label_for_notification(transfer_type: &str, path: Option<&str>) -> S
             }
         }
         _ => "Receiving transfer".to_string(),
+    }
+}
+
+fn notify_transfer_event(app: &AppHandle, title: &str, body: &str) {
+    if let Err(error) = app.notification().builder().title(title).body(body).show() {
+        log_warn!("Failed to send transfer notification: {}", error);
     }
 }
 
@@ -2664,6 +2806,7 @@ pub fn run() {
     let cloud_presence: CloudPresenceState = Arc::new(RwLock::new(CloudPresenceRuntime::default()));
     let android_foreground: AndroidForegroundState =
         Arc::new(RwLock::new(AndroidForegroundRuntime::default()));
+    let receive_history: ReceiveHistory = Arc::new(RwLock::new(Vec::new()));
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
@@ -2742,10 +2885,19 @@ pub fn run() {
         .setup(move |app| {
             // Store transfers in app state
             app.manage(transfers.clone());
+            app.manage(receive_history.clone());
             // Store nearby runtime in app state
             app.manage(nearby.clone());
             app.manage(cloud_presence.clone());
             app.manage(android_foreground.clone());
+
+            let app_handle = app.handle().clone();
+            let receive_history_state = receive_history.clone();
+            tauri::async_runtime::block_on(async move {
+                let loaded = load_history(&app_handle).await;
+                let mut guard = receive_history_state.write().await;
+                *guard = loaded;
+            });
 
             #[cfg(all(target_os = "ios", feature = "ios-web-inspector"))]
             enable_ios_web_inspector(app.handle())?;
@@ -2996,6 +3148,10 @@ async fn send_file(
             .unwrap()
             .as_secs() as i64,
         ticket: None,
+        filename: None,
+        file_size: None,
+        completed_at: None,
+        duration_ms: None,
     };
     log_info!(
         "✅ Transfer info created: {} - {}",
@@ -3187,6 +3343,11 @@ async fn send_file(
             let ticket_str = result.ticket.to_string();
             update_transfer_status(transfers.inner(), &transfer_id, "serving").await;
             update_transfer_ticket(transfers.inner(), &transfer_id, &ticket_str).await;
+            notify_transfer_event(
+                &app,
+                "Transfer ready",
+                "Your file is ready to share. Ticket generated.",
+            );
             Ok(ticket_str)
         }
         Err(ref e) if e.contains("cancelled by user") => {
@@ -3324,16 +3485,26 @@ async fn receive_file(
     };
 
     // Create transfer info
+    let receive_started_at = Instant::now();
+    let receive_path = args
+        .export_dir
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| temp_dir.to_string_lossy().to_string());
     let transfer_info = TransferInfo {
         id: transfer_id.clone(),
         transfer_type: "receive".to_string(),
-        path: request.ticket.clone(),
+        path: receive_path,
         status: "initializing".to_string(),
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64,
         ticket: Some(request.ticket.clone()),
+        filename: None,
+        file_size: None,
+        completed_at: None,
+        duration_ms: None,
     };
     log_info!("✅ Transfer info created");
 
@@ -3544,7 +3715,46 @@ async fn receive_file(
             }
 
             update_transfer_status(transfers.inner(), &transfer_id, "completed").await;
+
+            // Capture final metadata for history
+            {
+                let mut guard = transfers.inner().write().await;
+                if let Some(state) = guard.get_mut(&transfer_id) {
+                    let collection = &result.collection;
+                    let names: Vec<_> = collection.iter().map(|(name, _)| name.to_string()).collect();
+                    let display_name = if names.len() == 1 {
+                        names[0].clone()
+                    } else if names.len() > 1 {
+                        format!("{} files", names.len())
+                    } else {
+                        "Unknown".to_string()
+                    };
+                    state.info.filename = Some(display_name);
+                    state.info.file_size = Some(result.payload_size as i64);
+                    state.info.completed_at = Some(
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs() as i64,
+                    );
+                    state.info.duration_ms = Some(receive_started_at.elapsed().as_millis() as i64);
+                }
+            };
+
             set_android_active_receive(&app, None).await;
+
+            // Persist to history
+            let final_info = {
+                let guard = transfers.inner().read().await;
+                guard.get(&transfer_id).map(|s| s.info.clone())
+            };
+            if let Some(info) = final_info {
+                let history = app.state::<ReceiveHistory>().inner().clone();
+                append_to_history(&app, &history, &info).await;
+                let file_label = info.filename.as_deref().unwrap_or("file");
+                notify_transfer_event(&app, "Transfer complete", &format!("Received {}", file_label));
+            }
+
             Ok(format!(
                 "{{\"transfer_id\": \"{}\", \"files\": {}, \"bytes\": {}}}",
                 transfer_id,
@@ -3588,7 +3798,9 @@ async fn cancel_transfer(
 
 #[tauri::command]
 async fn delete_transfer(
+    app: AppHandle,
     transfers: tauri::State<'_, Transfers>,
+    history: tauri::State<'_, ReceiveHistory>,
     id: String,
 ) -> Result<bool, String> {
     let mut transfers_guard = transfers.write().await;
@@ -3597,21 +3809,25 @@ async fn delete_transfer(
         if let Some(abort_tx) = state.abort_tx.take() {
             let _ = abort_tx.send(());
         }
+        drop(transfers_guard);
+        // Also remove from persistent history if present
+        remove_from_history(&app, &history, &id).await;
         Ok(true)
     } else {
-        Err("Transfer not found".to_string())
+        drop(transfers_guard);
+        // Still allow removing from history if it was persisted there
+        remove_from_history(&app, &history, &id).await;
+        Ok(false)
     }
 }
 
 #[tauri::command]
 async fn get_transfers(
     transfers: tauri::State<'_, Transfers>,
+    history: tauri::State<'_, ReceiveHistory>,
 ) -> Result<Vec<TransferInfo>, String> {
-    let transfers_guard = transfers.read().await;
-    Ok(transfers_guard
-        .values()
-        .map(|state| state.info.clone())
-        .collect())
+    let merged = get_merged_transfers(&transfers, &history).await;
+    Ok(merged)
 }
 
 #[tauri::command]
@@ -3723,16 +3939,22 @@ fn serialize_download_progress(progress: &DownloadProgress) -> serde_json::Value
 }
 
 #[tauri::command]
-async fn clear_transfers(transfers: tauri::State<'_, Transfers>) -> Result<(), String> {
+async fn clear_transfers(
+    app: AppHandle,
+    transfers: tauri::State<'_, Transfers>,
+    history: tauri::State<'_, ReceiveHistory>,
+) -> Result<(), String> {
     // Cancel all active transfers
     let mut transfers_guard = transfers.write().await;
     for (_id, mut state) in transfers_guard.drain() {
-        // Send abort signal
         if let Some(abort_tx) = state.abort_tx.take() {
             let _ = abort_tx.send(());
         }
     }
     drop(transfers_guard);
+
+    // Clear persistent receive history
+    clear_all_history(&app, &history).await;
 
     // Clean up temporary sendme directories
     let temp_dirs = std::fs::read_dir(".")
@@ -4098,6 +4320,7 @@ fn get_default_download_folder() -> Result<String, String> {
 async fn open_received_file(
     app: AppHandle,
     transfers: tauri::State<'_, Transfers>,
+    history: tauri::State<'_, ReceiveHistory>,
     transfer_id: String,
     filename: Option<String>,
 ) -> Result<(), String> {
@@ -4107,17 +4330,27 @@ async fn open_received_file(
     log_info!("Transfer ID: {}", transfer_id);
     log_info!("Filename: {:?}", filename);
 
-    // Get transfer info
-    let transfers_guard = transfers.read().await;
-    let transfer = transfers_guard
-        .get(&transfer_id)
-        .ok_or_else(|| format!("Transfer not found: {}", transfer_id))?;
+    // Get transfer info from active transfers or persistent history
+    let info = {
+        let guard = transfers.read().await;
+        if let Some(state) = guard.get(&transfer_id) {
+            state.info.clone()
+        } else {
+            drop(guard);
+            let hist_guard = history.read().await;
+            hist_guard
+                .iter()
+                .find(|h| h.id == transfer_id)
+                .cloned()
+                .ok_or_else(|| format!("Transfer not found: {}", transfer_id))?
+        }
+    };
 
-    if transfer.info.transfer_type != "receive" {
+    if info.transfer_type != "receive" {
         return Err("Can only open received files".to_string());
     }
 
-    if !transfer.info.status.contains("complete") {
+    if info.status != "completed" {
         return Err("Transfer not complete yet".to_string());
     }
 
@@ -4133,15 +4366,20 @@ async fn open_received_file(
         log_info!("Downloads directory: {:?}", downloads_dir);
 
         // Find the file to open
-        let file_to_open = if let Some(ref fname) = filename {
-            // User specified a filename
+        let effective_filename = filename.or_else(|| info.filename.clone());
+        let file_to_open = if let Some(ref fname) = effective_filename {
             let file_path = std::path::PathBuf::from(&downloads_dir).join(fname);
-            if !file_path.exists() {
-                return Err(format!("File not found: {}", fname));
+            if file_path.exists() {
+                file_path
+            } else {
+                // filename may be a display label (e.g. "3 files") — scan directory
+                let files = android::find_received_files(&downloads_dir);
+                if files.is_empty() {
+                    return Err("No files found in Downloads directory".to_string());
+                }
+                std::path::PathBuf::from(&files[0])
             }
-            file_path
         } else {
-            // No filename specified, find the first file in Downloads directory
             let files = android::find_received_files(&downloads_dir);
             if files.is_empty() {
                 return Err("No files found in Downloads directory".to_string());
@@ -4176,14 +4414,29 @@ async fn open_received_file(
         log_info!("Documents directory: {:?}", docs_dir);
 
         // Find the file to open
-        let file_to_open = if let Some(ref fname) = filename {
+        let effective_filename = filename.or_else(|| info.filename.clone());
+        let file_to_open = if let Some(ref fname) = effective_filename {
             let file_path = std::path::PathBuf::from(&docs_dir).join(fname);
-            if !file_path.exists() {
-                return Err(format!("File not found: {}", fname));
+            if file_path.exists() {
+                file_path
+            } else {
+                let entries = std::fs::read_dir(&docs_dir)
+                    .map_err(|e| format!("Failed to read Documents directory: {}", e))?;
+
+                entries
+                    .filter_map(Result::ok)
+                    .map(|e| e.path())
+                    .find(|p| {
+                        p.is_file()
+                            && !p
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .starts_with('.')
+                    })
+                    .ok_or("No files found in Documents directory".to_string())?
             }
-            file_path
         } else {
-            // No filename specified, find the first file in Documents directory
             let entries = std::fs::read_dir(&docs_dir)
                 .map_err(|e| format!("Failed to read Documents directory: {}", e))?;
 
@@ -4223,13 +4476,29 @@ async fn open_received_file(
             .temp_dir()
             .map_err(|e| format!("Failed to get temp directory: {}", e))?;
 
-        // Find the file to open
-        let file_to_open = if let Some(ref fname) = filename {
+        // Find the file to open: try exact filename first, fall back to directory scan
+        let effective_filename = filename.or_else(|| info.filename.clone());
+        let file_to_open = if let Some(ref fname) = effective_filename {
             let file_path = temp_dir.join(fname);
-            if !file_path.exists() {
-                return Err(format!("File not found: {}", fname));
+            if file_path.exists() {
+                file_path
+            } else {
+                // fname may be a display label like "3 files" — scan directory
+                let entries = std::fs::read_dir(&temp_dir)
+                    .map_err(|e| format!("Failed to read temp directory: {}", e))?;
+                entries
+                    .filter_map(Result::ok)
+                    .map(|e| e.path())
+                    .find(|p| {
+                        p.is_file()
+                            && !p
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .starts_with('.')
+                    })
+                    .ok_or("No files found in cache directory".to_string())?
             }
-            file_path
         } else {
             // Find first file in directory
             let entries = std::fs::read_dir(&temp_dir)

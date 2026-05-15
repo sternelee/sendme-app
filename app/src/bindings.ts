@@ -21,6 +21,10 @@ export interface TransferInfo {
   status: string;
   created_at: number;
   ticket?: string;
+  filename?: string;
+  file_size?: number;
+  completed_at?: number;
+  duration_ms?: number;
 }
 
 export interface ProgressUpdate {

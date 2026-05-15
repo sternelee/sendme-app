@@ -140,7 +140,7 @@ if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_millis(delay_ms
 - Exponential backoff: 1s → 2s → 4s → 8s → 16s → 32s (max 30s)
 
 **4. Authorization & Setup (lines 2074-2129):**
-- Retrieves auth token via `current_cloud_authorization_header(&app)` (Clerk auth)
+- Retrieves auth token via `current_cloud_authorization_header(&app)` (better-auth session)
 - Registers device via REST API call to `/api/devices`
 - Builds WebSocket URL with token
 - Implements 60-second device registration cache (lines 1957-2002)
@@ -160,7 +160,7 @@ if wait_for_shutdown_or_timeout(&mut shutdown_rx, Duration::from_millis(delay_ms
 
 #### Auth Flow:
 1. **Cached user loaded on mount** (lines 168-171)
-2. **Clerk JS initialized in background** (lines 210-235)
+2. **better-auth session initialized after deep-link callback** (lines 210-235)
 3. **Rust auth events listened** (lines 237-297)
 4. **User state updated** via `setUser()` (lines 175-179)
 
@@ -342,7 +342,7 @@ let token = match extract_bearer_token(&authorization) {
 };
 ```
 
-- **Source:** `tauri-plugin-clerk` (custom Tauri plugin)
+- **Source:** `app/src/lib/auth.ts` — better-auth browser callback + deep link
 - **Format:** HTTP Authorization header with Bearer token
 - **Usage:** Included in WebSocket URL and REST API calls
 - **Refresh:** Retrieved fresh on each reconnection attempt
@@ -387,7 +387,7 @@ async fn ensure_cloud_device_registered(
 |--------|---------|
 | **WebSocket Library** | `tokio-tungstenite` v0.26 |
 | **Plugin Used** | None (direct tungstenite) |
-| **Auth Method** | Clerk (via tauri-plugin-clerk) |
+| **Auth Method** | better-auth (browser OAuth + deep link) |
 | **Connection Trigger** | `auth.isSignedIn() && auth.isLoaded()` |
 | **Heartbeat** | 30s interval, `{"type":"heartbeat"}` |
 | **Reconnect Strategy** | Exponential backoff (1s-30s) |

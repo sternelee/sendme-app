@@ -12,7 +12,7 @@
 Authorization: Bearer eyJhbGc...JWT...
 ```
 
-### Clerk JWT Claims (typical)
+### JWT Claims (typical)
 ```json
 {
   "aud": "https://sendme.leeapp.dev",
@@ -20,8 +20,7 @@ Authorization: Bearer eyJhbGc...JWT...
   "email": "user@example.com",
   "email_verified": true,
   "iat": 1713607200,
-  "exp": 1713610800,
-  "azp": "sendme_clerk_app"
+  "exp": 1713610800
 }
 ```
 
@@ -686,4 +685,4 @@ export async function get_cloud_presence_state(): Promise<CloudPresenceState> {
   - 1 WebSocket endpoint
   - 7 WebSocket message types
   - Device registration guard pattern
-  - Clerk JWT authentication
+  - JWT authentication (better-auth)

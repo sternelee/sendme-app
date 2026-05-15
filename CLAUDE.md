@@ -51,12 +51,12 @@ pnpm run tauri dev    # Tauri shell + frontend
 pnpm run tauri build
 pnpm run format
 pnpm run test         # vitest
+pnpm test -- <path-or-pattern>  # single test file/name
 
-# CLERK_PUBLISHABLE_KEY is set in system environment
 pnpm run tauri android build
 cd src-tauri/gen/apple
 xcodegen generate
-nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" build > /tmp/xcodebuild.log 2>&1 &
+nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 build > /tmp/xcodebuild.log 2>&1 &
 xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
 xcrun devicectl device process launch --terminate-existing --device <device-id> io.sendme.app
 ```
@@ -79,6 +79,7 @@ pnpm run db:migrate
 pnpm run db:migrate:prod
 pnpm run db:studio
 pnpm run test               # vitest
+pnpm test -- <path-or-pattern>  # single test file/name
 ```
 
 `browser/package.json` requires Node `>=22`.
