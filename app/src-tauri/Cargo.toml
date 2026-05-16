@@ -58,6 +58,7 @@ tauri-plugin-media-picker = { path = "./plugins/tauri-plugin-media-picker" }
 
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"
+tauri-plugin-haptics = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

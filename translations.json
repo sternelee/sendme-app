@@ -285,6 +285,7 @@
       "remaining": "{{time}} remaining",
       "dropFilesHere": "Drop files here",
       "dropFilesOrTap": "Drop files or tap to select",
+      "tapToSelect": "Tap to select",
       "workspaceTitle": "More ways to share",
       "workspaceSubtitle": "Use Nearby for devices on the same network, or Friends when you want a repeatable trusted path."
     },
@@ -599,6 +600,7 @@
       "remaining": "剩余 {{time}}",
       "dropFilesHere": "将文件拖放到这里",
       "dropFilesOrTap": "拖放文件或点击选择",
+      "tapToSelect": "点击选择",
       "workspaceTitle": "更多分享方式",
       "workspaceSubtitle": "同一网络下优先用附近分享；需要长期可信通道时用好友。"
     },

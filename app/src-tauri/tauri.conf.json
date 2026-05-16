@@ -17,10 +17,12 @@
         "width": 400,
         "height": 560,
         "resizable": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "transparent": true,
         "alwaysOnTop": false,
         "fullscreen": false,
-        "visible": true,
-        "backgroundColor": "#12151D"
+        "visible": true
       }
     ],
     "security": {

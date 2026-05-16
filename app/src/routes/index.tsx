@@ -85,6 +85,7 @@ import { requestCloudApi, getCloudApiUrl } from "~/lib/cloud-api";
 import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
 import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
 import { i18n } from "~/lib/i18n";
+import { hapticImpact, hapticNotification } from "~/lib/haptics";
 import { useGlobalStore } from "~/lib/store";
 import { IncomingRequestCard } from "~/lib/components/IncomingRequestCard";
 import { SplashScreen } from "~/lib/components/SplashScreen";
@@ -94,7 +95,6 @@ import FriendsPage from "~/routes/friends";
 import DevicesPage from "~/routes/devices";
 import { DropZone } from "~/lib/components/DropZone";
 import AuthPanel from "~/components/AuthPanel";
-
 
 const t = i18n.t;
 
@@ -132,7 +132,6 @@ const ticketTypes = [
   { value: "addresses", label: "Addresses" },
   { value: "relay_and_addresses", label: "Relay + Addresses" },
 ];
-
 
 function ProgressBorder(props: { percent: () => number; children: any }) {
   let barRef: HTMLDivElement | undefined;
@@ -194,14 +193,10 @@ export default function MainPage() {
   // Only completed receives for history tab, sorted by completed_at desc
   const historyTransfers = createMemo(() =>
     transfers()
-      .filter(
-        (t) =>
-          t.transfer_type === "receive" && t.status === "completed",
-      )
+      .filter((t) => t.transfer_type === "receive" && t.status === "completed")
       .sort(
         (a, b) =>
-          (b.completed_at ?? b.created_at) -
-          (a.completed_at ?? a.created_at),
+          (b.completed_at ?? b.created_at) - (a.completed_at ?? a.created_at),
       ),
   );
 
@@ -271,7 +266,6 @@ export default function MainPage() {
     } catch (e) {}
   }
 
-
   async function handleSend() {
     if (isTextMode() && !textContent().trim()) return;
     if (!isTextMode() && !sendPath()) return;
@@ -294,6 +288,7 @@ export default function MainPage() {
         }),
       );
       setShowQrCode(true);
+      await hapticNotification("success");
       await loadTransfers();
 
       // Remove sent file from queue, advance to next
@@ -309,6 +304,7 @@ export default function MainPage() {
         }
       }
     } catch (e) {
+      await hapticNotification("error");
       toast.error(t("send.failed") + `: ${e}`);
     } finally {
       globalStore.send.setIsSending(false);
@@ -349,6 +345,7 @@ export default function MainPage() {
           width: 280,
         }),
       );
+      await hapticNotification("success");
       await loadTransfers();
 
       // Remove sent file from queue, advance to next
@@ -364,6 +361,7 @@ export default function MainPage() {
         }
       }
     } catch (e) {
+      await hapticNotification("error");
       toast.error(t("send.failed") + `: ${e}`);
     } finally {
       globalStore.send.setIsSending(false);
@@ -382,8 +380,10 @@ export default function MainPage() {
       });
       await loadTransfers();
       globalStore.receive.setTicket("");
+      await hapticNotification("success");
       toast.success(t("receive.connecting"));
     } catch (e) {
+      await hapticNotification("error");
       toast.error(`${t("common.confirm")}: ${e}`);
     } finally {
       globalStore.receive.setIsReceiving(false);
@@ -409,7 +409,9 @@ export default function MainPage() {
   }
 
   async function handleAcceptNearbyRequest(requestId: string) {
-    const request = globalStore.nearbyReceive.state().incomingRequests.find((r) => r.id === requestId);
+    const request = globalStore.nearbyReceive
+      .state()
+      .incomingRequests.find((r) => r.id === requestId);
     if (!request) return;
 
     try {
@@ -426,7 +428,9 @@ export default function MainPage() {
   }
 
   async function handleDeclineNearbyRequest(requestId: string) {
-    const request = globalStore.nearbyReceive.state().incomingRequests.find((r) => r.id === requestId);
+    const request = globalStore.nearbyReceive
+      .state()
+      .incomingRequests.find((r) => r.id === requestId);
     if (!request) return;
 
     try {
@@ -434,7 +438,11 @@ export default function MainPage() {
       await decline_incoming(requestId);
       // Let the nearby_request_declined event listener handle removal.
       // Only fall back if the event hasn't fired yet.
-      if (globalStore.nearbyReceive.state().incomingRequests.some((r) => r.id === requestId)) {
+      if (
+        globalStore.nearbyReceive
+          .state()
+          .incomingRequests.some((r) => r.id === requestId)
+      ) {
         globalStore.nearbyReceive.removeIncomingRequest(requestId);
         const remaining = globalStore.nearbyReceive.state().incomingRequests;
         if (remaining.length === 0) {
@@ -588,6 +596,7 @@ export default function MainPage() {
         console.warn("Tauri clipboard write failed, falling back:", tauriErr);
         await navigator.clipboard.writeText(text);
       }
+      await hapticImpact("light");
       toast.success(t("common.copied"));
     } catch (error) {
       console.error("Clipboard write failed:", error);
@@ -604,6 +613,7 @@ export default function MainPage() {
       if (permissionStatus === "granted") {
         const result = await scan({ formats: [Format.QRCode] });
         if (result?.content) {
+          await hapticImpact("medium");
           globalStore.receive.setTicket(result.content);
         }
       } else {
@@ -788,7 +798,12 @@ export default function MainPage() {
       (event) => {
         const payload = event.payload;
         // Deduplicate: skip if request already exists
-        if (globalStore.nearbyReceive.state().incomingRequests.some((r) => r.id === payload.id)) return;
+        if (
+          globalStore.nearbyReceive
+            .state()
+            .incomingRequests.some((r) => r.id === payload.id)
+        )
+          return;
         globalStore.nearbyReceive.addIncomingRequest(payload);
         globalStore.nearbyReceive.setTransferProgress(null);
         globalStore.nearbyReceive.setError(null);
@@ -803,12 +818,17 @@ export default function MainPage() {
       "nearby_request_cancelled",
       (event) => {
         const requestId = event.payload.requestId;
-        const hasRequest = globalStore.nearbyReceive.state().incomingRequests.some((r) => r.id === requestId);
+        const hasRequest = globalStore.nearbyReceive
+          .state()
+          .incomingRequests.some((r) => r.id === requestId);
         if (hasRequest) {
           globalStore.nearbyReceive.removeIncomingRequest(requestId);
           const state = globalStore.nearbyReceive.state();
           // If no more pending requests, go idle; otherwise stay in review
-          if (state.incomingRequests.length === 1 && state.activeRequestId === requestId) {
+          if (
+            state.incomingRequests.length === 1 &&
+            state.activeRequestId === requestId
+          ) {
             globalStore.nearbyReceive.setTransferProgress(null);
             globalStore.nearbyReceive.setTransferState("idle");
           }
@@ -821,7 +841,9 @@ export default function MainPage() {
       "nearby_request_declined",
       (event) => {
         const requestId = event.payload.requestId;
-        const exists = globalStore.nearbyReceive.state().incomingRequests.some((r) => r.id === requestId);
+        const exists = globalStore.nearbyReceive
+          .state()
+          .incomingRequests.some((r) => r.id === requestId);
         if (!exists) return;
         globalStore.nearbyReceive.removeIncomingRequest(requestId);
         const remaining = globalStore.nearbyReceive.state().incomingRequests;
@@ -840,7 +862,10 @@ export default function MainPage() {
         const requestId = payload.requestId;
 
         // Only process events for the active receiving request (or events without a specific requestId)
-        if (requestId && requestId !== globalStore.nearbyReceive.state().activeRequestId) {
+        if (
+          requestId &&
+          requestId !== globalStore.nearbyReceive.state().activeRequestId
+        ) {
           return;
         }
 
@@ -859,7 +884,9 @@ export default function MainPage() {
           }
           globalStore.nearbyReceive.setTransferProgress(null);
           const remaining = globalStore.nearbyReceive.state().incomingRequests;
-          globalStore.nearbyReceive.setTransferState(remaining.length > 0 ? "review" : "idle");
+          globalStore.nearbyReceive.setTransferState(
+            remaining.length > 0 ? "review" : "idle",
+          );
           toast.success(payload.message ?? t("nearby.transferComplete"));
           return;
         }
@@ -870,7 +897,9 @@ export default function MainPage() {
           }
           globalStore.nearbyReceive.setTransferProgress(null);
           const remaining = globalStore.nearbyReceive.state().incomingRequests;
-          globalStore.nearbyReceive.setTransferState(remaining.length > 0 ? "review" : "idle");
+          globalStore.nearbyReceive.setTransferState(
+            remaining.length > 0 ? "review" : "idle",
+          );
           globalStore.nearbyReceive.setError(
             payload.message ?? t("nearby.transferFailed"),
           );
@@ -897,6 +926,35 @@ export default function MainPage() {
       },
     );
 
+    const unlistenShowSettings = await listen("show-settings", () => {
+      setActiveTab("settings");
+    });
+
+    const unlistenDockFile = await listen<string>(
+      "dock-file-opened",
+      async (event) => {
+        const url = event.payload;
+        const path = url.startsWith("file://")
+          ? decodeURIComponent(url.slice(7))
+          : url;
+        if (!path) return;
+
+        try {
+          const size = await get_file_size(path);
+          globalStore.send.setPath(path);
+          globalStore.send.setFileSize(size);
+          globalStore.send.setIsFolder(false);
+          setTransferMode("send");
+          setActiveTab("transfer");
+          await hapticImpact("medium");
+          toast.success(t("send.fileSelected"));
+        } catch (e) {
+          console.warn("[dock] Failed to load dropped file:", e);
+          toast.error(t("send.fileSelectError"));
+        }
+      },
+    );
+
     onCleanup(() => {
       unlisten();
       unlistenNearby();
@@ -904,6 +962,8 @@ export default function MainPage() {
       unlistenNearbyDecline();
       unlistenNearbyReceive();
       unlistenCloudTickets();
+      unlistenShowSettings();
+      unlistenDockFile();
       stop_nearby_discovery().catch(() => {});
     });
   });
@@ -1131,13 +1191,23 @@ export default function MainPage() {
                               }
                               isReceiving={true}
                               onCancel={async () => {
-                                const activeId = globalStore.nearbyReceive.state().activeRequestId;
+                                const activeId =
+                                  globalStore.nearbyReceive.state()
+                                    .activeRequestId;
                                 if (activeId) {
-                                  globalStore.nearbyReceive.removeIncomingRequest(activeId);
+                                  globalStore.nearbyReceive.removeIncomingRequest(
+                                    activeId,
+                                  );
                                 }
-                                globalStore.nearbyReceive.setTransferProgress(null);
-                                const remaining = globalStore.nearbyReceive.state().incomingRequests;
-                                globalStore.nearbyReceive.setTransferState(remaining.length > 0 ? "review" : "idle");
+                                globalStore.nearbyReceive.setTransferProgress(
+                                  null,
+                                );
+                                const remaining =
+                                  globalStore.nearbyReceive.state()
+                                    .incomingRequests;
+                                globalStore.nearbyReceive.setTransferState(
+                                  remaining.length > 0 ? "review" : "idle",
+                                );
                               }}
                             />
                           </Show>
@@ -1163,10 +1233,13 @@ export default function MainPage() {
                                 }}
                                 onRemoveFile={(index) => {
                                   globalStore.send.removeFile(index);
-                                  const remaining = globalStore.send.state().files;
+                                  const remaining =
+                                    globalStore.send.state().files;
                                   if (remaining.length > 0) {
                                     globalStore.send.setPath(remaining[0].path);
-                                    globalStore.send.setFileSize(remaining[0].size);
+                                    globalStore.send.setFileSize(
+                                      remaining[0].size,
+                                    );
                                   } else {
                                     globalStore.send.setPath("");
                                     globalStore.send.setFileSize(0);
@@ -1193,10 +1266,12 @@ export default function MainPage() {
                   </section>
 
                   {/* Collapsible "Share via Ticket" for strangers / forums */}
-                  <Show when={sendPath() || (isTextMode() && textContent()?.trim())}>
-                    <div class="collapse collapse-arrow bg-base-200/50 rounded-2xl">
+                  <Show
+                    when={sendPath() || (isTextMode() && textContent()?.trim())}
+                  >
+                    <div class="collapse-arrow bg-base-200/50 collapse rounded-2xl">
                       <input type="checkbox" />
-                      <div class="collapse-title text-sm font-medium flex items-center gap-2 min-h-0 py-3">
+                      <div class="collapse-title flex min-h-0 items-center gap-2 py-3 text-sm font-medium">
                         <Link2 size={16} class="text-primary" />
                         {t("send.shareViaTicket")}
                       </div>
@@ -1209,7 +1284,9 @@ export default function MainPage() {
                           <select
                             value={sendTicketType()}
                             onChange={(e) =>
-                              globalStore.send.setTicketType(e.currentTarget.value)
+                              globalStore.send.setTicketType(
+                                e.currentTarget.value,
+                              )
                             }
                             class="select select-bordered select-sm flex-1 rounded-xl text-xs"
                           >
@@ -1237,7 +1314,7 @@ export default function MainPage() {
                         </div>
 
                         <Show when={sendTicket()}>
-                          <div class="space-y-3 mt-2">
+                          <div class="mt-2 space-y-3">
                             <Show when={sendTicketQrCode()}>
                               <div class="flex justify-center">
                                 <div class="rounded-xl bg-white p-2">
@@ -1271,8 +1348,10 @@ export default function MainPage() {
                   <div class="space-y-4">
                     <Show
                       when={
-                        globalStore.nearbyReceive.state().incomingRequests.length > 0 &&
-                        globalStore.nearbyReceive.state().transferState !== "receiving"
+                        globalStore.nearbyReceive.state().incomingRequests
+                          .length > 0 &&
+                        globalStore.nearbyReceive.state().transferState !==
+                          "receiving"
                       }
                     >
                       <div class="surface-card border-secondary/20 bg-secondary/10 p-5">
@@ -1282,9 +1361,11 @@ export default function MainPage() {
                               {t("nearby.transferRequest")}
                             </p>
                             <p class="text-base-content/75 mt-2 text-sm leading-6">
-                              {globalStore.nearbyReceive.state().incomingRequests.length === 1
+                              {globalStore.nearbyReceive.state()
+                                .incomingRequests.length === 1
                                 ? t("nearby.requestModalHint")
-                                : t("nearby.requestModalHint") + ` (${globalStore.nearbyReceive.state().incomingRequests.length})`}
+                                : t("nearby.requestModalHint") +
+                                  ` (${globalStore.nearbyReceive.state().incomingRequests.length})`}
                             </p>
                           </div>
                           <button
@@ -1339,7 +1420,10 @@ export default function MainPage() {
                   </div>
 
                   <Show when={shareSubTab() === "nearby"}>
-                    <NearbyPage sendPath={sendPath() || undefined} isFolder={sendIsFolder()} />
+                    <NearbyPage
+                      sendPath={sendPath() || undefined}
+                      isFolder={sendIsFolder()}
+                    />
                   </Show>
                   <Show when={shareSubTab() === "devices"}>
                     <DevicesPage
@@ -1429,7 +1513,11 @@ export default function MainPage() {
                       <input
                         type="checkbox"
                         class="checkbox checkbox-sm rounded"
-                        checked={selectedHistory().size === historyTransfers().length && historyTransfers().length > 0}
+                        checked={
+                          selectedHistory().size ===
+                            historyTransfers().length &&
+                          historyTransfers().length > 0
+                        }
                         onChange={toggleSelectAllHistory}
                       />
                       <span class="text-xs opacity-70">
@@ -1456,7 +1544,8 @@ export default function MainPage() {
                   <div class="space-y-3">
                     <For each={historyTransfers()}>
                       {(transfer) => {
-                        const isSelected = () => selectedHistory().has(transfer.id);
+                        const isSelected = () =>
+                          selectedHistory().has(transfer.id);
                         return (
                           <div class="surface-card p-4">
                             <div class="flex items-center gap-3">
@@ -1473,7 +1562,7 @@ export default function MainPage() {
                                   }
                                 />
                               </label>
-                              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/12 text-secondary">
+                              <div class="bg-secondary/12 text-secondary flex h-10 w-10 items-center justify-center rounded-xl">
                                 {renderFileTypeIcon(transfer.path)}
                               </div>
 
@@ -1482,17 +1571,25 @@ export default function MainPage() {
                                   onClick={() => handleOpenFile(transfer)}
                                   class="hover:text-primary truncate text-left text-sm font-semibold"
                                 >
-                                  {transfer.filename ?? getDisplayName(transfer.path)}
+                                  {transfer.filename ??
+                                    getDisplayName(transfer.path)}
                                 </button>
                                 <div class="mt-1 flex flex-wrap items-center gap-2 text-xs opacity-70">
                                   <span>
-                                    {formatDate(transfer.completed_at ?? transfer.created_at)}
+                                    {formatDate(
+                                      transfer.completed_at ??
+                                        transfer.created_at,
+                                    )}
                                   </span>
                                   <Show when={transfer.file_size != null}>
-                                    <span>· {formatFileSize(transfer.file_size!)}</span>
+                                    <span>
+                                      · {formatFileSize(transfer.file_size!)}
+                                    </span>
                                   </Show>
                                   <Show when={transfer.duration_ms != null}>
-                                    <span>· {formatDuration(transfer.duration_ms!)}</span>
+                                    <span>
+                                      · {formatDuration(transfer.duration_ms!)}
+                                    </span>
                                   </Show>
                                 </div>
                                 <p
@@ -1505,7 +1602,7 @@ export default function MainPage() {
 
                               <button
                                 onClick={() => handleCancel(transfer)}
-                                class="btn btn-ghost btn-sm rounded-xl shrink-0"
+                                class="btn btn-ghost btn-sm shrink-0 rounded-xl"
                               >
                                 <Trash2 size={16} />
                               </button>
@@ -1530,10 +1627,7 @@ export default function MainPage() {
                   <p class="section-label">{t("settings.title")}</p>
                 </div>
 
-                <Show
-                  when={auth.isSignedIn()}
-                  fallback={<AuthPanel />}
-                >
+                <Show when={auth.isSignedIn()} fallback={<AuthPanel />}>
                   <div class="surface-card p-5">
                     <div class="flex items-center gap-3">
                       <Show when={auth.user()?.imageUrl}>
@@ -1624,20 +1718,35 @@ export default function MainPage() {
         </Presence>
       </main>
 
-      <Show when={globalStore.nearbyReceive.state().incomingRequests.length > 0 && globalStore.nearbyReceive.state().transferState !== "receiving"}>
+      <Show
+        when={
+          globalStore.nearbyReceive.state().incomingRequests.length > 0 &&
+          globalStore.nearbyReceive.state().transferState !== "receiving"
+        }
+      >
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div class="card bg-base-100 w-full max-w-md shadow-2xl">
-            <div class="card-body gap-3 overflow-y-auto max-h-[70vh]">
+            <div class="card-body max-h-[70vh] gap-3 overflow-y-auto">
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <h3 class="text-base font-bold">
                     {t("nearby.transferRequest")}
-                    {globalStore.nearbyReceive.state().incomingRequests.length > 1 && (
-                      <> ({globalStore.nearbyReceive.state().incomingRequests.length})</>
+                    {globalStore.nearbyReceive.state().incomingRequests.length >
+                      1 && (
+                      <>
+                        {" "}
+                        (
+                        {
+                          globalStore.nearbyReceive.state().incomingRequests
+                            .length
+                        }
+                        )
+                      </>
                     )}
                   </h3>
                   <p class="text-sm opacity-60">
-                    {globalStore.nearbyReceive.state().incomingRequests.length === 1
+                    {globalStore.nearbyReceive.state().incomingRequests
+                      .length === 1
                       ? t("nearby.requestModalHint")
                       : t("nearby.requestModalHint")}
                   </p>
@@ -1655,7 +1764,11 @@ export default function MainPage() {
               <For each={globalStore.nearbyReceive.state().incomingRequests}>
                 {(request) => {
                   const requestState = () => {
-                    return globalStore.nearbyReceive.state().pendingRequestStates[request.id] ?? "pending";
+                    return (
+                      globalStore.nearbyReceive.state().pendingRequestStates[
+                        request.id
+                      ] ?? "pending"
+                    );
                   };
                   return (
                     <IncomingRequestCard
@@ -1689,7 +1802,8 @@ export default function MainPage() {
                     ☁️ {t("nearby.transferRequest")}
                   </h3>
                   <p class="text-sm opacity-60">
-                    {globalStore.cloudReceive.state().currentTicket?.senderName || "Someone"}{" "}
+                    {globalStore.cloudReceive.state().currentTicket
+                      ?.senderName || "Someone"}{" "}
                     wants to send you a file
                   </p>
                 </div>
@@ -1699,17 +1813,21 @@ export default function MainPage() {
                 request={{
                   id: globalStore.cloudReceive.state().currentTicket!.id,
                   senderName:
-                    globalStore.cloudReceive.state().currentTicket?.senderName || "Unknown",
+                    globalStore.cloudReceive.state().currentTicket
+                      ?.senderName || "Unknown",
                   files: [
                     {
                       name:
-                        globalStore.cloudReceive.state().currentTicket?.filename || "file",
+                        globalStore.cloudReceive.state().currentTicket
+                          ?.filename || "file",
                       size:
-                        globalStore.cloudReceive.state().currentTicket?.fileSize || 0,
+                        globalStore.cloudReceive.state().currentTicket
+                          ?.fileSize || 0,
                     },
                   ],
                   totalSize:
-                    globalStore.cloudReceive.state().currentTicket?.fileSize || 0,
+                    globalStore.cloudReceive.state().currentTicket?.fileSize ||
+                    0,
                 }}
                 onAccept={handleAcceptCloudTicket}
                 onDecline={handleDeclineCloudTicket}
@@ -1802,21 +1920,30 @@ export default function MainPage() {
       <nav class="dock dock-md border-base-300 bg-base-100/85 border-t backdrop-blur-xl">
         <button
           class={`dock-label ${activeTab() === "transfer" ? "active" : ""}`}
-          onClick={() => setActiveTab("transfer")}
+          onClick={() => {
+            void hapticImpact("light");
+            setActiveTab("transfer");
+          }}
         >
           <Send size={24} />
           <span>{t("common.transfer")}</span>
         </button>
         <button
           class={`dock-label ${activeTab() === "history" ? "active" : ""}`}
-          onClick={() => setActiveTab("history")}
+          onClick={() => {
+            void hapticImpact("light");
+            setActiveTab("history");
+          }}
         >
           <History size={24} />
           <span>{t("common.history")}</span>
         </button>
         <button
           class={`dock-label ${activeTab() === "settings" ? "active" : ""}`}
-          onClick={() => setActiveTab("settings")}
+          onClick={() => {
+            void hapticImpact("light");
+            setActiveTab("settings");
+          }}
         >
           <Settings size={24} />
           <span>{t("common.settings")}</span>

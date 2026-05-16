@@ -49,7 +49,7 @@ fn main() {
                 let file_name = source_file.file_name().unwrap();
                 let dest_file = kotlin_dest_dir.join(file_name);
 
-                if source_file.extension().map_or(false, |e| e == "kt") {
+                if source_file.extension().is_some_and(|e| e == "kt") {
                     // Create destination directory if it doesn't exist
                     if let Some(parent) = dest_file.parent() {
                         std::fs::create_dir_all(parent).ok();
