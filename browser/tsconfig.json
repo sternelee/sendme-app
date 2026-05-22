@@ -13,7 +13,10 @@
     "types": ["vinxi/types/client", "@cloudflare/workers-types"],
     "isolatedModules": true,
     "paths": {
-      "~/*": ["./src/*"]
+      "~/*": ["./src/*"],
+      "@sendme/ui": ["../packages/ui/src/index.ts"],
+      "@sendme/ui/*": ["../packages/ui/src/*"],
+      "@sendme/shared": ["../packages/shared/src/index.ts"]
     },
     "moduleDetection": "force"
   }

@@ -1,7 +1,7 @@
 import { Component, Show } from "solid-js";
 import { Check, X, Loader2 } from "lucide-solid";
 import { FileManifest } from "./FileManifest";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 

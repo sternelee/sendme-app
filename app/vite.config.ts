@@ -20,6 +20,8 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "~": resolve(__dirname, "./src"),
+      "@sendme/ui": resolve(__dirname, "../packages/ui/src/index.ts"),
+      "@sendme/shared": resolve(__dirname, "../packages/shared/src/index.ts"),
     },
   },
   // 2. tauri expects a fixed port, fail if that port is not available

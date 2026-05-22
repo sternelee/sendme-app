@@ -1,6 +1,6 @@
 import { For, createMemo } from "solid-js";
 import { Radio, Shield, Zap } from "lucide-solid";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 

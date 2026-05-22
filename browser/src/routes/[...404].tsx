@@ -1,5 +1,5 @@
 import { A } from "@solidjs/router";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 import { TbOutlineHome, TbOutlineArrowLeft } from "solid-icons/tb";
 
 const t = i18n.t;

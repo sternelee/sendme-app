@@ -21,7 +21,7 @@ import {
   TbOutlineRefresh,
 } from "solid-icons/tb";
 import { useAuth } from "~/lib/contexts/user-auth";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 

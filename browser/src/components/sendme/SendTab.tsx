@@ -2,7 +2,7 @@ import { Show, For, onCleanup, createSignal, createEffect } from "solid-js";
 import toast from "solid-toast";
 import { sendFile, sendFiles } from "../../lib/commands";
 import { useAuth } from "../../lib/contexts/user-auth";
-import { i18n } from "../../lib/i18n";
+import { i18n } from "@sendme/shared";
 import { useGlobalStore } from "../../lib/store";
 import QRCode from "../QRCode";
 import {

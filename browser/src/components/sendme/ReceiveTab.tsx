@@ -1,7 +1,7 @@
 import { Show, createMemo, onCleanup } from "solid-js";
 import toast from "solid-toast";
 import { receiveFile, downloadFile } from "../../lib/commands";
-import { i18n } from "../../lib/i18n";
+import { i18n } from "@sendme/shared";
 import { useGlobalStore } from "../../lib/store";
 import {
   TbOutlineDownload,

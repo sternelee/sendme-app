@@ -1,8 +1,8 @@
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
-import { FiChevronDown } from "solid-icons/fi";
 import { Portal } from "solid-js/web";
-import { i18n } from "./i18n";
-import { cn } from "~/lib/utils";
+import { FiChevronDown } from "solid-icons/fi";
+import { i18n } from "@sendme/shared";
+import { cn } from "../utils/cn";
 import { TbOutlineCheck } from "solid-icons/tb";
 import { FaSolidLanguage } from "solid-icons/fa";
 

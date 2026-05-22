@@ -1,6 +1,6 @@
 import { createSignal, Show, JSX } from "solid-js";
 import { useAuth } from "~/lib/auth";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 import { User, Mail, Lock, KeyRound } from "lucide-solid";
 
 const t = i18n.t;

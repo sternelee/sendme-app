@@ -16,9 +16,8 @@ import {
   TbOutlineUsers,
   TbOutlineCopy,
 } from "solid-icons/tb";
-import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
-import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
-import { i18n } from "~/lib/i18n";
+import { ThemeSwitcher, LanguageSwitcher } from "@sendme/ui";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 

@@ -20,7 +20,7 @@ import {
 import { useAuth } from "~/lib/contexts/user-auth";
 import { useWebSocket, getDeviceId } from "~/lib/composables/useWebSocket";
 import type { Device } from "~/lib/composables/useWebSocket";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 

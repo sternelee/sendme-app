@@ -1,6 +1,6 @@
 import { Show } from "solid-js";
 import toast from "solid-toast";
-import { i18n } from "../../lib/i18n";
+import { i18n } from "@sendme/shared";
 import { useGlobalStore } from "../../lib/store";
 import {
   TbOutlineMessage,

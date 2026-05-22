@@ -8,7 +8,7 @@
 import { Show, For, createMemo, createSignal } from "solid-js";
 import toast from "solid-toast";
 import { receiveFile, downloadFile } from "../../lib/commands";
-import { i18n } from "../../lib/i18n";
+import { i18n } from "@sendme/shared";
 import { useWebSocket } from "../../lib/composables/useWebSocket";
 import type { Ticket, EnrichedFriend } from "../../lib/composables/useWebSocket";
 import {

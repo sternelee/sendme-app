@@ -7,16 +7,16 @@ import {
   Show,
 } from "solid-js";
 import { Portal } from "solid-js/web";
-import { cn } from "~/lib/utils";
 import { FiChevronDown } from "solid-icons/fi";
+import { cn } from "../utils/cn";
 
 interface ThemeSwitcherProps {
   class?: string;
 }
 
-// Theme definitions with icons
 const themes = [
   { id: "light", name: "Light" },
+  { id: "dark", name: "Dark" },
   { id: "sunset", name: "Sunset" },
   { id: "black", name: "Black" },
   { id: "synthwave", name: "Synthwave" },

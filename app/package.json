@@ -13,6 +13,8 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@sendme/shared": "workspace:*",
+    "@sendme/ui": "workspace:*",
     "@solid-primitives/autofocus": "^0.1.3",
     "@solid-primitives/event-listener": "^2.4.3",
     "@solid-primitives/fetch": "^2.5.2",

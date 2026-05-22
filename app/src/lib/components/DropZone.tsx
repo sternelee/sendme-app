@@ -1,10 +1,10 @@
 import { Component, Show, For, createSignal } from "solid-js";
 import { Upload, X } from "lucide-solid";
-import { formatFileSize } from "~/lib/utils";
+import { formatFileSize } from "@sendme/ui";
 import { open } from "@tauri-apps/plugin-dialog";
 import { platform } from "@tauri-apps/plugin-os";
 import { pick_file, get_file_size } from "~/bindings";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 

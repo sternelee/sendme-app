@@ -79,12 +79,12 @@ import {
   getDisplayName,
   getFileIcon,
   getTransferStatus,
-} from "~/lib/utils";
+  ThemeSwitcher,
+  LanguageSwitcher,
+} from "@sendme/ui";
+import { i18n } from "@sendme/shared";
 import { useAuth } from "~/lib/auth";
 import { requestCloudApi, getCloudApiUrl } from "~/lib/cloud-api";
-import { ThemeSwitcher } from "~/lib/ThemeSwitcher";
-import { LanguageSwitcher } from "~/lib/LanguageSwitcher";
-import { i18n } from "~/lib/i18n";
 import { useGlobalStore } from "~/lib/store";
 import { IncomingRequestCard } from "~/lib/components/IncomingRequestCard";
 import { SplashScreen } from "~/lib/components/SplashScreen";

@@ -20,7 +20,7 @@ import { NearbyDeviceList } from "~/lib/components/NearbyDeviceList";
 import { TransferProgress } from "~/lib/components/TransferProgress";
 import { ConnectionWaiting } from "~/lib/components/ConnectionWaiting";
 import { toast } from "solid-sonner";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 const RECONCILE_INTERVAL_MS = 20_000;

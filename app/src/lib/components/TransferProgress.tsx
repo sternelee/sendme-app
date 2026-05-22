@@ -1,7 +1,7 @@
 import { Component } from "solid-js";
 import { X } from "lucide-solid";
-import { formatFileSize } from "~/lib/utils";
-import { i18n } from "~/lib/i18n";
+import { formatFileSize } from "@sendme/ui";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 

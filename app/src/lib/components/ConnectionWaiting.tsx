@@ -1,6 +1,6 @@
 import { Component } from "solid-js";
 import { Loader2 } from "lucide-solid";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 

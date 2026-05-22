@@ -6,9 +6,8 @@ import TextTab from "../../components/sendme/TextTab";
 import FriendsTab from "../../components/sendme/FriendsTab";
 import ApiKeysPanel from "../../components/settings/ApiKeysPanel";
 import HistoryTab from "../../components/sendme/HistoryTab";
-import { ThemeSwitcher } from "../../lib/ThemeSwitcher";
-import { LanguageSwitcher } from "../../lib/LanguageSwitcher";
-import { i18n } from "../../lib/i18n";
+import { ThemeSwitcher, LanguageSwitcher } from "@sendme/ui";
+import { i18n } from "@sendme/shared";
 import { Presence } from "solid-motionone";
 import { useAuth } from "../../lib/contexts/user-auth";
 import {

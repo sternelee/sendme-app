@@ -1,13 +1,3 @@
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-/**
- * Merge class names with Tailwind CSS classes taking precedence
- */
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
 /**
  * Format bytes to human-readable file size
  */
@@ -41,7 +31,7 @@ export function getDisplayName(path: string): string {
 }
 
 /**
- * Get file icon component based on file extension
+ * Get file icon component name based on file extension
  */
 export function getFileIcon(filename: string): string {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -123,7 +113,6 @@ export function formatDuration(ms: number): string {
   const mins = minutes % 60;
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
-
 
 export function getProgressValue(data: any): number {
   if (data?.progress?.type === "downloading") {

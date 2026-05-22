@@ -5,7 +5,7 @@ import AuthPanel from "~/components/AuthPanel";
 import { get_cloud_presence_state, send_file, send_text, type CloudFriend } from "~/bindings";
 import { useAuth } from "~/lib/auth";
 import { useFriends, type Friend } from "~/lib/friends";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 import {
   Users,
   UserPlus,

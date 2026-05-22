@@ -1,5 +1,5 @@
 import { A } from "@solidjs/router";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 import {
   TbOutlineSparkles,
   TbOutlineHome,

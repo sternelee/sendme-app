@@ -2,7 +2,7 @@ import { Show, For, createSignal, createEffect, createMemo } from "solid-js";
 import toast from "solid-toast";
 import { useAuth } from "../../lib/contexts/user-auth";
 import { useWebSocket, type EnrichedFriend } from "../../lib/composables/useWebSocket";
-import { i18n } from "../../lib/i18n";
+import { i18n } from "@sendme/shared";
 import {
   TbOutlineUserPlus,
   TbOutlineUserX,

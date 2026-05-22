@@ -1,6 +1,6 @@
 import { Component, Show, For } from "solid-js";
 import { Smartphone, Laptop, Monitor, Tablet, RefreshCw } from "lucide-solid";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
 

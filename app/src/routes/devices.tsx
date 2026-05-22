@@ -4,7 +4,7 @@ import { get_cloud_presence_state, send_file, send_text, type CloudDevice } from
 import { useAuth } from "~/lib/auth";
 import { getPersistentDeviceId } from "~/lib/cloud-api";
 import { useFriends } from "~/lib/friends";
-import { i18n } from "~/lib/i18n";
+import { i18n } from "@sendme/shared";
 import { Smartphone, Laptop, Monitor, RefreshCw, Send } from "lucide-solid";
 import { toast } from "solid-sonner";
 import AuthPanel from "~/components/AuthPanel";

@@ -100,6 +100,12 @@ function cloudflareWsBypassPlugin() {
 export default defineConfig({
   vite: {
     plugins: [tailwindcss(), wasm(), topLevelAwait()],
+    resolve: {
+      alias: {
+        "@sendme/ui": resolve(__dirname, "../packages/ui/src/index.ts"),
+        "@sendme/shared": resolve(__dirname, "../packages/shared/src/index.ts"),
+      },
+    },
   },
 
   server: {
