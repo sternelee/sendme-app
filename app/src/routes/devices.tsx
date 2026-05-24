@@ -132,6 +132,11 @@ export default function DevicesPage(props: DevicesPageProps) {
         </Show>
 
         <Show when={!isLoading()}>
+          <Show when={otherDevices().length > 0 && !hasSendContent()}>
+            <div class="rounded-xl border border-base-300/50 bg-base-200/40 px-4 py-3 text-center text-sm opacity-70">
+              Select a file in the Send panel above to share with your devices
+            </div>
+          </Show>
           <Show
             when={otherDevices().length > 0}
             fallback={

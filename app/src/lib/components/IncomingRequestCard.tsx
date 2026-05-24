@@ -1,5 +1,5 @@
 import { Component, Show } from "solid-js";
-import { Check, X, Loader2 } from "lucide-solid";
+import { Check, X, Loader2, Smartphone, Monitor } from "lucide-solid";
 import { FileManifest } from "./FileManifest";
 import { i18n } from "@sendme/shared";
 
@@ -19,6 +19,14 @@ interface IncomingRequestCardProps {
   state?: "pending" | "accepting" | "declining";
 }
 
+function SenderIcon(props: { deviceType?: string }) {
+  const Icon =
+    props.deviceType === "mobile" || props.deviceType === "android" || props.deviceType === "ios"
+      ? Smartphone
+      : Monitor;
+  return <Icon size={22} />;
+}
+
 export const IncomingRequestCard: Component<IncomingRequestCardProps> = (
   props,
 ) => {
@@ -27,7 +35,7 @@ export const IncomingRequestCard: Component<IncomingRequestCardProps> = (
       <div class="flex items-center gap-3">
         <div class="avatar placeholder">
           <div class="bg-secondary/20 text-secondary flex w-12 items-center justify-center rounded-full">
-            <span class="text-lg">📱</span>
+            <SenderIcon deviceType={props.request.senderDeviceType} />
           </div>
         </div>
         <div>

@@ -19,7 +19,7 @@ import { useGlobalStore } from "~/lib/store";
 import { NearbyDeviceList } from "~/lib/components/NearbyDeviceList";
 import { TransferProgress } from "~/lib/components/TransferProgress";
 import { ConnectionWaiting } from "~/lib/components/ConnectionWaiting";
-import { toast } from "solid-sonner";
+
 import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
@@ -173,7 +173,7 @@ export default function NearbyPage(props: NearbyPageProps) {
 
   async function handleDeviceSelect(device: NearbyDevice) {
     if (!props.sendPath) {
-      toast.error(t("nearby.selectFilesFirst"));
+      return;
       return;
     }
 
@@ -221,6 +221,11 @@ export default function NearbyPage(props: NearbyPageProps) {
       </div>
 
       <Show when={!hasActiveTransfer()}>
+        <Show when={!props.sendPath}>
+          <div class="rounded-xl border border-base-300/50 bg-base-200/40 px-4 py-3 text-center text-sm opacity-70">
+            Select a file in the Send panel above to share with nearby devices
+          </div>
+        </Show>
         <NearbyDeviceList
           devices={nearbyState().nearbyDevices}
           isScanning={isScanning()}

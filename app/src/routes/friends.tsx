@@ -427,7 +427,13 @@ export default function FriendsPage(props: FriendsPageProps) {
         </Show>
 
         {/* Accepted Friends */}
+
         <Show when={activeTab() === "accepted" && !isLoading()}>
+          <Show when={acceptedFriends().length > 0 && !hasSendContent()}>
+            <div class="rounded-xl border border-base-300/50 bg-base-200/40 px-4 py-3 text-center text-sm opacity-70">
+              Select a file in the Send panel above to share with friends
+            </div>
+          </Show>
           <Show
             when={acceptedFriends().length > 0}
             fallback={

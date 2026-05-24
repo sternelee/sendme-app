@@ -2,6 +2,7 @@ import { Component } from "solid-js";
 import { X } from "lucide-solid";
 import { formatFileSize } from "@sendme/ui";
 import { i18n } from "@sendme/shared";
+import { formatEta } from "~/lib/utils";
 
 const t = i18n.t;
 
@@ -18,11 +19,6 @@ export const TransferProgress: Component<TransferProgressProps> = (props) => {
   const percent = () =>
     props.total > 0 ? Math.round((props.transferred / props.total) * 100) : 0;
   const speedStr = () => formatFileSize(props.speed) + "/s";
-  const etaStr = () => {
-    if (props.eta < 60) return "~0 min";
-    if (props.eta < 3600) return `~${Math.round(props.eta / 60)} min`;
-    return `~${Math.round(props.eta / 3600)} hr`;
-  };
 
   return (
     <div class="border-base-300/70 bg-base-100/80 rounded-3xl border p-4 shadow-sm">
@@ -36,7 +32,7 @@ export const TransferProgress: Component<TransferProgressProps> = (props) => {
         <div class="text-right text-sm opacity-65">
           <p>{speedStr()}</p>
           <p class="mt-1 text-xs">
-            {t("nearby.remaining", { time: etaStr() })}
+            {t("nearby.remaining", { time: formatEta(props.eta) })}
           </p>
         </div>
       </div>
