@@ -144,7 +144,9 @@
       "ticketReady": "Your ticket is ready",
       "chooseFriend": "Choose a friend",
       "shareViaTicket": "Share via Ticket Link",
-      "shareViaTicketHint": "Generate a ticket link to share with anyone — paste in forums, chats, or anywhere."
+      "shareViaTicketHint": "Generate a ticket link to share with anyone — paste in forums, chats, or anywhere.",
+      "firstFileOnly": "Multiple selection isn't available yet — sharing the first file only.",
+      "selectSomethingFirst": "Choose a file or message in the Share panel first."
     },
     "receive": {
       "title": "Receive Files",
@@ -162,7 +164,18 @@
       "dismissFailed": "Failed to dismiss ticket",
       "pasteFromClipboard": "Paste from clipboard",
       "readyToDownload": "Ready to download",
-      "clipboardError": "Failed to read clipboard"
+      "clipboardError": "Failed to read clipboard",
+      "scanQr": "Scan QR",
+      "scanError": "Failed to scan QR code",
+      "folderPickerError": "Failed to choose a download folder",
+      "receiveError": "Failed to start receiving",
+      "cancelError": "Failed to cancel receive",
+      "stackHint": "Paste a ticket here, or accept an incoming request from the stacked cards at the bottom.",
+      "receiveWorkspaceTitle": "Receive inbox",
+      "incomingCount": "Incoming requests: {{count}}",
+      "bottomStackHint": "Pending requests stay pinned above the bottom bar so you can act without leaving the current screen.",
+      "cloudQueue": "Cloud",
+      "moreIncoming": "more"
     },
     "text": {
       "title": "Share Text",
@@ -458,7 +471,9 @@
       "ticketReady": "票据已就绪",
       "chooseFriend": "选择好友",
       "shareViaTicket": "通过票据链接分享",
-      "shareViaTicketHint": "生成一个票据链接，可分享到论坛、群聊等任何地方。"
+      "shareViaTicketHint": "生成一个票据链接，可分享到论坛、群聊等任何地方。",
+      "firstFileOnly": "当前暂不支持一次分享多个文件，将只发送第一个文件。",
+      "selectSomethingFirst": "请先在分享面板中选择文件或输入消息。"
     },
     "receive": {
       "title": "接收文件",
@@ -476,7 +491,18 @@
       "dismissFailed": "忽略票据失败",
       "pasteFromClipboard": "从剪贴板粘贴",
       "readyToDownload": "准备下载",
-      "clipboardError": "读取剪贴板失败"
+      "clipboardError": "读取剪贴板失败",
+      "scanQr": "扫码",
+      "scanError": "扫码失败",
+      "folderPickerError": "选择下载目录失败",
+      "receiveError": "启动接收失败",
+      "cancelError": "取消接收失败",
+      "stackHint": "可在此粘贴票据，或直接处理底部层叠显示的传入请求卡片。",
+      "receiveWorkspaceTitle": "接收收件箱",
+      "incomingCount": "共有 {{count}} 个待处理请求",
+      "bottomStackHint": "待处理请求会固定显示在底部导航上方，无需离开当前页面即可处理。",
+      "cloudQueue": "云端",
+      "moreIncoming": "更多"
     },
     "text": {
       "title": "分享文本",

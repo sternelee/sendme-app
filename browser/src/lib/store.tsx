@@ -34,6 +34,8 @@ export interface TextState {
   activeTextTab: "send" | "receive";
 }
 
+export type HistoryType = "sent" | "received";
+
 export interface HistoryEntry {
   id: string;
   filename: string;
@@ -41,6 +43,7 @@ export interface HistoryEntry {
   fileSize: number;
   isFolder: boolean;
   timestamp: number;
+  type: HistoryType;
 }
 
 export interface HistoryState {
@@ -55,7 +58,12 @@ function loadHistory(): HistoryEntry[] {
   try {
     const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as HistoryEntry[];
+    const entries = JSON.parse(raw) as HistoryEntry[];
+    // Migrate old entries without type field
+    return entries.map((e) => ({
+      ...e,
+      type: e.type || ("sent" as HistoryType),
+    }));
   } catch {
     return [];
   }

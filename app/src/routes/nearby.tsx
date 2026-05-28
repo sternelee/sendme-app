@@ -10,7 +10,7 @@ import {
   get_nearby_profile,
   send_to_device,
   start_nearby_discovery,
-  type NearbyDevice,
+  type NearbyDevice as NearbyBindingDevice,
   type NearbyProfile,
   type NearbySendItem,
   type NearbyTransferState,
@@ -119,7 +119,7 @@ export default function NearbyPage(props: NearbyPageProps) {
             ...nearbyState().selectedDevice!,
             name: payload.deviceName,
             deviceType:
-              (payload.deviceType as NearbyDevice["deviceType"]) ??
+              (payload.deviceType as NearbyBindingDevice["deviceType"]) ??
               nearbyState().selectedDevice!.deviceType,
           });
         }
@@ -151,7 +151,7 @@ export default function NearbyPage(props: NearbyPageProps) {
       },
     );
 
-    const unlistenDevices = await listen<NearbyDevice[]>(
+    const unlistenDevices = await listen<NearbyBindingDevice[]>(
       "nearby_devices_updated",
       (event) => {
         store.nearbySend.setNearbyDevices(event.payload);
@@ -171,13 +171,22 @@ export default function NearbyPage(props: NearbyPageProps) {
     });
   });
 
-  async function handleDeviceSelect(device: NearbyDevice) {
+  async function handleDeviceSelect(device: {
+    id: string;
+    name: string;
+    deviceType: "phone" | "tablet" | "laptop" | "desktop" | "unknown";
+  }) {
     if (!props.sendPath) {
-      return;
       return;
     }
 
-    store.nearbySend.setSelectedDevice(device);
+    const selectedDevice = nearbyState().nearbyDevices.find(
+      (item) => item.id === device.id,
+    ) ?? {
+      ...device,
+      addresses: [],
+    };
+    store.nearbySend.setSelectedDevice(selectedDevice);
     store.nearbySend.setTransferState("waiting");
     store.nearbySend.setTransferProgress({
       transferred: 0,
@@ -189,9 +198,7 @@ export default function NearbyPage(props: NearbyPageProps) {
 
     try {
       const filename = props.sendPath.split("/").pop() || "file";
-      const fileItems: NearbySendItem[] = [
-        { path: props.sendPath, filename },
-      ];
+      const fileItems: NearbySendItem[] = [{ path: props.sendPath, filename }];
       await send_to_device(fileItems, device.id);
     } catch (error) {
       store.nearbySend.setTransferState("error");
@@ -222,8 +229,8 @@ export default function NearbyPage(props: NearbyPageProps) {
 
       <Show when={!hasActiveTransfer()}>
         <Show when={!props.sendPath}>
-          <div class="rounded-xl border border-base-300/50 bg-base-200/40 px-4 py-3 text-center text-sm opacity-70">
-            Select a file in the Send panel above to share with nearby devices
+          <div class="border-base-300/50 bg-base-200/40 rounded-xl border px-4 py-3 text-center text-sm opacity-70">
+            {t("send.selectSomethingFirst")}
           </div>
         </Show>
         <NearbyDeviceList

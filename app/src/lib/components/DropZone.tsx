@@ -39,7 +39,7 @@ export const DropZone: Component<DropZoneProps> = (props) => {
       const isMobile = currentPlatform === "android" || currentPlatform === "ios";
 
       if (isMobile) {
-        const selected = await pick_file({ allowMultiple: true });
+        const selected = await pick_file({ allowMultiple: false });
         if (selected.length > 0) {
           props.onFilesSelected(
             selected.map((file) => ({
@@ -52,7 +52,7 @@ export const DropZone: Component<DropZoneProps> = (props) => {
         return;
       }
 
-      const selected = await open({ multiple: true, directory: false });
+      const selected = await open({ multiple: false, directory: false });
       if (!selected) return;
 
       const paths = Array.isArray(selected) ? selected : [selected];

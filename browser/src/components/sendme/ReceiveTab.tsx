@@ -9,6 +9,7 @@ import {
   TbOutlineAlertCircle,
   TbOutlineClipboard,
   TbOutlineShieldLock,
+  TbOutlineFile,
 } from "solid-icons/tb";
 
 const t = i18n.t;
@@ -34,6 +35,14 @@ function isPreviewable(filename: string): boolean {
   return mime.startsWith("image/") || mime.startsWith("video/");
 }
 
+function formatFileSize(data: Uint8Array): string {
+  if (!data || typeof data.length !== "number") return "Unknown size";
+  const size = data.length;
+  if (size < 1024) return size + " B";
+  if (size < 1024 * 1024) return (size / 1024).toFixed(1) + " KB";
+  return (size / (1024 * 1024)).toFixed(1) + " MB";
+}
+
 export default function ReceiveTab() {
   const globalStore = useGlobalStore();
 
@@ -42,7 +51,6 @@ export default function ReceiveTab() {
   const receivedFile = () => globalStore.receive.state().receivedFile;
   const error = () => globalStore.receive.state().error;
 
-  // P2-4: Blob URL memory management
   const previewUrl = createMemo(() => {
     const file = receivedFile();
     if (!file || !isPreviewable(file.filename)) return null;
@@ -67,6 +75,13 @@ export default function ReceiveTab() {
     try {
       const result = await receiveFile(ticketValue);
       globalStore.receive.setReceivedFile(result);
+      globalStore.history.addEntry({
+        filename: result.filename,
+        ticket: ticketValue,
+        fileSize: result.data.length,
+        isFolder: false,
+        type: "received",
+      });
       toast.success(t("receive.downloadComplete"));
     } catch (err) {
       const errorMsg = (err as Error).message || t("receive.invalidTicket");
@@ -94,60 +109,57 @@ export default function ReceiveTab() {
     }
   }
 
-  function formatFileSize(data: Uint8Array): string {
-    if (!data || typeof data.length !== "number") return "Unknown size";
-    const size = data.length;
-    if (size < 1024) return size + " B";
-    if (size < 1024 * 1024) return (size / 1024).toFixed(1) + " KB";
-    return (size / (1024 * 1024)).toFixed(1) + " MB";
-  }
-
   return (
-    <div class="space-y-6">
+    <div class="space-y-4">
       {/* Header */}
-      <div class="text-center">
-        <h2 class="text-2xl font-bold">{t("receive.title")}</h2>
-        <p class="text-base-content/60 text-sm mt-1">{t("receive.subtitle")}</p>
+      <div>
+        <p class="section-label">{t("receive.title")}</p>
+        <p class="text-base-content/65 mt-1 text-sm">{t("receive.subtitle")}</p>
       </div>
 
-      {/* Ticket Input */}
-      <div class="space-y-2">
-        <div class="flex items-center justify-between gap-3">
-          <label class="text-sm font-medium">{t("receive.pasteTicket")}</label>
-          <button
-            onClick={pasteTicket}
-            class="btn btn-ghost btn-xs"
-            disabled={isReceiving()}
-            title={t("receive.pasteFromClipboard") || "Paste from clipboard"}
-          >
-            <TbOutlineClipboard size={14} />
-            {t("common.paste") || "Paste"}
-          </button>
+      {/* Input Card */}
+      <div class="surface-card p-5 space-y-4">
+        <div class="space-y-2">
+          <div class="flex items-center justify-between gap-3">
+            <label class="text-sm font-medium">{t("receive.pasteTicket")}</label>
+            <button
+              onClick={pasteTicket}
+              class="btn btn-ghost btn-xs rounded-lg"
+              disabled={isReceiving()}
+            >
+              <TbOutlineClipboard size={14} />
+              {t("common.paste") || "Paste"}
+            </button>
+          </div>
+          <label class="input input-bordered flex w-full items-center gap-2 rounded-xl">
+            <TbOutlineShieldLock size={18} class="opacity-50" />
+            <input
+              type="text"
+              value={ticket()}
+              onInput={(e) => globalStore.receive.setTicket(e.currentTarget.value)}
+              placeholder={t("common.pasteTicket")}
+              class="grow font-mono text-sm bg-transparent"
+              disabled={isReceiving()}
+            />
+          </label>
         </div>
-        <label class="input input-bordered flex w-full items-center gap-2">
-          <TbOutlineShieldLock size={18} class="opacity-50" />
-          <input
-            type="text"
-            value={ticket()}
-            onInput={(e) => globalStore.receive.setTicket(e.currentTarget.value)}
-            placeholder={t("receive.ticketPlaceholder") || "Paste ticket here..."}
-            class="grow font-mono text-sm"
-            disabled={isReceiving()}
-          />
-        </label>
-      </div>
 
-      <button
-        onClick={() => void handleReceive()}
-        disabled={!ticket().trim() || isReceiving()}
-        class="btn btn-primary btn-block"
-      >
-        <TbOutlineDownload size={18} /> {t("receive.receiveFile")}
-      </button>
+        <button
+          onClick={() => void handleReceive()}
+          disabled={!ticket().trim() || isReceiving()}
+          class={`btn btn-primary w-full rounded-xl ${isReceiving() ? "loading" : ""}`}
+        >
+          <Show when={!isReceiving()}
+          >
+            <TbOutlineDownload size={18} />
+          </Show>
+          {t("receive.receiveFile")}
+        </button>
+      </div>
 
       {/* Error Alert */}
       <Show when={error()}>
-        <div class="alert alert-error">
+        <div class="alert alert-error rounded-xl">
           <TbOutlineAlertCircle size={18} />
           <span>{error()}</span>
         </div>
@@ -155,31 +167,44 @@ export default function ReceiveTab() {
 
       {/* Success - File Ready */}
       <Show when={receivedFile()}>
-        <div class="alert alert-success">
-          <TbOutlineCheck size={18} />
-          <div class="flex-1">
-            <p class="font-bold">{t("receive.downloadComplete")}</p>
-            <p class="text-sm font-mono truncate">{receivedFile()!.filename}</p>
-            <p class="text-xs opacity-60">
-              {formatFileSize(receivedFile()!.data)} •{" "}
-              {t("receive.readyToDownload") || "Ready to download"}
-            </p>
+        <div class="surface-card p-5 space-y-4">
+          {/* File Info */}
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-2xl bg-secondary/12 text-secondary flex items-center justify-center shrink-0">
+              <TbOutlineFile size={24} />
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="font-semibold text-sm truncate">{receivedFile()!.filename}</p>
+              <p class="text-xs text-base-content/50 mt-0.5">
+                {formatFileSize(receivedFile()!.data)}
+              </p>
+            </div>
+            <div class="badge badge-success gap-1 rounded-full shrink-0">
+              <TbOutlineCheck size={12} />
+              {t("receive.downloadComplete")}
+            </div>
           </div>
+
+          {/* Preview */}
+          <Show when={previewUrl()}>
+            <div class="w-full h-56 rounded-2xl overflow-hidden bg-base-300/50">
+              <img
+                src={previewUrl()!}
+                alt={receivedFile()!.filename}
+                class="w-full h-full object-contain"
+              />
+            </div>
+          </Show>
+
+          {/* Download Button */}
+          <button
+            onClick={downloadReceivedFile}
+            class="btn btn-success w-full rounded-xl"
+          >
+            <TbOutlineDownload size={18} />
+            {t("receive.saveFile")}
+          </button>
         </div>
-
-        <Show when={previewUrl()}>
-          <div class="w-full h-48 rounded-2xl overflow-hidden bg-base-300">
-            <img
-              src={previewUrl()!}
-              alt={receivedFile()!.filename}
-              class="w-full h-full object-contain"
-            />
-          </div>
-        </Show>
-
-        <button onClick={downloadReceivedFile} class="btn btn-success btn-block">
-          <TbOutlineDownload size={18} /> {t("receive.saveFile")}
-        </button>
       </Show>
     </div>
   );

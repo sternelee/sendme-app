@@ -22,14 +22,14 @@ export const SettingsPanel: Component = () => {
             <Show when={auth.user()?.imageUrl}>
               <img
                 src={auth.user()!.imageUrl}
-                class="h-12 w-12 rounded-2xl"
+                class="h-12 w-12 rounded-xl"
                 alt="avatar"
               />
             </Show>
             <Show when={!auth.user()?.imageUrl}>
               <div class="flex items-center gap-3">
                 <div class="avatar placeholder">
-                  <div class="bg-primary text-primary-content flex w-12 items-center justify-center rounded-2xl">
+                  <div class="bg-primary text-primary-content flex w-12 items-center justify-center rounded-xl">
                     <User size={20} />
                   </div>
                 </div>
@@ -39,9 +39,7 @@ export const SettingsPanel: Component = () => {
               <p class="truncate font-semibold">
                 {auth.user()?.name || "User"}
               </p>
-              <p class="truncate text-xs opacity-60">
-                {auth.user()?.email}
-              </p>
+              <p class="truncate text-xs opacity-60">{auth.user()?.email}</p>
             </div>
             <button
               onClick={() => auth.signOut()}

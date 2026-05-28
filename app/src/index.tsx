@@ -1,10 +1,10 @@
 import { render } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
-import VConsole from "vconsole";
+// import VConsole from "vconsole";
 import App from "./app";
 import "./styles.css";
 
-new VConsole();
+// new VConsole();
 
 const appRoot = document.getElementById("app");
 if (!(appRoot instanceof HTMLElement)) {

@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, Show, For } from "solid-js";
+import { createSignal, onMount, Show, For } from "solid-js";
 import { initWasm } from "../../lib/commands";
 import SendTab from "../../components/sendme/SendTab";
 import ReceiveTab from "../../components/sendme/ReceiveTab";
@@ -60,31 +60,11 @@ export default function AppPage() {
 
   const tabs = () => {
     const baseTabs = [
-      {
-        id: "send" as ActiveTab,
-        icon: TbOutlineUpload,
-        label: t("common.send"),
-      },
-      {
-        id: "receive" as ActiveTab,
-        icon: TbOutlineDownload,
-        label: t("common.receive"),
-      },
-      {
-        id: "text" as ActiveTab,
-        icon: TbOutlineMessage,
-        label: t("common.text"),
-      },
-      {
-        id: "history" as ActiveTab,
-        icon: TbOutlineHistory,
-        label: t("common.history"),
-      },
-      {
-        id: "settings" as ActiveTab,
-        icon: TbOutlineSettings,
-        label: t("common.settings"),
-      },
+      { id: "send" as ActiveTab, icon: TbOutlineUpload, label: t("common.send") },
+      { id: "receive" as ActiveTab, icon: TbOutlineDownload, label: t("common.receive") },
+      { id: "text" as ActiveTab, icon: TbOutlineMessage, label: t("common.text") },
+      { id: "history" as ActiveTab, icon: TbOutlineHistory, label: t("common.history") },
+      { id: "settings" as ActiveTab, icon: TbOutlineSettings, label: t("common.settings") },
     ];
     if (auth.isSignedIn()) {
       baseTabs.splice(3, 0, {
@@ -96,28 +76,76 @@ export default function AppPage() {
     return baseTabs;
   };
 
+  const isActive = (id: ActiveTab) => activeTab() === id;
+
   return (
-    <div class="min-h-screen bg-base-100 text-base-content">
-      {/* Header */}
-      <header class="navbar bg-base-100 border-b border-base-200 sticky top-0 z-50 px-4">
-        <div class="flex-1">
-          <a href="/" class="btn btn-ghost text-xl font-bold gap-2">
-            <div class="w-8 h-8 rounded-lg bg-primary text-primary-content flex items-center justify-center">
+    <div class="min-h-screen bg-base-200 text-base-content flex">
+      {/* Desktop Sidebar */}
+      <aside class="hidden md:flex flex-col w-60 border-r border-base-200 bg-base-100/80 backdrop-blur-xl sticky top-0 h-screen z-40">
+        {/* Sidebar Logo */}
+        <div class="p-4">
+          <a href="/" class="btn btn-ghost text-xl font-bold gap-2 justify-start w-full">
+            <div class="w-8 h-8 rounded-lg bg-primary text-primary-content flex items-center justify-center shrink-0">
               <TbOutlineSparkles size={18} />
             </div>
             <span>Sendme</span>
           </a>
         </div>
-        <div class="flex-none flex items-center gap-2">
-          <LanguageSwitcher />
-          <ThemeSwitcher />
-          <Show when={auth.user()}>
-            {(u) => {
-              const user = u();
-              return (
-                <div class="dropdown dropdown-end">
-                  <div tabindex="0" role="button" class="tooltip tooltip-bottom" data-tip={user.email} onKeyDown={(e) => { if (e.key === "Escape") (e.currentTarget as HTMLElement).blur(); }}>
-                    <div class="avatar cursor-pointer">
+
+        {/* Sidebar Nav */}
+        <nav class="flex-1 px-3 py-2 space-y-1">
+          {tabs().map((tab) => (
+            <button
+              class={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                isActive(tab.id)
+                  ? "bg-primary/10 text-primary"
+                  : "text-base-content/70 hover:bg-base-200 hover:text-base-content"
+              }`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <tab.icon size={18} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        {/* Sidebar Footer */}
+        <div class="p-4 border-t border-base-200 space-y-3">
+          <div class="flex items-center gap-1">
+            <div class="bg-base-200/60 rounded-lg">
+              <LanguageSwitcher />
+            </div>
+            <div class="bg-base-200/60 rounded-lg">
+              <ThemeSwitcher />
+            </div>
+          </div>
+          <p class="text-xs text-base-content/40">
+            v0.31.0
+          </p>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div class="flex-1 flex flex-col min-h-screen md:min-h-0">
+        {/* Mobile Header */}
+        <header class="md:hidden navbar bg-base-100 border-b border-base-200 sticky top-0 z-50 px-4">
+          <div class="flex-1">
+            <a href="/" class="btn btn-ghost text-lg font-bold gap-2 px-0">
+              <div class="w-7 h-7 rounded-lg bg-primary text-primary-content flex items-center justify-center">
+                <TbOutlineSparkles size={16} />
+              </div>
+              <span>Sendme</span>
+            </a>
+          </div>
+          <div class="flex-none flex items-center gap-1">
+            <LanguageSwitcher />
+            <ThemeSwitcher />
+            <Show when={auth.user()}>
+              {(u) => {
+                const user = u();
+                return (
+                  <div class="dropdown dropdown-end">
+                    <div tabindex="0" role="button" class="avatar cursor-pointer" onKeyDown={(e) => { if (e.key === "Escape") (e.currentTarget as HTMLElement).blur(); }}>
                       <div class="w-8 h-8 rounded-full">
                         <Show
                           when={user.imageUrl}
@@ -135,210 +163,274 @@ export default function AppPage() {
                         </Show>
                       </div>
                     </div>
+                    <ul tabindex="-1" class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-box w-40 border border-base-200 z-50 mt-2">
+                      <li>
+                        <button onClick={() => auth.signOut()} class="flex items-center gap-2">
+                          <TbOutlineLogout size={16} />
+                          {t("common.signOut")}
+                        </button>
+                      </li>
+                    </ul>
                   </div>
-                  <ul tabindex="-1" class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-box w-40 border border-base-200 z-50 mt-2">
-                    <li>
-                      <button onClick={() => auth.signOut()} class="flex items-center gap-2">
-                        <TbOutlineLogout size={16} />
-                        {t("common.signOut")}
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-              );
-            }}
-          </Show>
-        </div>
-      </header>
+                );
+              }}
+            </Show>
+          </div>
+        </header>
 
-      {/* Main content */}
-      <main class="container mx-auto px-4 py-8 min-h-[calc(100vh-80px)] flex flex-col items-center">
-        <div class="w-full max-w-2xl space-y-6">
-          <Show
-            when={!isInitializing()}
-            fallback={
-              <div class="card bg-base-200">
-                <div class="card-body items-center text-center py-16">
-                  <span class="loading loading-spinner loading-lg text-primary"></span>
-                  <p class="text-base-content/60 mt-4">
-                    {t("common.initializing")}
-                  </p>
-                </div>
-              </div>
-            }
-          >
-            <Show
-              when={!initError()}
-              fallback={
-                <div class="card bg-base-200">
-                  <div class="card-body items-center text-center py-16 space-y-4">
-                    <div class="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center">
-                      <TbOutlineSparkles size={28} class="text-error" />
+        {/* Desktop Header (right side only) */}
+        <header class="hidden md:flex navbar bg-base-100 border-b border-base-200 sticky top-0 z-50 px-6 py-2">
+          <div class="flex-1">
+            <h1 class="text-lg font-semibold">
+              {tabs().find(t => t.id === activeTab())?.label}
+            </h1>
+          </div>
+          <div class="flex-none flex items-center gap-2">
+            <Show when={auth.user()}>
+              {(u) => {
+                const user = u();
+                return (
+                  <div class="dropdown dropdown-end">
+                    <div tabindex="0" role="button" class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-base-200 cursor-pointer transition-colors" onKeyDown={(e) => { if (e.key === "Escape") (e.currentTarget as HTMLElement).blur(); }}>
+                      <div class="avatar">
+                        <div class="w-8 h-8 rounded-full">
+                          <Show
+                            when={user.imageUrl}
+                            fallback={
+                              <div class="w-full h-full bg-primary text-primary-content flex items-center justify-center text-sm font-bold rounded-full">
+                                {(user.name?.charAt(0) || "?").toUpperCase()}
+                              </div>
+                            }
+                          >
+                            <img
+                              src={user.imageUrl}
+                              alt={user.name || "User"}
+                              class="w-full h-full object-cover"
+                            />
+                          </Show>
+                        </div>
+                      </div>
+                      <span class="text-sm font-medium hidden lg:block">{user.name || "User"}</span>
                     </div>
-                    <p class="text-error font-semibold">{t("common.initFailed") || "Initialization Failed"}</p>
-                    <p class="text-base-content/60 text-sm max-w-sm">{initError()}</p>
-                    <button class="btn btn-primary btn-sm" onClick={initApp}>
-                      {t("common.retry") || "Retry"}
-                    </button>
+                    <ul tabindex="-1" class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-box w-40 border border-base-200 z-50 mt-2">
+                      <li>
+                        <button onClick={() => auth.signOut()} class="flex items-center gap-2">
+                          <TbOutlineLogout size={16} />
+                          {t("common.signOut")}
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
+                );
+              }}
+            </Show>
+            <Show when={!auth.user()}>
+              <a href="/auth/sign-in" class="btn btn-primary btn-sm rounded-lg">
+                {t("common.signIn")}
+              </a>
+            </Show>
+          </div>
+        </header>
+
+        {/* Content */}
+        <main class="flex-1 p-4 md:p-6 lg:p-8 pb-24 md:pb-8">
+          <div class="max-w-5xl space-y-4">
+            <Show
+              when={!isInitializing()}
+              fallback={
+                <div class="surface-card">
+                  <div class="flex flex-col items-center justify-center py-16 text-center">
+                    <span class="loading loading-spinner loading-lg text-primary"></span>
+                    <p class="text-base-content/60 mt-4">
+                      {t("common.initializing")}
+                    </p>
                   </div>
                 </div>
               }
             >
-            {/* Global incoming-tickets banner — visible on all tabs */}
-            <IncomingTicketsBanner />
+              <Show
+                when={!initError()}
+                fallback={
+                  <div class="surface-card">
+                    <div class="flex flex-col items-center justify-center py-16 text-center space-y-4">
+                      <div class="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center">
+                        <TbOutlineSparkles size={28} class="text-error" />
+                      </div>
+                      <p class="text-error font-semibold">{t("common.initFailed") || "Initialization Failed"}</p>
+                      <p class="text-base-content/60 text-sm max-w-sm">{initError()}</p>
+                      <button class="btn btn-primary btn-sm rounded-lg" onClick={initApp}>
+                        {t("common.retry") || "Retry"}
+                      </button>
+                    </div>
+                  </div>
+                }
+              >
+                {/* Global incoming-tickets banner */}
+                <IncomingTicketsBanner />
 
-            {/* Tab Navigation */}
-            <div class="tabs tabs-boxed bg-base-200 flex" role="tablist" aria-label={t("common.navigation") || "Navigation"}>
-              {tabs().map((tab) => (
-                <button
-                  role="tab"
-                  aria-selected={activeTab() === tab.id}
-                  aria-controls={`panel-${tab.id}`}
-                  id={`tab-${tab.id}`}
-                  tabindex={activeTab() === tab.id ? 0 : -1}
-                  class={`tab gap-2 flex-1 ${activeTab() === tab.id ? "tab-active" : ""}`}
-                  onClick={() => setActiveTab(tab.id)}
-                  onKeyDown={(e) => {
-                    const tabEls = (e.currentTarget.parentElement?.querySelectorAll('[role="tab"]') as NodeListOf<HTMLButtonElement>) || [];
-                    const list = Array.from(tabEls);
-                    const idx = list.indexOf(e.currentTarget);
-                    let next = idx;
-                    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (idx + 1) % list.length;
-                    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (idx - 1 + list.length) % list.length;
-                    else if (e.key === "Home") next = 0;
-                    else if (e.key === "End") next = list.length - 1;
-                    else return;
-                    e.preventDefault();
-                    list[next].focus();
-                    setActiveTab(tabs()[next].id);
-                  }}
-                  title={tab.label}
-                >
-                  <tab.icon size={16} aria-hidden="true" />
-                  <span class="hidden sm:inline">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Tab Content */}
-            <div class="card bg-base-200">
-              <div class="card-body">
+                {/* Tab Content */}
                 <Presence>
                   <Show when={activeTab() === "send"}>
-                    <div role="tabpanel" id="panel-send" aria-labelledby="tab-send">
-                      <SendTab />
-                    </div>
+                    <SendTab />
                   </Show>
                   <Show when={activeTab() === "receive"}>
-                    <div role="tabpanel" id="panel-receive" aria-labelledby="tab-receive">
-                      <ReceiveTab />
-                    </div>
+                    <ReceiveTab />
                   </Show>
                   <Show when={activeTab() === "friends"}>
-                    <div role="tabpanel" id="panel-friends" aria-labelledby="tab-friends">
-                      <FriendsTab />
-                    </div>
+                    <FriendsTab />
                   </Show>
                   <Show when={activeTab() === "text"}>
-                    <div role="tabpanel" id="panel-text" aria-labelledby="tab-text">
-                      <TextTab />
-                    </div>
+                    <TextTab />
                   </Show>
                   <Show when={activeTab() === "history"}>
-                    <div role="tabpanel" id="panel-history" aria-labelledby="tab-history">
-                      <HistoryTab />
-                    </div>
+                    <HistoryTab />
                   </Show>
                   <Show when={activeTab() === "settings"}>
-                    <div role="tabpanel" id="panel-settings" aria-labelledby="tab-settings">
-                    <div class="space-y-4">
-                      <div class="flex items-center justify-between">
-                        <span class="font-bold">{t("settings.title")}</span>
-                        <span class="text-base-content/60">v0.31.0</span>
-                      </div>
-
-                      {/* Account Card */}
-                      <Show
-                        when={auth.isSignedIn()}
-                        fallback={
-                          <div class="bg-base-300 rounded-xl p-4">
-                            <div class="flex items-center gap-3">
-                              <div class="avatar placeholder">
-                                <div class="bg-primary text-primary-content w-10 h-10 rounded-full flex items-center justify-center">
-                                  <TbOutlineUser size={20} />
-                                </div>
-                              </div>
-                              <div class="flex-1">
-                                <p class="font-semibold">{t("common.account")}</p>
-                                <p class="text-sm text-base-content/60">{t("common.signInToSync")}</p>
-                              </div>
-                            </div>
-                            <a href="/auth/sign-in" class="btn btn-primary btn-sm mt-3 w-full rounded-lg">
-                              {t("common.signIn")}
-                            </a>
-                          </div>
-                        }
-                      >
-                        <div class="bg-base-300 rounded-xl p-4">
-                          <div class="flex items-center gap-3">
-                            <Show when={auth.user()?.imageUrl}>
-                              <img
-                                src={auth.user()!.imageUrl}
-                                class="w-10 h-10 rounded-full object-cover"
-                                alt="avatar"
-                              />
-                            </Show>
-                            <Show when={!auth.user()?.imageUrl}>
-                              <div class="avatar placeholder">
-                                <div class="bg-primary text-primary-content w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold">
-                                  {(auth.user()?.name?.charAt(0) || "?").toUpperCase()}
-                                </div>
-                              </div>
-                            </Show>
-                            <div class="min-w-0 flex-1">
-                              <p class="truncate font-semibold">{auth.user()?.name || "User"}</p>
-                              <p class="truncate text-sm text-base-content/60">
-                                {auth.user()?.email ?? ""}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => auth.signOut()}
-                              class="btn btn-ghost btn-sm rounded-lg"
-                              title={t("common.signOut")}
-                            >
-                              <TbOutlineLogout size={18} />
-                            </button>
-                          </div>
-                        </div>
-                        </Show>
-
-                        {/* API Keys — only for signed-in users */}
-                        <Show when={auth.isSignedIn()}>
-                          <div class="divider my-1" />
-                          <ApiKeysPanel />
-                          <div class="divider my-1" />
-                        </Show>
-
-                        <div class="flex items-center justify-between">
-                        <span class="font-bold">{t("common.protocol")}</span>
-                        <span class="badge badge-success gap-1">
-                          <span class="w-2 h-2 rounded-full bg-success-content animate-pulse"></span>
-                          {t("common.p2pReady")}
-                        </span>
-                      </div>
-                    </div>
-                    </div>
+                    <SettingsTab />
                   </Show>
                 </Presence>
+              </Show>
+            </Show>
+          </div>
+        </main>
+
+        {/* Mobile Bottom Dock */}
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-base-100/90 backdrop-blur-xl border-t border-base-200 z-50 pb-safe">
+          <div class="flex items-center justify-around h-16">
+            {tabs().map((tab) => (
+              <button
+                class={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${
+                  isActive(tab.id)
+                    ? "text-primary"
+                    : "text-base-content/50"
+                }`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <tab.icon size={20} />
+                <span class="text-[10px] font-medium">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab() {
+  const auth = useAuth();
+
+  return (
+    <div class="space-y-4">
+      {/* Settings Header */}
+      <div>
+        <p class="section-label">{t("settings.title")}</p>
+      </div>
+
+      {/* Account Card */}
+      <Show
+        when={auth.isSignedIn()}
+        fallback={
+          <div class="surface-card p-5">
+            <div class="flex items-center gap-3">
+              <div class="avatar placeholder">
+                <div class="bg-primary text-primary-content w-12 h-12 rounded-2xl flex items-center justify-center">
+                  <TbOutlineUser size={24} />
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="font-semibold">{t("common.account")}</p>
+                <p class="text-sm text-base-content/60">{t("common.signInToSync")}</p>
               </div>
             </div>
-          </Show>
-          </Show>
+            <a href="/auth/sign-in" class="btn btn-primary btn-sm mt-4 w-full rounded-xl">
+              {t("common.signIn")}
+            </a>
+          </div>
+        }
+      >
+        <div class="surface-card p-5">
+          <div class="flex items-center gap-3">
+            <Show when={auth.user()?.imageUrl}>
+              <img
+                src={auth.user()!.imageUrl}
+                class="w-12 h-12 rounded-2xl object-cover"
+                alt="avatar"
+              />
+            </Show>
+            <Show when={!auth.user()?.imageUrl}>
+              <div class="avatar placeholder">
+                <div class="bg-primary text-primary-content w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-bold">
+                  {(auth.user()?.name?.charAt(0) || "?").toUpperCase()}
+                </div>
+              </div>
+            </Show>
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-semibold">{auth.user()?.name || "User"}</p>
+              <p class="truncate text-sm text-base-content/60">
+                {auth.user()?.email ?? ""}
+              </p>
+            </div>
+            <button
+              onClick={() => auth.signOut()}
+              class="btn btn-ghost btn-sm rounded-xl shrink-0"
+              title={t("common.signOut")}
+            >
+              <TbOutlineLogout size={18} />
+            </button>
+          </div>
+        </div>
+      </Show>
+
+      {/* Settings Grid */}
+      <div class="grid gap-4 md:grid-cols-2">
+        {/* Language */}
+        <div class="surface-card p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="font-semibold">{t("settings.language")}</p>
+              <p class="text-base-content/60 mt-1 text-sm">
+                {t("settings.languageDescription")}
+              </p>
+            </div>
+            <LanguageSwitcher />
+          </div>
         </div>
 
-        {/* Footer */}
-        <footer class="mt-auto pt-12 pb-8 text-center">
-          <p class="text-sm text-base-content/40">
+        {/* Theme */}
+        <div class="surface-card p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="font-semibold">{t("settings.theme")}</p>
+              <p class="text-base-content/60 mt-1 text-sm">
+                {t("settings.themeDescription")}
+              </p>
+            </div>
+            <ThemeSwitcher />
+          </div>
+        </div>
+
+        {/* Protocol Status */}
+        <div class="surface-card p-5">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold">{t("common.online")}</span>
+            <span class="badge badge-success gap-1 rounded-full">
+              <span class="bg-success-content h-2 w-2 animate-pulse rounded-full"></span>
+              {t("common.p2pReady")}
+            </span>
+          </div>
+          <p class="text-base-content/60 mt-4 text-sm">
+            {t("landing.features.fastDesc")}
+          </p>
+        </div>
+
+        {/* About */}
+        <div class="surface-card p-5">
+          <p class="font-semibold">{t("settings.about")}</p>
+          <p class="text-base-content/60 mt-2 text-sm">
+            {t("common.appName")} v0.31.0
+          </p>
+          <p class="text-base-content/50 mt-1 text-xs">
             {t("common.poweredBy")}{" "}
             <a
               href="https://iroh.computer"
@@ -349,8 +441,15 @@ export default function AppPage() {
               iroh.computer
             </a>
           </p>
-        </footer>
-      </main>
+        </div>
+      </div>
+
+      {/* API Keys — only for signed-in users */}
+      <Show when={auth.isSignedIn()}>
+        <div class="surface-card p-5">
+          <ApiKeysPanel />
+        </div>
+      </Show>
     </div>
   );
 }

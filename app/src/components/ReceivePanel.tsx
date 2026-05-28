@@ -1,4 +1,11 @@
-import { Component, Show, createSignal, createEffect } from "solid-js";
+import {
+  Component,
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+} from "solid-js";
 import { Download, Copy, Shield, Scan, RefreshCw } from "lucide-solid";
 
 import { i18n } from "@sendme/shared";
@@ -14,29 +21,60 @@ import {
 } from "@tauri-apps/plugin-barcode-scanner";
 import { listen } from "@tauri-apps/api/event";
 import { TransferProgress } from "~/lib/components/TransferProgress";
-import type { ProgressData, ProgressUpdate } from "~/lib/types";
+import {
+  buildReceiveProgressCards,
+  type PendingReceiveCard,
+  type ReceiveProgressSnapshot,
+} from "~/lib/transfer-ui";
+import type { ProgressUpdate } from "~/lib/types";
 
 const t = i18n.t;
 
 interface ReceivePanelProps {
   isMobile: boolean;
+  pendingReceiveCards: PendingReceiveCard[];
   onReload?: () => void;
 }
 
-
 export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
   const globalStore = useGlobalStore();
-
-  const [currentReceivingId, setCurrentReceivingId] = createSignal<
-    string | null
-  >(null);
   const [progressData, setProgressData] = createSignal<
-    Record<string, ProgressData>
+    Record<string, ReceiveProgressSnapshot>
   >({});
 
   const receiveTicket = () => globalStore.receive.state().ticket;
   const receiveOutputDir = () => globalStore.receive.state().outputDir;
   const isReceiving = () => globalStore.receive.state().isReceiving;
+
+  const receiveCards = createMemo(() =>
+    buildReceiveProgressCards(progressData(), {
+      now: Date.now(),
+      retainCompletedMs: 2_000,
+      limit: 3,
+      pending: props.pendingReceiveCards,
+    }),
+  );
+
+  const nearbyReceiveCard = createMemo(() => {
+    if (globalStore.nearbyReceive.state().transferState !== "receiving") {
+      return null;
+    }
+
+    const request = globalStore.nearbyReceive.state().incomingRequest;
+    if (!request) {
+      return null;
+    }
+
+    const progress = globalStore.nearbyReceive.state().transferProgress;
+    return {
+      title: request.senderName,
+      transferred: progress?.transferred ?? 0,
+      total: progress?.total ?? request.totalSize ?? 1,
+      speed: progress?.speed ?? 0,
+      eta: progress?.eta ?? 0,
+      isPending: !progress,
+    };
+  });
 
   async function selectOutputDirectory() {
     try {
@@ -46,10 +84,13 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
       } else {
         const { open } = await import("@tauri-apps/plugin-dialog");
         const selected = await open({ multiple: false, directory: true });
-        if (selected && typeof selected === "string")
+        if (selected && typeof selected === "string") {
           globalStore.receive.setOutputDir(selected);
+        }
       }
-    } catch (e) {}
+    } catch {
+      toast.error(t("receive.folderPickerError"));
+    }
   }
 
   async function handleReceive() {
@@ -66,7 +107,7 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
       globalStore.receive.setTicket("");
       toast.success(t("receive.connecting"));
     } catch (e) {
-      toast.error(`${t("common.confirm")}: ${e}`);
+      toast.error(`${t("receive.receiveError")}: ${e}`);
     } finally {
       globalStore.receive.setIsReceiving(false);
     }
@@ -84,19 +125,17 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
           globalStore.receive.setTicket(result.content);
         }
       } else {
-        toast.error(t("receive.clipboardError"));
+        toast.error(t("receive.scanError"));
       }
-    } catch (e) {
-      toast.error(String(e));
+    } catch {
+      toast.error(t("receive.scanError"));
     }
   }
 
   async function pasteTicketFromClipboard() {
     try {
       let text: string;
-      const { readText } = await import(
-        "@tauri-apps/plugin-clipboard-manager"
-      );
+      const { readText } = await import("@tauri-apps/plugin-clipboard-manager");
       try {
         text = await readText();
       } catch (tauriErr) {
@@ -116,69 +155,60 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
     }
   }
 
-
-
   createEffect(() => {
     let unlisten: (() => void) | undefined;
     listen<ProgressUpdate>("progress", (event) => {
       const { transfer_id, ...data } = event.payload.data;
+      const now = Date.now();
+
       setProgressData((prev) => {
         const prevData = prev[transfer_id];
-        let downloadPercent = prevData?.downloadPercent ?? 0;
         let speed = prevData?.progress?.speed ?? 0;
-        const now = Date.now();
+
         if (
           data.progress?.type === "downloading" &&
+          typeof data.progress.total === "number" &&
           data.progress.total > 0
         ) {
-          downloadPercent = Math.max(
-            downloadPercent,
-            (data.progress.offset / data.progress.total) * 100,
-          );
           const alpha = 0.3;
           const offset = data.progress.offset as number;
-          const lastOffset = prevData?.lastOffset ?? offset;
+          const lastOffset = prevData?.progress?.offset ?? offset;
           const lastTime = prevData?.lastTime ?? now;
           const dt = Math.max(now - lastTime, 1);
           const rawSpeed = ((offset - lastOffset) / dt) * 1000;
           speed = Math.max(0, speed * (1 - alpha) + rawSpeed * alpha);
         }
+
         return {
           ...prev,
           [transfer_id]: {
+            ...prevData,
             transfer_id,
-            event_type: event.payload.event_type,
-            downloadPercent,
-            lastOffset:
-              data.progress?.type === "downloading"
-                ? data.progress.offset
-                : prevData?.lastOffset,
-            lastTime:
-              data.progress?.type === "downloading"
-                ? now
-                : prevData?.lastTime,
-            ...data,
+            name:
+              typeof data.name === "string" && data.name.trim()
+                ? data.name
+                : prevData?.name,
+            lastTime: now,
+            completedAt:
+              data.progress?.type === "completed" ? now : prevData?.completedAt,
             progress: {
+              ...(prevData?.progress ?? {}),
               ...(data.progress ?? {}),
               speed: Math.round(speed),
             },
           },
         };
       });
-      if (
-        !currentReceivingId() &&
-        data.progress?.type &&
-        data.progress.type !== "completed"
-      )
-        setCurrentReceivingId(transfer_id);
-      if (
-        currentReceivingId() === transfer_id &&
-        data.progress?.type === "completed"
-      ) {
-        setTimeout(() => {
-          if (currentReceivingId() === transfer_id)
-            setCurrentReceivingId(null);
-        }, 2000);
+
+      if (data.progress?.type === "completed") {
+        window.setTimeout(() => {
+          setProgressData((prev) => {
+            if (!prev[transfer_id]) return prev;
+            const next = { ...prev };
+            delete next[transfer_id];
+            return next;
+          });
+        }, 2_000);
       }
     }).then((fn) => {
       unlisten = fn;
@@ -190,59 +220,75 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
   async function handleCancelById(id: string) {
     try {
       await cancel_transfer(id);
+      setProgressData((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       props.onReload?.();
-    } catch (e) {}
+    } catch {
+      toast.error(t("receive.cancelError"));
+    }
   }
 
   return (
     <div class="space-y-4">
       <div class="border-base-300/70 bg-base-100/70 rounded-3xl border p-4">
-        <div class="mb-2 flex items-center justify-between gap-3">
-          <label class="text-sm font-medium">
-            {t("common.pasteTicket")}
-          </label>
-          <button
-            onClick={pasteTicketFromClipboard}
-            class="btn btn-ghost btn-xs"
-            title={t("receive.pasteFromClipboard")}
-          >
-            <Copy size={14} />
-            {t("common.paste")}
-          </button>
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <label class="text-sm font-medium">{t("common.pasteTicket")}</label>
+            <p class="text-base-content/60 mt-1 text-xs leading-5">
+              {t("receive.stackHint")}
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              onClick={pasteTicketFromClipboard}
+              class="btn btn-ghost btn-xs rounded-xl"
+              title={t("receive.pasteFromClipboard")}
+            >
+              <Copy size={14} />
+              {t("common.paste")}
+            </button>
+            <Show when={props.isMobile}>
+              <button
+                onClick={handleScanBarcode}
+                class="btn btn-ghost btn-xs rounded-xl"
+                title={t("receive.scanQr")}
+              >
+                <Scan size={14} />
+                {t("receive.scanQr")}
+              </button>
+            </Show>
+          </div>
         </div>
-        <label class="input input-bordered bg-base-100 flex w-full items-center gap-2 rounded-2xl">
-          <Shield size={18} class="opacity-40" />
-          <input
-            type="text"
+
+        <div class="border-base-300/70 bg-base-100 rounded-xl border px-4 py-3">
+          <div class="text-base-content/40 mb-2 flex items-center gap-2">
+            <Shield size={16} />
+            <span class="text-xs font-medium tracking-[0.16em] uppercase">
+              {t("receive.incomingTickets")}
+            </span>
+          </div>
+          <textarea
             value={receiveTicket()}
             onInput={(e) =>
               globalStore.receive.setTicket(e.currentTarget.value)
             }
             placeholder={t("common.pasteTicket")}
-            class="grow"
+            rows={props.isMobile ? 4 : 3}
+            class="textarea textarea-ghost min-h-28 w-full resize-none p-0 leading-6"
           />
-          <Show when={props.isMobile}>
-            <button
-              onClick={handleScanBarcode}
-              class="btn btn-ghost btn-sm btn-circle"
-              title="Scan QR"
-            >
-              <Scan size={18} />
-            </button>
-          </Show>
-        </label>
+        </div>
       </div>
 
       <div class="border-base-300/70 bg-base-100/70 rounded-3xl border p-4">
         <div class="mb-2 flex items-center justify-between gap-3">
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium">
-              {t("common.defaultDownloads")}
-            </p>
+            <p class="text-sm font-medium">{t("common.defaultDownloads")}</p>
             <p class="text-base-content/60 mt-1 truncate text-xs">
               {receiveOutputDir()
-                ? receiveOutputDir().split(/[\\/]/).pop() ||
-                  receiveOutputDir()
+                ? receiveOutputDir().split(/[\\/]/).pop() || receiveOutputDir()
                 : t("common.defaultDownloads")}
             </p>
           </div>
@@ -254,7 +300,7 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
             {t("send.chooseFolder")}
           </button>
         </div>
-        <div class="border-base-300/70 bg-base-100 text-base-content/75 max-w-full min-w-0 overflow-hidden rounded-2xl border px-4 py-3 text-sm break-all">
+        <div class="border-base-300/70 bg-base-100 text-base-content/75 max-w-full min-w-0 overflow-hidden rounded-xl border px-4 py-3 text-sm break-all">
           {receiveOutputDir() || t("common.defaultDownloads")}
         </div>
       </div>
@@ -262,57 +308,55 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
       <button
         onClick={handleReceive}
         disabled={isReceiving() || !receiveTicket().trim()}
-        class="btn btn-secondary btn-lg w-full rounded-2xl shadow-sm"
+        class="btn btn-secondary btn-lg w-full rounded-xl shadow-sm"
       >
         <Download size={18} /> {t("receive.receiveFile")}
       </button>
 
-      <Show when={currentReceivingId()}>
-        {(id) => {
-          const data = progressData()[id()];
-          const offset = data?.progress?.offset ?? 0;
-          const total = data?.progress?.total ?? 1;
-          const speed = data?.progress?.speed ?? 0;
-          const eta = speed > 0 ? Math.ceil((total - offset) / speed) : 0;
-          return (
-            <TransferProgress
-              transferred={offset}
-              total={total}
-              speed={speed}
-              eta={eta}
-              isReceiving={true}
-              onCancel={() => handleCancelById(id())}
-            />
-          );
-        }}
+      <Show when={receiveCards().length > 0}>
+        <div class="space-y-3">
+          <For each={receiveCards()}>
+            {(card) => (
+              <TransferProgress
+                title={card.title}
+                transferred={card.transferred}
+                total={card.total}
+                speed={card.speed}
+                eta={card.eta}
+                isReceiving={true}
+                isPending={card.isPending}
+                isCompleted={card.isCompleted}
+                onCancel={
+                  card.isCompleted || card.isPending
+                    ? undefined
+                    : () => handleCancelById(card.id)
+                }
+              />
+            )}
+          </For>
+        </div>
       </Show>
 
-      <Show
-        when={
-          globalStore.nearbyReceive.state().transferState === "receiving" &&
-          globalStore.nearbyReceive.state().transferProgress
-        }
-      >
-        <TransferProgress
-          transferred={
-            globalStore.nearbyReceive.state().transferProgress!
-              .transferred
-          }
-          total={
-            globalStore.nearbyReceive.state().transferProgress!.total
-          }
-          speed={
-            globalStore.nearbyReceive.state().transferProgress!.speed
-          }
-          eta={
-            globalStore.nearbyReceive.state().transferProgress!.eta
-          }
-          isReceiving={true}
-          onCancel={async () => {
-            globalStore.nearbyReceive.setIncomingRequest(null);
-            globalStore.nearbyReceive.setTransferState("idle");
-          }}
-        />
+      <Show when={nearbyReceiveCard()}>
+        {(card) => (
+          <TransferProgress
+            title={card().title}
+            transferred={card().transferred}
+            total={card().total}
+            speed={card().speed}
+            eta={card().eta}
+            isReceiving={true}
+            isPending={card().isPending}
+            onCancel={
+              card().isPending
+                ? undefined
+                : async () => {
+                    globalStore.nearbyReceive.setIncomingRequest(null);
+                    globalStore.nearbyReceive.setTransferState("idle");
+                  }
+            }
+          />
+        )}
       </Show>
     </div>
   );

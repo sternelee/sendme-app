@@ -1,11 +1,13 @@
 import { Component, Show, createEffect } from "solid-js";
-import { Copy, Share2, Smartphone, FileText, Loader2 } from "lucide-solid";
+import { Smartphone, FileText, Loader2 } from "lucide-solid";
 import QRCode from "qrcode";
 import { getDisplayName } from "@sendme/ui";
 import { i18n } from "@sendme/shared";
 import { useGlobalStore } from "~/lib/store";
 import { DropZone } from "~/lib/components/DropZone";
+import { ShareTicketCard } from "~/lib/components/ShareTicketCard";
 import { send_file, send_text } from "~/bindings";
+import { pickPrimarySendSelection } from "~/lib/transfer-ui";
 import { toast } from "solid-sonner";
 
 const t = i18n.t;
@@ -31,12 +33,17 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
   const isTextMode = () => globalStore.send.state().isTextMode;
 
   let debounceTimer: ReturnType<typeof setTimeout>;
+  let requestVersion = 0;
 
   async function autoGenerateTicket() {
     if (isTextMode() && !textContent().trim()) return;
     if (!isTextMode() && !sendPath()) return;
 
+    const currentRequest = ++requestVersion;
     globalStore.send.setIsSending(true);
+    globalStore.send.setTicket("");
+    globalStore.send.setTicketQrCode("");
+
     try {
       const result = isTextMode()
         ? await send_text({
@@ -47,59 +54,77 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
             path: sendPath(),
             ticket_type: "relay_and_addresses",
           });
+
+      const qrCode = await QRCode.toDataURL(result, {
+        errorCorrectionLevel: "H",
+        width: 280,
+      });
+
+      if (currentRequest !== requestVersion) return;
+
       globalStore.send.setTicket(result);
-      globalStore.send.setTicketQrCode(
-        await QRCode.toDataURL(result, {
-          errorCorrectionLevel: "H",
-          width: 280,
-        }),
-      );
+      globalStore.send.setTicketQrCode(qrCode);
+      props.setShowQrCode(!props.isMobile);
       props.onTransferComplete?.();
     } catch (e) {
+      if (currentRequest !== requestVersion) return;
       toast.error(t("send.failed") + `: ${e}`);
     } finally {
-      globalStore.send.setIsSending(false);
+      if (currentRequest === requestVersion) {
+        globalStore.send.setIsSending(false);
+      }
     }
   }
 
   function handleFilesSelected(
     files: Array<{ name: string; size: number; path: string }>,
   ) {
-    if (files.length > 0) {
-      globalStore.send.setPath(files[0].path);
-      globalStore.send.setFileSize(files[0].size);
-      globalStore.send.setTicket("");
-      globalStore.send.setIsTextMode(false);
-      globalStore.send.setIsFolder(false);
-      autoGenerateTicket();
+    const selection = pickPrimarySendSelection(files);
+    if (!selection.primary) return;
+
+    requestVersion += 1;
+    globalStore.send.setPath(selection.primary.path);
+    globalStore.send.setFileSize(selection.primary.size);
+    globalStore.send.setTicket("");
+    globalStore.send.setTicketQrCode("");
+    globalStore.send.setIsTextMode(false);
+    globalStore.send.setIsFolder(false);
+    props.setShowQrCode(!props.isMobile);
+
+    if (selection.overflowCount > 0) {
+      toast.info(t("send.firstFileOnly"));
     }
+
+    void autoGenerateTicket();
   }
 
   function handleRemoveFile() {
+    requestVersion += 1;
     globalStore.send.setPath("");
     globalStore.send.setFileSize(0);
     globalStore.send.setTicket("");
     globalStore.send.setTicketQrCode("");
+    globalStore.send.setIsSending(false);
   }
 
   function handleTextInput(value: string) {
+    requestVersion += 1;
     globalStore.send.setTextContent(value);
     globalStore.send.setTicket("");
     globalStore.send.setTicketQrCode("");
+    globalStore.send.setIsSending(false);
     clearTimeout(debounceTimer);
     if (value.trim()) {
-      debounceTimer = setTimeout(() => autoGenerateTicket(), 800);
+      debounceTimer = setTimeout(() => void autoGenerateTicket(), 800);
     }
   }
 
   createEffect(() => {
-    // Cleanup timer on unmount
     return () => clearTimeout(debounceTimer);
   });
 
   return (
     <div class="space-y-4">
-      {/* Input area */}
       <Show
         when={isTextMode()}
         fallback={
@@ -130,15 +155,20 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
         />
       </Show>
 
-      {/* Selected file summary (always visible when file selected) */}
       <Show when={!isTextMode() && sendPath()}>
-        <div class="flex items-center gap-3 rounded-2xl border border-base-300/50 bg-base-200/40 px-4 py-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <div class="border-base-300/50 bg-base-200/40 flex items-center gap-3 rounded-xl border px-4 py-3">
+          <div class="bg-primary/10 text-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
             <FileText size={18} />
           </div>
           <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-medium">{getDisplayName(sendPath())}</p>
-            <p class="text-xs opacity-50">{sendFileSize() > 0 ? `${(sendFileSize() / 1024 / 1024).toFixed(2)} MB` : ""}</p>
+            <p class="truncate text-sm font-medium">
+              {getDisplayName(sendPath())}
+            </p>
+            <p class="text-xs opacity-50">
+              {sendFileSize() > 0
+                ? `${(sendFileSize() / 1024 / 1024).toFixed(2)} MB`
+                : ""}
+            </p>
           </div>
           <button
             onClick={handleRemoveFile}
@@ -149,60 +179,36 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
         </div>
       </Show>
 
-      {/* Generating state */}
       <Show when={isSending() && !sendTicket()}>
         <div class="surface-card flex items-center justify-center gap-3 py-8">
-          <Loader2 size={20} class="animate-spin text-primary" />
-          <span class="text-sm opacity-60">{t("send.title")}...</span>
+          <Loader2 size={20} class="text-primary animate-spin" />
+          <span class="text-sm opacity-60">{t("send.sending")}</span>
         </div>
       </Show>
 
-      {/* Share panel - auto-shown after ticket generated */}
       <Show when={sendTicket()}>
         <div class="surface-card space-y-4 p-5">
           <div class="flex items-center gap-2">
             <Smartphone size={16} class="text-success" />
-            <p class="text-sm font-semibold">{t("send.title")}</p>
-          </div>
-
-          <Show when={sendTicketQrCode()}>
-            <div class="flex justify-center">
-              <div class="rounded-xl bg-white p-3">
-                <img
-                  src={sendTicketQrCode()}
-                  alt="QR"
-                  class="h-48 w-48"
-                />
-              </div>
+            <div>
+              <p class="text-sm font-semibold">{t("send.ticketReady")}</p>
+              <p class="text-base-content/60 mt-1 text-xs leading-5">
+                {t("send.readyHint")}
+              </p>
             </div>
-          </Show>
-
-          <div class="bg-base-300/50 overflow-hidden rounded-xl p-3">
-            <code class="text-primary font-mono text-xs break-all">
-              {sendTicket()}
-            </code>
           </div>
 
-          <div class="flex gap-2">
-            <button
-              onClick={() => props.onCopy(sendTicket())}
-              class="btn btn-outline btn-sm flex-1 rounded-xl"
-            >
-              <Copy size={14} /> {t("common.copy")}
-            </button>
-            <Show
-              when={
-                typeof navigator !== "undefined" && "share" in navigator
-              }
-            >
-              <button
-                onClick={() => props.onShare(sendTicket())}
-                class="btn btn-outline btn-sm flex-1 rounded-xl"
-              >
-                <Share2 size={14} /> {t("common.share")}
-              </button>
-            </Show>
-          </div>
+          <ShareTicketCard
+            ticket={sendTicket()}
+            qrCode={sendTicketQrCode()}
+            isMobile={props.isMobile}
+            showQrCode={props.showQrCode}
+            setShowQrCode={props.setShowQrCode}
+            title={t("send.ticketReady")}
+            subtitle={t("send.readyHint")}
+            onCopy={props.onCopy}
+            onShare={props.onShare}
+          />
         </div>
       </Show>
     </div>

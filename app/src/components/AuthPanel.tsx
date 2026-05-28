@@ -43,7 +43,7 @@ export default function AuthPanel(props: AuthPanelProps) {
     <div class="surface-card space-y-4 p-5">
       <div class="flex items-center gap-3">
         <div class="avatar placeholder">
-          <div class="bg-primary text-primary-content flex w-12 items-center justify-center rounded-2xl">
+          <div class="bg-primary text-primary-content flex w-12 items-center justify-center rounded-xl">
             {props.icon ?? <User size={20} />}
           </div>
         </div>
@@ -113,7 +113,7 @@ export default function AuthPanel(props: AuthPanelProps) {
       </div>
 
       <button
-        class="btn btn-primary w-full rounded-2xl"
+        class="btn btn-primary w-full rounded-xl"
         disabled={authLoading()}
         onClick={handleSubmit}
       >
@@ -151,13 +151,13 @@ export default function AuthPanel(props: AuthPanelProps) {
 
       <div class="grid grid-cols-2 gap-3">
         <button
-          class="btn btn-outline gap-2 rounded-2xl"
+          class="btn btn-outline gap-2 rounded-xl"
           onClick={() => auth.signIn("github")}
         >
           GitHub
         </button>
         <button
-          class="btn btn-outline gap-2 rounded-2xl"
+          class="btn btn-outline gap-2 rounded-xl"
           onClick={() => auth.signIn("google")}
         >
           Google

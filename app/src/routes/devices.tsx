@@ -1,6 +1,7 @@
 import { createSignal, createEffect, onCleanup, Show, For } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
 import { get_cloud_presence_state, send_file, send_text, type CloudDevice } from "~/bindings";
+import { getTransferListClass } from "~/lib/transfer-ui";
 import { useAuth } from "~/lib/auth";
 import { getPersistentDeviceId } from "~/lib/cloud-api";
 import { useFriends } from "~/lib/friends";
@@ -134,7 +135,7 @@ export default function DevicesPage(props: DevicesPageProps) {
         <Show when={!isLoading()}>
           <Show when={otherDevices().length > 0 && !hasSendContent()}>
             <div class="rounded-xl border border-base-300/50 bg-base-200/40 px-4 py-3 text-center text-sm opacity-70">
-              Select a file in the Send panel above to share with your devices
+              {t("send.selectSomethingFirst")}
             </div>
           </Show>
           <Show
@@ -149,7 +150,7 @@ export default function DevicesPage(props: DevicesPageProps) {
               </div>
             }
           >
-            <div class="space-y-3">
+            <div class={getTransferListClass()}>
               <For each={otherDevices()}>
                 {(device) => {
                   const PlatformIcon = getPlatformIcon(device.platform);

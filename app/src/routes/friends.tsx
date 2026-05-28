@@ -1,10 +1,24 @@
-import { createSignal, createMemo, createEffect, onMount, onCleanup, Show, For } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createEffect,
+  onMount,
+  onCleanup,
+  Show,
+  For,
+} from "solid-js";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "solid-sonner";
 import AuthPanel from "~/components/AuthPanel";
-import { get_cloud_presence_state, send_file, send_text, type CloudFriend } from "~/bindings";
+import {
+  get_cloud_presence_state,
+  send_file,
+  send_text,
+  type CloudFriend,
+} from "~/bindings";
 import { useAuth } from "~/lib/auth";
 import { useFriends, type Friend } from "~/lib/friends";
+import { getTransferListClass } from "~/lib/transfer-ui";
 import { i18n } from "@sendme/shared";
 import {
   Users,
@@ -55,19 +69,15 @@ function FriendRequestToast(props: {
   onDecline: () => void;
 }) {
   return (
-    <div class="flex flex-col gap-2 min-w-[280px]">
-      <p class="font-medium text-sm">{t("friends.incomingRequestTitle", { name: props.name })}</p>
+    <div class="flex min-w-[280px] flex-col gap-2">
+      <p class="text-sm font-medium">
+        {t("friends.incomingRequestTitle", { name: props.name })}
+      </p>
       <div class="flex gap-2">
-        <button
-          onClick={props.onAccept}
-          class="btn btn-success btn-xs flex-1"
-        >
+        <button onClick={props.onAccept} class="btn btn-success btn-xs flex-1">
           <Check size={14} /> {t("friends.accept")}
         </button>
-        <button
-          onClick={props.onDecline}
-          class="btn btn-ghost btn-xs flex-1"
-        >
+        <button onClick={props.onDecline} class="btn btn-ghost btn-xs flex-1">
           <X size={14} /> {t("friends.decline")}
         </button>
       </div>
@@ -87,25 +97,28 @@ export default function FriendsPage(props: FriendsPageProps) {
 
   const [email, setEmail] = createSignal("");
   const [isAdding, setIsAdding] = createSignal(false);
-  const [activeTab, setActiveTab] = createSignal<"accepted" | "pending">("accepted");
+  const [activeTab, setActiveTab] = createSignal<"accepted" | "pending">(
+    "accepted",
+  );
   const [friends, setFriends] = createSignal<Friend[]>([]);
   const [isLoading, setIsLoading] = createSignal(false);
   const [isRefreshing, setIsRefreshing] = createSignal(false);
   const [sendingTo, setSendingTo] = createSignal<string | null>(null);
 
   const hasSendContent = () =>
-    (props.isTextMode && props.textContent?.trim()) || (!props.isTextMode && props.sendPath);
+    (props.isTextMode && props.textContent?.trim()) ||
+    (!props.isTextMode && props.sendPath);
 
   // Check if user is signed in
   const isLoggedIn = () => auth.isSignedIn();
 
   // Computed friends lists
   const acceptedFriends = createMemo(() =>
-    friends().filter((f) => f.status === "accepted")
+    friends().filter((f) => f.status === "accepted"),
   );
 
   const pendingFriends = createMemo(() =>
-    friends().filter((f) => f.status === "pending")
+    friends().filter((f) => f.status === "pending"),
   );
 
   // Reset toast notification state on fresh mount
@@ -194,10 +207,13 @@ export default function FriendsPage(props: FriendsPageProps) {
     );
     unsubscribeFriends = unlistenFriends;
 
-    const unlistenErrors = await listen<string>("cloud_presence_error", (event) => {
-      console.error("[FriendsPage] backend presence error:", event.payload);
-      toast.error(event.payload);
-    });
+    const unlistenErrors = await listen<string>(
+      "cloud_presence_error",
+      (event) => {
+        console.error("[FriendsPage] backend presence error:", event.payload);
+        toast.error(event.payload);
+      },
+    );
     unsubscribeErrors = unlistenErrors;
 
     try {
@@ -208,7 +224,10 @@ export default function FriendsPage(props: FriendsPageProps) {
         await loadFriends();
       }
     } catch (error) {
-      console.error("[FriendsPage] failed to get backend presence snapshot:", error);
+      console.error(
+        "[FriendsPage] failed to get backend presence snapshot:",
+        error,
+      );
       await loadFriends();
     }
 
@@ -305,14 +324,21 @@ export default function FriendsPage(props: FriendsPageProps) {
     try {
       const ticketType = "relay_and_addresses";
       const ticket = props.isTextMode
-        ? await send_text({ text: props.textContent!.trim(), ticket_type: ticketType })
+        ? await send_text({
+            text: props.textContent!.trim(),
+            ticket_type: ticketType,
+          })
         : await send_file({ path: props.sendPath!, ticket_type: ticketType });
 
       const filename = props.isTextMode
         ? undefined
         : props.sendPath?.split("/").pop() || undefined;
 
-      await friendsService.sendTicketToFriend(friend.friend.id, ticket, filename);
+      await friendsService.sendTicketToFriend(
+        friend.friend.id,
+        ticket,
+        filename,
+      );
       toast.success(t("friends.ticketSent", { name: friend.friend.name }));
     } catch (error) {
       console.error("Failed to send to friend:", error);
@@ -368,11 +394,11 @@ export default function FriendsPage(props: FriendsPageProps) {
         {/* Add Friend Section */}
         <div class="card bg-base-200 shadow-xl">
           <div class="card-body p-4">
-            <h3 class="card-title text-lg flex items-center gap-2">
+            <h3 class="card-title flex items-center gap-2 text-lg">
               <UserPlus size={20} />
               {t("friends.addFriend")}
             </h3>
-            <div class="flex gap-2 mt-2">
+            <div class="mt-2 flex gap-2">
               <div class="join flex-1">
                 <span class="join-item btn btn-disabled">
                   <Mail size={16} />
@@ -430,69 +456,81 @@ export default function FriendsPage(props: FriendsPageProps) {
 
         <Show when={activeTab() === "accepted" && !isLoading()}>
           <Show when={acceptedFriends().length > 0 && !hasSendContent()}>
-            <div class="rounded-xl border border-base-300/50 bg-base-200/40 px-4 py-3 text-center text-sm opacity-70">
+            <div class="border-base-300/50 bg-base-200/40 rounded-xl border px-4 py-3 text-center text-sm opacity-70">
               Select a file in the Send panel above to share with friends
             </div>
           </Show>
           <Show
             when={acceptedFriends().length > 0}
             fallback={
-              <div class="text-center py-12 text-base-content/50">
+              <div class="text-base-content/50 py-12 text-center">
                 <Users size={48} class="mx-auto mb-3 opacity-50" />
                 <p class="text-sm">{t("friends.noFriends")}</p>
-                <p class="text-xs mt-1 text-base-content/40">
+                <p class="text-base-content/40 mt-1 text-xs">
                   {t("friends.addFirst")}
                 </p>
               </div>
             }
           >
-            <div class="space-y-3">
+            <div class={getTransferListClass()}>
               <For each={acceptedFriends()}>
                 {(friend) => {
                   const hasOnlineDevice = () =>
-                    friend.friendDevices && friend.friendDevices.some((d) => d.online);
+                    friend.friendDevices &&
+                    friend.friendDevices.some((d) => d.online);
 
                   return (
-                    <div class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="card bg-base-200 shadow-sm transition-shadow hover:shadow-md">
                       <div class="card-body p-4">
                         <div class="flex items-center gap-3">
                           {/* Avatar */}
                           <div class="avatar placeholder">
-                            <div class="bg-primary text-primary-content rounded-full w-12 h-12 flex items-center justify-center">
+                            <div class="bg-primary text-primary-content flex h-12 w-12 items-center justify-center rounded-full">
                               <Show
                                 when={friend.friend.image}
                                 fallback={
                                   <span class="text-lg">
-                                    {friend.friend.name?.charAt(0).toUpperCase() || "?"}
+                                    {friend.friend.name
+                                      ?.charAt(0)
+                                      .toUpperCase() || "?"}
                                   </span>
                                 }
                               >
                                 <img
                                   src={friend.friend.image!}
                                   alt={friend.friend.name}
-                                  class="w-full h-full object-cover rounded-full"
+                                  class="h-full w-full rounded-full object-cover"
                                 />
                               </Show>
                             </div>
                           </div>
 
                           {/* Info */}
-                          <div class="flex-1 min-w-0">
-                            <h4 class="font-semibold truncate">
+                          <div class="min-w-0 flex-1">
+                            <h4 class="truncate font-semibold">
                               {friend.friend.name || "Unknown"}
                             </h4>
-                            <p class="text-xs text-base-content/60 truncate">
+                            <p class="text-base-content/60 truncate text-xs">
                               {friend.friend.email || ""}
                             </p>
-                            <Show when={friend.friendDevices && friend.friendDevices.length > 0}>
-                              <div class="flex items-center gap-1 mt-1 text-xs text-base-content/40">
+                            <Show
+                              when={
+                                friend.friendDevices &&
+                                friend.friendDevices.length > 0
+                              }
+                            >
+                              <div class="text-base-content/40 mt-1 flex items-center gap-1 text-xs">
                                 <For each={friend.friendDevices.slice(0, 3)}>
                                   {(device) => {
-                                    const PlatformIcon = getPlatformIcon(device.platform);
+                                    const PlatformIcon = getPlatformIcon(
+                                      device.platform,
+                                    );
                                     return (
                                       <span class="flex items-center gap-0.5">
                                         <PlatformIcon size={12} />
-                                        <span class="text-[10px]">{device.name}</span>
+                                        <span class="text-[10px]">
+                                          {device.name}
+                                        </span>
                                       </span>
                                     );
                                   }}
@@ -505,20 +543,27 @@ export default function FriendsPage(props: FriendsPageProps) {
                           <div class="flex items-center gap-2">
                             <div
                               class={`badge badge-sm ${
-                                hasOnlineDevice() ? "badge-success gap-1" : "badge-ghost gap-1"
+                                hasOnlineDevice()
+                                  ? "badge-success gap-1"
+                                  : "badge-ghost gap-1"
                               }`}
                             >
                               <div
-                                class={`w-1.5 h-1.5 rounded-full ${
-                                  hasOnlineDevice() ? "bg-white" : "bg-base-content/40"
+                                class={`h-1.5 w-1.5 rounded-full ${
+                                  hasOnlineDevice()
+                                    ? "bg-white"
+                                    : "bg-base-content/40"
                                 }`}
                               />
-                              {hasOnlineDevice() ? t("friends.online") : t("friends.offline")}
+                              {hasOnlineDevice()
+                                ? t("friends.online")
+                                : t("friends.offline")}
                             </div>
 
                             <Show when={hasOnlineDevice()}>
                               {(() => {
-                                const isSending = () => sendingTo() === friend.friend.id;
+                                const isSending = () =>
+                                  sendingTo() === friend.friend.id;
                                 return (
                                   <button
                                     onClick={() => handleSendToFriend(friend)}
@@ -561,13 +606,13 @@ export default function FriendsPage(props: FriendsPageProps) {
           <Show
             when={pendingFriends().length > 0}
             fallback={
-              <div class="text-center py-12 text-base-content/50">
+              <div class="text-base-content/50 py-12 text-center">
                 <Clock size={48} class="mx-auto mb-3 opacity-50" />
                 <p class="text-sm">{t("friends.noPending")}</p>
               </div>
             }
           >
-            <div class="space-y-3">
+            <div class={getTransferListClass()}>
               <For each={pendingFriends()}>
                 {(friend) => {
                   const isIncoming = friend.friendUserId === auth.user()?.id;
@@ -578,39 +623,45 @@ export default function FriendsPage(props: FriendsPageProps) {
                         <div class="flex items-center gap-3">
                           {/* Avatar */}
                           <div class="avatar placeholder">
-                            <div class={`rounded-full w-12 h-12 flex items-center justify-center ${
-                              isIncoming
-                                ? "bg-secondary text-secondary-content"
-                                : "bg-warning text-warning-content"
-                            }`}>
+                            <div
+                              class={`flex h-12 w-12 items-center justify-center rounded-full ${
+                                isIncoming
+                                  ? "bg-secondary text-secondary-content"
+                                  : "bg-warning text-warning-content"
+                              }`}
+                            >
                               <Show
                                 when={friend.friend.image}
                                 fallback={
                                   <span class="text-lg">
-                                    {friend.friend.name?.charAt(0).toUpperCase() || "?"}
+                                    {friend.friend.name
+                                      ?.charAt(0)
+                                      .toUpperCase() || "?"}
                                   </span>
                                 }
                               >
                                 <img
                                   src={friend.friend.image!}
                                   alt={friend.friend.name}
-                                  class="w-full h-full object-cover rounded-full"
+                                  class="h-full w-full rounded-full object-cover"
                                 />
                               </Show>
                             </div>
                           </div>
 
                           {/* Info */}
-                          <div class="flex-1 min-w-0">
-                            <h4 class="font-semibold truncate">
+                          <div class="min-w-0 flex-1">
+                            <h4 class="truncate font-semibold">
                               {friend.friend.name || "Unknown"}
                             </h4>
-                            <p class="text-xs text-base-content/60 truncate">
+                            <p class="text-base-content/60 truncate text-xs">
                               {friend.friend.email || ""}
                             </p>
-                            <div class={`badge badge-sm gap-1 mt-1 ${
-                              isIncoming ? "badge-secondary" : "badge-warning"
-                            }`}>
+                            <div
+                              class={`badge badge-sm mt-1 gap-1 ${
+                                isIncoming ? "badge-secondary" : "badge-warning"
+                              }`}
+                            >
                               <Clock size={12} />
                               {isIncoming
                                 ? t("friends.incomingRequest")

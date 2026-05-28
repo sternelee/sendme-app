@@ -30,8 +30,7 @@ export const HistoryPanel: Component<HistoryPanelProps> = (props) => {
       .filter((t) => t.status === "completed")
       .sort(
         (a, b) =>
-          (b.completed_at ?? b.created_at) -
-          (a.completed_at ?? a.created_at),
+          (b.completed_at ?? b.created_at) - (a.completed_at ?? a.created_at),
       ),
   );
 
@@ -179,14 +178,18 @@ export const HistoryPanel: Component<HistoryPanelProps> = (props) => {
                         onChange={() => toggleHistorySelection(transfer.id)}
                       />
                     </label>
-                    <div class={`flex h-10 w-10 items-center justify-center rounded-xl ${isSend() ? 'bg-primary/12 text-primary' : 'bg-secondary/12 text-secondary'}`}>
+                    <div
+                      class={`flex h-10 w-10 items-center justify-center rounded-xl ${isSend() ? "bg-primary/12 text-primary" : "bg-secondary/12 text-secondary"}`}
+                    >
                       <FileIcon size={18} />
                     </div>
 
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center gap-2">
-                        <span class={`badge badge-xs ${isSend() ? 'badge-primary' : 'badge-secondary'}`}>
-                          {isSend() ? 'Sent' : 'Received'}
+                        <span
+                          class={`badge badge-xs ${isSend() ? "badge-primary" : "badge-secondary"}`}
+                        >
+                          {isSend() ? "Sent" : "Received"}
                         </span>
                         <button
                           onClick={() =>
@@ -209,9 +212,7 @@ export const HistoryPanel: Component<HistoryPanelProps> = (props) => {
                           <span>· {formatFileSize(transfer.file_size!)}</span>
                         </Show>
                         <Show when={transfer.duration_ms != null}>
-                          <span>
-                            · {formatDuration(transfer.duration_ms!)}
-                          </span>
+                          <span>· {formatDuration(transfer.duration_ms!)}</span>
                         </Show>
                       </div>
                       <p
@@ -222,7 +223,7 @@ export const HistoryPanel: Component<HistoryPanelProps> = (props) => {
                       </p>
                     </div>
 
-                    <div class="flex items-center gap-1 shrink-0">
+                    <div class="flex shrink-0 items-center gap-1">
                       <Show when={isSend() && transfer.ticket}>
                         <button
                           onClick={() => props.onReshare?.(transfer)}

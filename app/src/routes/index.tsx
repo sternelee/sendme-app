@@ -10,23 +10,16 @@ import {
 import { platform } from "@tauri-apps/plugin-os";
 import { listen } from "@tauri-apps/api/event";
 
-
 import { Motion, Presence } from "solid-motionone";
-import {
-  Send,
-  History,
-  Settings,
-  X,
-  Copy,
-  Share2,
-  ChevronDown,
-} from "lucide-solid";
+import { Send, History, Settings, X } from "lucide-solid";
 import { Toaster, toast } from "solid-sonner";
 import { i18n } from "@sendme/shared";
 
 import { requestCloudApi, getCloudApiUrl } from "~/lib/cloud-api";
 import { useGlobalStore } from "~/lib/store";
-import { IncomingRequestCard } from "~/lib/components/IncomingRequestCard";
+import { IncomingReminderStack } from "~/lib/components/IncomingReminderStack";
+import { ShareTicketCard } from "~/lib/components/ShareTicketCard";
+import type { PendingReceiveCard } from "~/lib/transfer-ui";
 import { SplashScreen } from "~/lib/components/SplashScreen";
 import { TransferTab } from "~/components/TransferTab";
 import { HistoryPanel } from "~/components/HistoryPanel";
@@ -34,7 +27,6 @@ import { SettingsPanel } from "~/components/SettingsPanel";
 import {
   get_transfers,
   start_nearby_discovery,
-
   stop_nearby_discovery,
   accept_incoming,
   decline_incoming,
@@ -45,12 +37,18 @@ import {
   type CloudTicket,
 } from "~/bindings";
 import { copyToClipboard, nativeShare } from "~/lib/utils";
-import type { Transfer, Theme, Tab, TransferMode, ShareSubTab } from "~/lib/types";
+import type {
+  ProgressUpdate,
+  ShareSubTab,
+  Tab,
+  Theme,
+  Transfer,
+  TransferMode,
+} from "~/lib/types";
 
 const t = i18n.t;
 
 export default function MainPage() {
-
   const globalStore = useGlobalStore();
 
   const [isMobile, setIsMobile] = createSignal(false);
@@ -61,6 +59,9 @@ export default function MainPage() {
   const [transferMode, setTransferMode] = createSignal<TransferMode>("send");
   const [shareSubTab, setShareSubTab] = createSignal<ShareSubTab>("nearby");
   const [showQrCode, setShowQrCode] = createSignal(false);
+  const [pendingReceiveCards, setPendingReceiveCards] = createSignal<
+    PendingReceiveCard[]
+  >([]);
   const [transfers, setTransfers] = createSignal<Transfer[]>([]);
 
   function setTransferView(mode: TransferMode) {
@@ -115,11 +116,10 @@ export default function MainPage() {
     globalStore.send.setShowReshareModal(true);
   }
 
-
-
-
-
-
+  function openReceiveWorkspace() {
+    setTransferView("receive");
+    setActiveTab("transfer");
+  }
 
   async function handleAcceptNearbyRequest() {
     const request = globalStore.nearbyReceive.state().incomingRequest;
@@ -130,8 +130,7 @@ export default function MainPage() {
         globalStore.receive.state().outputDir || undefined,
       );
       globalStore.nearbyReceive.setTransferState("receiving");
-      setTransferView("receive");
-      setActiveTab("transfer");
+      openReceiveWorkspace();
     } catch (e) {
       toast.error(`${t("nearby.acceptFailed")}: ${e}`);
     }
@@ -149,50 +148,62 @@ export default function MainPage() {
     }
   }
 
-  async function handleAcceptCloudTicket() {
-    const ticket = globalStore.cloudReceive.state().currentTicket;
+  async function handleAcceptCloudTicket(ticketId: string) {
+    const ticket = globalStore.cloudReceive
+      .state()
+      .tickets.find((item) => item.id === ticketId);
     if (!ticket) return;
+
     try {
+      globalStore.cloudReceive.setCurrentTicket(ticket);
       globalStore.cloudReceive.setTransferState("receiving");
-      await accept_cloud_ticket(
+      const transferId = await accept_cloud_ticket(
         ticket.id,
         globalStore.receive.state().outputDir || undefined,
       );
+      setPendingReceiveCards((prev) => [
+        {
+          id: transferId,
+          title:
+            ticket.filename?.trim() || ticket.senderName?.trim() || ticket.id,
+          total: ticket.fileSize,
+          lastTime: Date.now(),
+        },
+        ...prev.filter((item) => item.id !== transferId),
+      ]);
+      globalStore.cloudReceive.setTickets(
+        globalStore.cloudReceive
+          .state()
+          .tickets.filter((item) => item.id !== ticket.id),
+      );
       globalStore.cloudReceive.setCurrentTicket(null);
       globalStore.cloudReceive.setTransferState("idle");
-      setTransferView("receive");
-      setActiveTab("transfer");
-      toast.success(t("nearby.transferComplete"));
-      const ticketId = ticket.id;
-      requestCloudApi(
-        getCloudApiUrl(`/api/tickets/${ticketId}/receive`),
-        {
-          method: "POST",
-        },
-      ).catch(() => {});
+      openReceiveWorkspace();
+      toast.success(t("receive.connecting"));
+      requestCloudApi(getCloudApiUrl(`/api/tickets/${ticket.id}/receive`), {
+        method: "POST",
+      }).catch(() => {});
     } catch (e) {
       globalStore.cloudReceive.setError(String(e));
+      globalStore.cloudReceive.setCurrentTicket(null);
       globalStore.cloudReceive.setTransferState("idle");
-      toast.error(`Failed to receive file: ${e}`);
+      toast.error(`${t("receive.receiveError")}: ${e}`);
     }
   }
 
-  async function handleDeclineCloudTicket() {
-    const ticket = globalStore.cloudReceive.state().currentTicket;
-    if (!ticket) return;
+  async function handleDeclineCloudTicket(ticketId: string) {
     try {
-      await decline_cloud_ticket(ticket.id);
-      globalStore.cloudReceive.setCurrentTicket(null);
-      globalStore.cloudReceive.setTransferState("idle");
+      await decline_cloud_ticket(ticketId);
       const remaining = globalStore.cloudReceive
         .state()
-        .tickets.filter((t) => t.id !== ticket.id);
-      if (remaining.length > 0) {
-        globalStore.cloudReceive.setCurrentTicket(remaining[0]);
-        globalStore.cloudReceive.setTransferState("review");
-      }
+        .tickets.filter((item) => item.id !== ticketId);
+      globalStore.cloudReceive.setTickets(remaining);
+      globalStore.cloudReceive.setCurrentTicket(remaining[0] ?? null);
+      globalStore.cloudReceive.setTransferState(
+        remaining.length > 0 ? "review" : "idle",
+      );
     } catch (e) {
-      toast.error(`Failed to decline: ${e}`);
+      toast.error(`${t("receive.dismissFailed")}: ${e}`);
     }
   }
 
@@ -210,7 +221,7 @@ export default function MainPage() {
 
     setIsInitializing(false);
 
-    const withTimeout = <T, >(p: Promise<T>, ms: number, label: string) =>
+    const withTimeout = <T,>(p: Promise<T>, ms: number, label: string) =>
       Promise.race([
         p,
         new Promise<T>((_, reject) =>
@@ -225,9 +236,7 @@ export default function MainPage() {
       start_nearby_discovery(),
       5000,
       "start_nearby_discovery",
-    ).catch((e) =>
-      console.warn("[init] start_nearby_discovery failed:", e),
-    );
+    ).catch((e) => console.warn("[init] start_nearby_discovery failed:", e));
 
     const unlistenNearby = await listen<IncomingRequest>(
       "incoming_nearby_request",
@@ -283,9 +292,7 @@ export default function MainPage() {
           globalStore.nearbyReceive.setIncomingRequest(null);
           globalStore.nearbyReceive.setTransferProgress(null);
           globalStore.nearbyReceive.setTransferState("idle");
-          toast.success(
-            payload.message ?? t("nearby.transferComplete"),
-          );
+          toast.success(payload.message ?? t("nearby.transferComplete"));
           return;
         }
         if (payload.state === "error") {
@@ -295,10 +302,17 @@ export default function MainPage() {
           globalStore.nearbyReceive.setError(
             payload.message ?? t("nearby.transferFailed"),
           );
-          toast.error(
-            payload.message ?? t("nearby.transferFailed"),
-          );
+          toast.error(payload.message ?? t("nearby.transferFailed"));
         }
+      },
+    );
+    const unlistenProgress = await listen<ProgressUpdate>(
+      "progress",
+      (event) => {
+        const transferId = event.payload.data.transfer_id;
+        setPendingReceiveCards((prev) =>
+          prev.filter((item) => item.id !== transferId),
+        );
       },
     );
 
@@ -309,10 +323,14 @@ export default function MainPage() {
           (t) => (t.status ?? "pending") === "pending",
         );
         globalStore.cloudReceive.setTickets(tickets);
-        if (
-          tickets.length > 0 &&
-          globalStore.cloudReceive.state().transferState === "idle"
-        ) {
+        if (tickets.length === 0) {
+          globalStore.cloudReceive.setCurrentTicket(null);
+          if (globalStore.cloudReceive.state().transferState !== "receiving") {
+            globalStore.cloudReceive.setTransferState("idle");
+          }
+          return;
+        }
+        if (globalStore.cloudReceive.state().transferState !== "receiving") {
           globalStore.cloudReceive.setCurrentTicket(tickets[0]);
           globalStore.cloudReceive.setTransferState("review");
         }
@@ -325,6 +343,7 @@ export default function MainPage() {
       unlistenNearbyDecline();
       unlistenNearbyReceive();
       unlistenCloudTickets();
+      unlistenProgress();
       stop_nearby_discovery().catch(() => {});
     });
   });
@@ -347,24 +366,26 @@ export default function MainPage() {
       </Show>
 
       <Show when={!isMobile()}>
-        <header class="sticky top-0 z-40 border-b border-base-300/60 bg-base-100/90 backdrop-blur-xl">
+        <header class="border-base-300/60 bg-base-100/90 sticky top-0 z-40 border-b backdrop-blur-xl">
           <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-            <h1 class="text-lg font-bold tracking-tight">{t("common.appName")}</h1>
+            <h1 class="text-lg font-bold tracking-tight">
+              {t("common.appName")}
+            </h1>
             <div class="flex gap-1">
               <button
-                class={`btn btn-sm rounded-xl ${activeTab() === "transfer" ? "btn-primary" : "btn-ghost"}`}
+                class={`btn btn-sm rounded-md ${activeTab() === "transfer" ? "btn-primary" : "btn-ghost"}`}
                 onClick={() => setActiveTab("transfer")}
               >
                 {t("common.transfer")}
               </button>
               <button
-                class={`btn btn-sm rounded-xl ${activeTab() === "history" ? "btn-primary" : "btn-ghost"}`}
+                class={`btn btn-sm rounded-md ${activeTab() === "history" ? "btn-primary" : "btn-ghost"}`}
                 onClick={() => setActiveTab("history")}
               >
                 {t("common.history")}
               </button>
               <button
-                class={`btn btn-sm rounded-xl ${activeTab() === "settings" ? "btn-primary" : "btn-ghost"}`}
+                class={`btn btn-sm rounded-md ${activeTab() === "settings" ? "btn-primary" : "btn-ghost"}`}
                 onClick={() => setActiveTab("settings")}
               >
                 {t("common.settings")}
@@ -374,7 +395,9 @@ export default function MainPage() {
         </header>
       </Show>
 
-      <main class={`safe-area-top-offset mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-auto px-4 ${isMobile() ? "pb-28" : "pb-8"}`}>
+      <main
+        class={`safe-area-top-offset mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-auto px-4 ${isMobile() ? "pb-28" : "pb-8"}`}
+      >
         <Presence exitBeforeEnter>
           <Switch>
             <Match when={activeTab() === "transfer"}>
@@ -394,6 +417,7 @@ export default function MainPage() {
                   setShowQrCode={setShowQrCode}
                   onCopy={copyToClipboard}
                   onShare={nativeShare}
+                  pendingReceiveCards={pendingReceiveCards()}
                   onTransferComplete={loadTransfers}
                 />
               </Motion.div>
@@ -427,109 +451,16 @@ export default function MainPage() {
           </Switch>
         </Presence>
       </main>
-
-      {/* Nearby Request Modal */}
-      <Show when={globalStore.nearbyReceive.state().incomingRequest}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div class="card bg-base-100 w-full max-w-md shadow-2xl">
-            <div class="card-body gap-3">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-base font-bold">
-                    {t("nearby.transferRequest")}
-                  </h3>
-                  <p class="text-sm opacity-60">
-                    {t("nearby.requestModalHint")}
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setTransferView("receive");
-                    setActiveTab("transfer");
-                  }}
-                  class="btn btn-ghost btn-sm"
-                >
-                  {t("nearby.openReceive")}
-                </button>
-              </div>
-
-              <IncomingRequestCard
-                request={
-                  globalStore.nearbyReceive.state().incomingRequest!
-                }
-                onAccept={handleAcceptNearbyRequest}
-                onDecline={handleDeclineNearbyRequest}
-                disabled={
-                  globalStore.nearbyReceive.state().transferState !==
-                  "review"
-                }
-                state={
-                  globalStore.nearbyReceive.state().transferState ===
-                  "receiving"
-                    ? "accepting"
-                    : "pending"
-                }
-              />
-            </div>
-          </div>
-        </div>
-      </Show>
-
-      {/* Cloud Ticket Modal */}
-      <Show when={globalStore.cloudReceive.state().currentTicket}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div class="card bg-base-100 w-full max-w-md shadow-2xl">
-            <div class="card-body gap-3">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-base font-bold">
-                    ☁️ {t("nearby.transferRequest")}
-                  </h3>
-                  <p class="text-sm opacity-60">
-                    {globalStore.cloudReceive.state().currentTicket
-                      ?.senderName || "Someone"}{" "}
-                    wants to send you a file
-                  </p>
-                </div>
-              </div>
-
-              <IncomingRequestCard
-                request={{
-                  id: globalStore.cloudReceive.state().currentTicket!.id,
-                  senderName:
-                    globalStore.cloudReceive.state().currentTicket
-                      ?.senderName || "Unknown",
-                  files: [
-                    {
-                      name:
-                        globalStore.cloudReceive.state().currentTicket
-                          ?.filename || "file",
-                      size:
-                        globalStore.cloudReceive.state().currentTicket
-                          ?.fileSize || 0,
-                    },
-                  ],
-                  totalSize:
-                    globalStore.cloudReceive.state().currentTicket
-                      ?.fileSize || 0,
-                }}
-                onAccept={handleAcceptCloudTicket}
-                onDecline={handleDeclineCloudTicket}
-                disabled={
-                  globalStore.cloudReceive.state().transferState !==
-                  "review"
-                }
-                state={
-                  globalStore.cloudReceive.state().transferState ===
-                  "receiving"
-                    ? "accepting"
-                    : "pending"
-                }
-              />
-            </div>
-          </div>
-        </div>
-      </Show>
+      <IncomingReminderStack
+        isMobile={isMobile()}
+        nearbyRequest={globalStore.nearbyReceive.state().incomingRequest}
+        cloudTickets={globalStore.cloudReceive.state().tickets}
+        onOpenReceive={openReceiveWorkspace}
+        onAcceptNearby={handleAcceptNearbyRequest}
+        onDeclineNearby={handleDeclineNearbyRequest}
+        onAcceptCloud={handleAcceptCloudTicket}
+        onDeclineCloud={handleDeclineCloudTicket}
+      />
 
       {/* Reshare Modal */}
       <Show when={globalStore.send.state().showReshareModal}>
@@ -539,75 +470,22 @@ export default function MainPage() {
               <div class="flex items-center justify-between">
                 <h3 class="card-title text-base">{t("common.share")}</h3>
                 <button
-                  onClick={() =>
-                    globalStore.send.setShowReshareModal(false)
-                  }
+                  onClick={() => globalStore.send.setShowReshareModal(false)}
                   class="btn btn-ghost btn-sm btn-circle"
                 >
                   <X size={18} />
                 </button>
               </div>
-              <Show
-                when={
-                  globalStore.send.state().ticketQrCode && showQrCode()
-                }
-              >
-                <div class="flex justify-center">
-                  <div class="rounded-xl bg-white p-2">
-                    <img
-                      src={globalStore.send.state().ticketQrCode}
-                      alt="QR"
-                      class="h-48 w-48"
-                    />
-                  </div>
-                </div>
-              </Show>
-              <Show
-                when={isMobile() && globalStore.send.state().ticketQrCode}
-              >
-                <button
-                  onClick={() => setShowQrCode((v) => !v)}
-                  class="btn btn-ghost btn-sm w-full gap-1 rounded-xl text-xs"
-                >
-                  <ChevronDown
-                    size={14}
-                    class={`transition-transform ${showQrCode() ? "rotate-180" : ""}`}
-                  />
-                  {showQrCode()
-                    ? t("send.hideQrCode")
-                    : t("send.showQrCode")}
-                </button>
-              </Show>
-              <div class="bg-base-300 overflow-hidden rounded-lg p-2">
-                <code class="text-primary font-mono text-xs break-all">
-                  {globalStore.send.state().ticket}
-                </code>
-              </div>
-              <div class="flex gap-2">
-                <button
-                  onClick={() =>
-                    copyToClipboard(globalStore.send.state().ticket)
-                  }
-                  class="btn btn-outline flex-1"
-                >
-                  <Copy size={14} /> {t("common.copy")}
-                </button>
-                <Show
-                  when={
-                    typeof navigator !== "undefined" &&
-                    "share" in navigator
-                  }
-                >
-                  <button
-                    onClick={() =>
-                      nativeShare(globalStore.send.state().ticket)
-                    }
-                    class="btn btn-outline flex-1"
-                  >
-                    <Share2 size={14} /> {t("common.share")}
-                  </button>
-                </Show>
-              </div>
+              <ShareTicketCard
+                ticket={globalStore.send.state().ticket}
+                qrCode={globalStore.send.state().ticketQrCode}
+                isMobile={isMobile()}
+                showQrCode={showQrCode()}
+                setShowQrCode={setShowQrCode}
+                title={t("common.share")}
+                onCopy={copyToClipboard}
+                onShare={nativeShare}
+              />
             </div>
           </div>
         </div>

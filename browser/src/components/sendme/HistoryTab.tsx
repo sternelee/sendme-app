@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Show, createSignal, createMemo } from "solid-js";
 import toast from "solid-toast";
 import { useAuth } from "../../lib/contexts/user-auth";
 import { i18n } from "@sendme/shared";
@@ -10,6 +10,9 @@ import {
   TbOutlineTrash,
   TbOutlineFile,
   TbOutlineFolder,
+  TbOutlineUpload,
+  TbOutlineArrowUp,
+  TbOutlineArrowDown,
 } from "solid-icons/tb";
 
 const t = i18n.t;
@@ -22,14 +25,40 @@ function formatFileSize(bytes: number): string {
 
 function formatTime(timestamp: number): string {
   const d = new Date(timestamp);
-  return d.toLocaleString();
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return t("friends.justNow") || "Just now";
+  if (diffMins < 60) return `${diffMins}m ${t("friends.ago") || "ago"}`;
+  if (diffHours < 24) return `${diffHours}h ${t("friends.ago") || "ago"}`;
+  if (diffDays < 7) return `${diffDays}d ${t("friends.ago") || "ago"}`;
+  return d.toLocaleDateString();
 }
 
 export default function HistoryTab() {
   const globalStore = useGlobalStore();
   const { getToken, isSignedIn } = useAuth();
+  const [filter, setFilter] = createSignal<"all" | "sent" | "received">("all");
 
   const entries = () => globalStore.history.state().entries;
+
+  const filteredEntries = createMemo(() => {
+    const f = filter();
+    if (f === "all") return entries();
+    return entries().filter((e) => e.type === f);
+  });
+
+  const stats = createMemo(() => {
+    const all = entries();
+    return {
+      total: all.length,
+      sent: all.filter((e) => e.type === "sent").length,
+      received: all.filter((e) => e.type === "received").length,
+    };
+  });
 
   function copyTicket(ticket: string) {
     navigator.clipboard.writeText(ticket);
@@ -37,7 +66,6 @@ export default function HistoryTab() {
   }
 
   async function removeEntry(id: string, ticket: string) {
-    // Best-effort: delete DB record if signed in
     if (isSignedIn()) {
       try {
         const token = await getToken();
@@ -52,7 +80,6 @@ export default function HistoryTab() {
           body: JSON.stringify({ ticket }),
         });
       } catch (err) {
-        // Non-fatal — log and continue with local removal
         console.warn("[HistoryTab] Failed to delete ticket from DB:", err);
       }
     }
@@ -60,7 +87,6 @@ export default function HistoryTab() {
   }
 
   async function clearAll() {
-    // Delete all DB records in parallel (best-effort)
     if (isSignedIn()) {
       const token = await getToken();
       await Promise.allSettled(
@@ -84,83 +110,151 @@ export default function HistoryTab() {
   return (
     <div class="space-y-4">
       {/* Header */}
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3"
+      >
         <div>
-          <h2 class="text-2xl font-bold">{t("history.title")}</h2>
-          <p class="text-base-content/60 text-sm mt-1">
-            {t("history.subtitle")}
+          <p class="section-label"
+          >{t("history.title")}</p>
+          <p class="text-base-content/65 mt-1 text-sm"
+          >
+            {stats().total > 0
+              ? `${stats().total} ${t("common.files") || "files"} (${stats().sent} sent, ${stats().received} received)`
+              : t("history.receivedFiles")}
           </p>
         </div>
-        <Show when={entries().length > 0}>
+        <Show when={entries().length > 0}
+        >
           <button
             onClick={clearAll}
-            class="btn btn-ghost btn-sm text-error"
+            class="btn btn-ghost btn-sm text-error rounded-xl self-start sm:self-auto"
             title={t("history.clear")}
           >
             <TbOutlineTrash size={16} />
             {t("history.clear")}
           </button>
-        </Show>      </div>
+        </Show>
+      </div>
+
+      {/* Filter Tabs */}
+      <Show when={entries().length > 0}
+      >
+        <div class="flex gap-1 p-1 bg-base-200/60 rounded-xl w-fit"
+        >
+          {[
+            { key: "all" as const, label: "All", count: stats().total },
+            { key: "sent" as const, label: t("history.sent") || "Sent", count: stats().sent },
+            { key: "received" as const, label: t("history.received") || "Received", count: stats().received },
+          ].map((f) => (
+            <button
+              class={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                filter() === f.key
+                  ? "bg-base-100 text-base-content shadow-sm"
+                  : "text-base-content/50 hover:text-base-content"
+              }`}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.label} ({f.count})
+            </button>
+          ))}
+        </div>
+      </Show>
 
       {/* Empty state */}
       <Show
-        when={entries().length > 0}
+        when={filteredEntries().length > 0}
         fallback={
-          <div class="text-center py-12">
-            <TbOutlineHistory size={48} class="mx-auto mb-4 opacity-40" />
-            <p class="text-base-content/60">{t("history.empty")}</p>
-            <p class="text-sm text-base-content/40 mt-1">
+          <div class="surface-card flex flex-col items-center justify-center py-16 text-center"
+          >
+            <div class="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4"
+            >
+              <TbOutlineHistory size={32} class="text-primary/60" />
+            </div>
+            <p class="text-base-content/80 font-semibold text-lg"
+            >{t("history.empty")}</p>
+            <p class="text-sm text-base-content/50 mt-1 max-w-xs"
+            >
               {t("history.emptyDesc")}
             </p>
+            <a
+              href="/app"
+              class="btn btn-primary btn-sm rounded-xl mt-5 gap-2"
+            >
+              <TbOutlineUpload size={16} />
+              {t("common.send")}
+            </a>
           </div>
         }
       >
-        <div class="space-y-2">
-          <For each={entries()}>
+        <div class="space-y-2"
+        >
+          <For each={filteredEntries()}
+          >
             {(entry) => (
-              <div class="card bg-base-100 shadow-sm">
-                <div class="card-body p-4">
-                  <div class="flex items-start gap-3">
-                    <div class="flex-shrink-0 w-10 h-10 rounded-xl bg-base-200 flex items-center justify-center">
-                      <Show
-                        when={entry.isFolder}
-                        fallback={
-                          <TbOutlineFile
-                            size={20}
-                            class="text-base-content/50"
-                          />
-                        }
+              <div class="surface-card p-4"
+              >
+                <div class="flex items-center gap-3"
+                >
+                  {/* File Icon */}
+                  <div class={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
+                    entry.type === "sent"
+                      ? "bg-primary/12 text-primary"
+                      : "bg-secondary/12 text-secondary"
+                  }`}
+                  >
+                    <Show
+                      when={entry.isFolder}
+                      fallback={
+                        <TbOutlineFile size={20} />
+                      }
+                    >
+                      <TbOutlineFolder size={20} />
+                    </Show>
+                  </div>
+
+                  {/* Info */}
+                  <div class="flex-1 min-w-0"
+                  >
+                    <div class="flex items-center gap-2"
+                    >
+                      <p class="font-semibold text-sm truncate"
+                      >{entry.filename}</p>
+                      <span class={`badge badge-xs rounded-md ${
+                        entry.type === "sent"
+                          ? "badge-primary"
+                          : "badge-secondary"
+                      }`}
                       >
-                        <TbOutlineFolder
-                          size={20}
-                          class="text-base-content/50"
-                        />
-                      </Show>
+                        {entry.type === "sent" ? (
+                          <TbOutlineArrowUp size={10} class="mr-0.5" />
+                        ) : (
+                          <TbOutlineArrowDown size={10} class="mr-0.5" />
+                        )}
+                        {entry.type}
+                      </span>
                     </div>
-                    <div class="flex-1 min-w-0">
-                      <p class="font-medium truncate">{entry.filename}</p>
-                      <p class="text-xs text-base-content/50 mt-0.5">
-                        {formatFileSize(entry.fileSize)} •{" "}
-                        {formatTime(entry.timestamp)}
-                      </p>
-                    </div>
-                    <div class="flex gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => copyTicket(entry.ticket)}
-                        class="btn btn-ghost btn-xs"
-                        title={t("history.copyTicket")}
-                      >
-                        <TbOutlineCopy size={14} />
-                        {t("history.copyTicket")}
-                      </button>
-                      <button
-                        onClick={() => removeEntry(entry.id, entry.ticket)}
-                        class="btn btn-ghost btn-xs text-error"
-                        title={t("common.clear")}
-                      >
-                        <TbOutlineTrash size={14} />
-                      </button>
-                    </div>
+                    <p class="text-xs text-base-content/50 mt-0.5"
+                    >
+                      {formatFileSize(entry.fileSize)} · {formatTime(entry.timestamp)}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div class="flex gap-0.5 flex-shrink-0"
+                  >
+                    <button
+                      onClick={() => copyTicket(entry.ticket)}
+                      class="btn btn-ghost btn-sm btn-circle"
+                      title={t("history.copyTicket")}
+                    >
+                      <TbOutlineCopy size={16} />
+                    </button>
+                    <button
+                      onClick={() => removeEntry(entry.id, entry.ticket)}
+                      class="btn btn-ghost btn-sm btn-circle text-error"
+                      title={t("common.clear")}
+                    >
+                      <TbOutlineTrash size={16} />
+                    </button>
                   </div>
                 </div>
               </div>

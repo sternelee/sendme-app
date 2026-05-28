@@ -47,3 +47,13 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(70% 0.1 260 / 0.5);
 }
+
+@layer components {
+  .surface-card {
+    @apply border-base-300/60 bg-base-100/82 rounded-3xl border shadow-sm backdrop-blur-xl;
+  }
+
+  .section-label {
+    @apply text-base-content/55 text-xs font-semibold tracking-[0.24em] uppercase;
+  }
+}
