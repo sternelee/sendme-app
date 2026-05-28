@@ -25,6 +25,7 @@ import { TransferTab } from "~/components/TransferTab";
 import { HistoryPanel } from "~/components/HistoryPanel";
 import { SettingsPanel } from "~/components/SettingsPanel";
 import {
+  get_file_size,
   get_transfers,
   start_nearby_discovery,
   stop_nearby_discovery,
@@ -122,28 +123,42 @@ export default function MainPage() {
   }
 
   async function handleAcceptNearbyRequest() {
-    const request = globalStore.nearbyReceive.state().incomingRequest;
+    const request = globalStore.nearbyReceive.state().incomingRequests[0];
     if (!request) return;
     try {
+      globalStore.nearbyReceive.setPendingRequestState(request.id, "accepting");
       await accept_incoming(
         request.id,
         globalStore.receive.state().outputDir || undefined,
       );
+      globalStore.nearbyReceive.setActiveRequestId(request.id);
       globalStore.nearbyReceive.setTransferState("receiving");
       openReceiveWorkspace();
     } catch (e) {
+      globalStore.nearbyReceive.setPendingRequestState(request.id, "pending");
       toast.error(`${t("nearby.acceptFailed")}: ${e}`);
     }
   }
 
   async function handleDeclineNearbyRequest() {
-    const request = globalStore.nearbyReceive.state().incomingRequest;
+    const request = globalStore.nearbyReceive.state().incomingRequests[0];
     if (!request) return;
     try {
+      globalStore.nearbyReceive.setPendingRequestState(request.id, "declining");
       await decline_incoming(request.id);
-      globalStore.nearbyReceive.setIncomingRequest(null);
-      globalStore.nearbyReceive.setTransferState("idle");
+      if (
+        globalStore.nearbyReceive
+          .state()
+          .incomingRequests.some((item) => item.id === request.id)
+      ) {
+        globalStore.nearbyReceive.removeIncomingRequest(request.id);
+      }
+      const remaining = globalStore.nearbyReceive.state().incomingRequests;
+      globalStore.nearbyReceive.setTransferState(
+        remaining.length > 0 ? "review" : "idle",
+      );
     } catch (e) {
+      globalStore.nearbyReceive.setPendingRequestState(request.id, "pending");
       toast.error(`${t("nearby.declineFailed")}: ${e}`);
     }
   }
@@ -241,39 +256,68 @@ export default function MainPage() {
     const unlistenNearby = await listen<IncomingRequest>(
       "incoming_nearby_request",
       (event) => {
-        globalStore.nearbyReceive.setIncomingRequest(event.payload);
+        if (
+          globalStore.nearbyReceive
+            .state()
+            .incomingRequests.some((item) => item.id === event.payload.id)
+        ) {
+          return;
+        }
+        globalStore.nearbyReceive.addIncomingRequest(event.payload);
         globalStore.nearbyReceive.setTransferProgress(null);
         globalStore.nearbyReceive.setError(null);
-        globalStore.nearbyReceive.setTransferState("review");
+        if (globalStore.nearbyReceive.state().transferState === "idle") {
+          globalStore.nearbyReceive.setTransferState("review");
+        }
       },
     );
 
     const unlistenNearbyCancel = await listen<{ requestId: string }>(
       "nearby_request_cancelled",
       (event) => {
-        if (
-          globalStore.nearbyReceive.state().incomingRequest?.id ===
-          event.payload.requestId
-        ) {
-          globalStore.nearbyReceive.setIncomingRequest(null);
-          globalStore.nearbyReceive.setTransferState("idle");
-          toast.info(t("nearby.senderCancelled"));
+        const requestId = event.payload.requestId;
+        const state = globalStore.nearbyReceive.state();
+        if (!state.incomingRequests.some((item) => item.id === requestId)) {
+          return;
         }
+
+        const wasActive = state.activeRequestId === requestId;
+        globalStore.nearbyReceive.removeIncomingRequest(requestId);
+        const remaining = globalStore.nearbyReceive.state().incomingRequests;
+        if (wasActive) {
+          globalStore.nearbyReceive.setTransferProgress(null);
+          globalStore.nearbyReceive.setTransferState(
+            remaining.length > 0 ? "review" : "idle",
+          );
+        } else if (
+          remaining.length === 0 &&
+          globalStore.nearbyReceive.state().transferState !== "receiving"
+        ) {
+          globalStore.nearbyReceive.setTransferState("idle");
+        }
+        toast.info(t("nearby.senderCancelled"));
       },
     );
 
     const unlistenNearbyDecline = await listen<{ requestId: string }>(
       "nearby_request_declined",
       (event) => {
+        const requestId = event.payload.requestId;
         if (
-          globalStore.nearbyReceive.state().incomingRequest?.id ===
-          event.payload.requestId
+          !globalStore.nearbyReceive
+            .state()
+            .incomingRequests.some((item) => item.id === requestId)
         ) {
-          globalStore.nearbyReceive.setIncomingRequest(null);
-          globalStore.nearbyReceive.setTransferProgress(null);
-          globalStore.nearbyReceive.setTransferState("idle");
-          toast.info(t("nearby.requestDeclined"));
+          return;
         }
+
+        globalStore.nearbyReceive.removeIncomingRequest(requestId);
+        globalStore.nearbyReceive.setTransferProgress(null);
+        const remaining = globalStore.nearbyReceive.state().incomingRequests;
+        globalStore.nearbyReceive.setTransferState(
+          remaining.length > 0 ? "review" : "idle",
+        );
+        toast.info(t("nearby.requestDeclined"));
       },
     );
 
@@ -281,6 +325,15 @@ export default function MainPage() {
       "nearby_receive_state",
       (event) => {
         const payload = event.payload;
+        if (
+          payload.requestId &&
+          globalStore.nearbyReceive.state().activeRequestId &&
+          payload.requestId !==
+            globalStore.nearbyReceive.state().activeRequestId
+        ) {
+          return;
+        }
+
         if (payload.progress) {
           globalStore.nearbyReceive.setTransferProgress(payload.progress);
         }
@@ -289,16 +342,26 @@ export default function MainPage() {
           return;
         }
         if (payload.state === "done") {
-          globalStore.nearbyReceive.setIncomingRequest(null);
+          if (payload.requestId) {
+            globalStore.nearbyReceive.removeIncomingRequest(payload.requestId);
+          }
           globalStore.nearbyReceive.setTransferProgress(null);
-          globalStore.nearbyReceive.setTransferState("idle");
+          const remaining = globalStore.nearbyReceive.state().incomingRequests;
+          globalStore.nearbyReceive.setTransferState(
+            remaining.length > 0 ? "review" : "idle",
+          );
           toast.success(payload.message ?? t("nearby.transferComplete"));
           return;
         }
         if (payload.state === "error") {
-          globalStore.nearbyReceive.setIncomingRequest(null);
+          if (payload.requestId) {
+            globalStore.nearbyReceive.removeIncomingRequest(payload.requestId);
+          }
           globalStore.nearbyReceive.setTransferProgress(null);
-          globalStore.nearbyReceive.setTransferState("idle");
+          const remaining = globalStore.nearbyReceive.state().incomingRequests;
+          globalStore.nearbyReceive.setTransferState(
+            remaining.length > 0 ? "review" : "idle",
+          );
           globalStore.nearbyReceive.setError(
             payload.message ?? t("nearby.transferFailed"),
           );
@@ -337,6 +400,39 @@ export default function MainPage() {
       },
     );
 
+    const unlistenShowSettings = await listen("show-settings", () => {
+      setActiveTab("settings");
+    });
+
+    const unlistenDockFile = await listen<string>(
+      "dock-file-opened",
+      async (event) => {
+        const url = event.payload;
+        const path = url.startsWith("file://")
+          ? decodeURIComponent(url.slice(7))
+          : url;
+        if (!path) return;
+
+        try {
+          const size = await get_file_size(path);
+          const name = path.split(/[\\/]/).pop() || "file";
+          globalStore.send.clearFiles();
+          globalStore.send.addFiles([{ path, name, size }]);
+          globalStore.send.setPath(path);
+          globalStore.send.setFileSize(size);
+          globalStore.send.setTicket("");
+          globalStore.send.setTicketQrCode("");
+          globalStore.send.setIsFolder(false);
+          setTransferView("send");
+          setActiveTab("transfer");
+          toast.success(t("send.fileSelected"));
+        } catch (e) {
+          console.warn("[dock] Failed to load dropped file:", e);
+          toast.error(t("send.fileSelectError"));
+        }
+      },
+    );
+
     onCleanup(() => {
       unlistenNearby();
       unlistenNearbyCancel();
@@ -344,6 +440,8 @@ export default function MainPage() {
       unlistenNearbyReceive();
       unlistenCloudTickets();
       unlistenProgress();
+      unlistenShowSettings();
+      unlistenDockFile();
       stop_nearby_discovery().catch(() => {});
     });
   });
@@ -368,7 +466,7 @@ export default function MainPage() {
       <Show when={!isMobile()}>
         <header class="border-base-300/60 bg-base-100/90 sticky top-0 z-40 border-b backdrop-blur-xl">
           <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-            <h1 class="text-lg font-bold tracking-tight">
+            <h1 class="text-lg font-bold tracking-tight opacity-0">
               {t("common.appName")}
             </h1>
             <div class="flex gap-1">
@@ -453,7 +551,7 @@ export default function MainPage() {
       </main>
       <IncomingReminderStack
         isMobile={isMobile()}
-        nearbyRequest={globalStore.nearbyReceive.state().incomingRequest}
+        nearbyRequests={globalStore.nearbyReceive.state().incomingRequests}
         cloudTickets={globalStore.cloudReceive.state().tickets}
         onOpenReceive={openReceiveWorkspace}
         onAcceptNearby={handleAcceptNearbyRequest}
@@ -464,31 +562,34 @@ export default function MainPage() {
 
       {/* Reshare Modal */}
       <Show when={globalStore.send.state().showReshareModal}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div class="card bg-base-200 w-full max-w-sm">
-            <div class="card-body gap-4">
-              <div class="flex items-center justify-between">
-                <h3 class="card-title text-base">{t("common.share")}</h3>
-                <button
-                  onClick={() => globalStore.send.setShowReshareModal(false)}
-                  class="btn btn-ghost btn-sm btn-circle"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <ShareTicketCard
-                ticket={globalStore.send.state().ticket}
-                qrCode={globalStore.send.state().ticketQrCode}
-                isMobile={isMobile()}
-                showQrCode={showQrCode()}
-                setShowQrCode={setShowQrCode}
-                title={t("common.share")}
-                onCopy={copyToClipboard}
-                onShare={nativeShare}
-              />
+        <dialog class="modal modal-open">
+          <div class="modal-box">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-bold">{t("common.share")}</h3>
+              <button
+                onClick={() => globalStore.send.setShowReshareModal(false)}
+                class="btn btn-ghost btn-sm btn-circle"
+              >
+                <X size={18} />
+              </button>
             </div>
+            <ShareTicketCard
+              ticket={globalStore.send.state().ticket}
+              qrCode={globalStore.send.state().ticketQrCode}
+              isMobile={isMobile()}
+              showQrCode={showQrCode()}
+              setShowQrCode={setShowQrCode}
+              title={t("common.share")}
+              onCopy={copyToClipboard}
+              onShare={nativeShare}
+            />
           </div>
-        </div>
+          <form method="dialog" class="modal-backdrop">
+            <button onClick={() => globalStore.send.setShowReshareModal(false)}>
+              close
+            </button>
+          </form>
+        </dialog>
       </Show>
 
       <Show when={isMobile()}>

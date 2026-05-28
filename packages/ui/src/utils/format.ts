@@ -62,38 +62,38 @@ export function getTransferStatus(status: string): {
 } {
   const s = status.toLowerCase();
   if (s.includes("error"))
-    return { label: "Error", color: "text-red-500", icon: "X", pulse: false };
+    return { label: "Error",     color: "text-error", icon: "X", pulse: false };
   if (s.includes("cancel"))
     return {
       label: "Cancelled",
-      color: "text-yellow-500",
+      color: "text-warning",
       icon: "X",
       pulse: false,
     };
   if (s.includes("complete"))
     return {
       label: "Completed",
-      color: "text-green-500",
+      color: "text-success",
       icon: "Check",
       pulse: false,
     };
   if (s.includes("serving"))
     return {
       label: "Serving",
-      color: "text-blue-500",
+      color: "text-info",
       icon: "Share2",
       pulse: true,
     };
   if (s.includes("downloading"))
     return {
       label: "Downloading",
-      color: "text-blue-500",
+      color: "text-info",
       icon: "Download",
       pulse: true,
     };
   return {
     label: status,
-    color: "text-gray-500",
+    color: "text-base-content/50",
     icon: "RefreshCw",
     pulse: true,
   };

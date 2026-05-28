@@ -31,12 +31,14 @@ cargo build -p cli            # builds the sendme binary
 cargo build -p app            # builds the Tauri Rust backend
 
 cargo test --locked --workspace --all-features
+cargo test -p sendme-lib
 cargo test send_recv_file
 cargo test --test cli
 cargo test send_recv_file -- --nocapture
 IROH_FORCE_STAGING_RELAYS=1 cargo test --locked --workspace --all-features
 
 cargo fmt --all
+cargo fmt --all -- --check   # CI dry-run
 cargo clippy --locked --workspace --all-targets --all-features
 ```
 
@@ -312,18 +314,6 @@ The Tauri app uses system-browser OAuth instead of an in-app WebView:
 - **Android**: Uses `tauri_plugin_android_fs` for file/directory picking
 - **iOS**: Uses `tauri_plugin_fs_ios` for Documents access, and a custom `tauri-plugin-media-picker` (Swift + Rust) for photo/video selection via `PHPickerViewController`
 - **Desktop**: Uses `tauri_plugin_dialog`
-
-### iOS Safari Web Inspector
-
-Enable the `ios-web-inspector` feature in `app/src-tauri/Cargo.toml` to allow Safari DevTools debugging of the iOS WebView:
-
-```toml
-[features]
-default = ["ios-web-inspector"]
-ios-web-inspector = []
-```
-
-When enabled, the app calls `setInspectable:true` on the `WKWebView` at startup.
 
 ## Environment Variables
 

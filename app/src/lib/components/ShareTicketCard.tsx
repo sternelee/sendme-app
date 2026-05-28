@@ -61,7 +61,7 @@ export const ShareTicketCard: Component<ShareTicketCardProps> = (props) => {
 
       <Show when={props.qrCode && showQrInline()}>
         <div class="flex justify-center">
-          <div class="rounded-xl bg-white p-3">
+          <div class="rounded-xl bg-base-100 p-3">
             <img src={props.qrCode} alt="QR" class="h-48 w-48" />
           </div>
         </div>

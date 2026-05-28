@@ -47,7 +47,7 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
   const incomingReminderCount = createMemo(
     () =>
       buildIncomingReminders({
-        nearbyRequest: globalStore.nearbyReceive.state().incomingRequest,
+        nearbyRequests: globalStore.nearbyReceive.state().incomingRequests,
         cloudTickets: globalStore.cloudReceive.state().tickets,
       }).totalCount,
   );

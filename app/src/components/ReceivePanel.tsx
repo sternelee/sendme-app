@@ -60,13 +60,19 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
       return null;
     }
 
-    const request = globalStore.nearbyReceive.state().incomingRequest;
+    const requestId = globalStore.nearbyReceive.state().activeRequestId;
+    const request =
+      globalStore.nearbyReceive
+        .state()
+        .incomingRequests.find((item) => item.id === requestId) ??
+      globalStore.nearbyReceive.state().incomingRequests[0];
     if (!request) {
       return null;
     }
 
     const progress = globalStore.nearbyReceive.state().transferProgress;
     return {
+      id: request.id,
       title: request.senderName,
       transferred: progress?.transferred ?? 0,
       total: progress?.total ?? request.totalSize ?? 1,
@@ -351,8 +357,13 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
               card().isPending
                 ? undefined
                 : async () => {
-                    globalStore.nearbyReceive.setIncomingRequest(null);
-                    globalStore.nearbyReceive.setTransferState("idle");
+                    globalStore.nearbyReceive.removeIncomingRequest(card().id);
+                    globalStore.nearbyReceive.setTransferProgress(null);
+                    globalStore.nearbyReceive.setTransferState(
+                      globalStore.nearbyReceive.state().incomingRequests.length > 0
+                        ? "review"
+                        : "idle",
+                    );
                   }
             }
           />

@@ -75,34 +75,11 @@ export default function OAuthBridgePage() {
   });
 
   return (
-    <div
-      style={{
-        display: "flex",
-        "flex-direction": "column",
-        "align-items": "center",
-        "justify-content": "center",
-        height: "100vh",
-        "font-family":
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        color: "#333",
-        "background-color": "#fafafa",
-      }}
-    >
-      <div
-        style={{
-          width: "40px",
-          height: "40px",
-          border: "3px solid #e0e0e0",
-          "border-top-color": "#666",
-          "border-radius": "50%",
-          animation: "spin 0.8s linear infinite",
-          "margin-bottom": "20px",
-        }}
-      />
-      <p style={{ "font-size": "16px", margin: "0" }}>
-        Connecting to provider…
-      </p>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    <div class="min-h-screen bg-base-100 flex items-center justify-center">
+      <div class="text-center">
+        <span class="loading loading-spinner loading-lg text-primary mb-4"></span>
+        <p class="text-base-content">Connecting to provider…</p>
+      </div>
     </div>
   );
 }

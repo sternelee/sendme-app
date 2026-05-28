@@ -195,6 +195,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-fs-ios",
+ "tauri-plugin-haptics",
  "tauri-plugin-http",
  "tauri-plugin-media-picker",
  "tauri-plugin-notification",
@@ -7610,6 +7611,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce1d236930c38b9d676c2c07558757b9303b35aa153b44be7c04548c20da3ab6"
 dependencies = [
  "serde",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "tauri-plugin-haptics"
+version = "2.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01b167d598ada05c599f4460595108c8d1aa636030a97d19796c1bcda97d881d"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-plugin",
  "thiserror 2.0.18",

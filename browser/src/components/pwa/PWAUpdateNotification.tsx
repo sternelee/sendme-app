@@ -92,40 +92,22 @@ export default function PWAUpdateNotification() {
           transition={{ duration: 0.3 }}
           class="fixed top-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50"
         >
-          <div class="glass rounded-2xl p-4 shadow-2xl border border-green-500/20">
+          <div class="alert alert-success shadow-lg">
             <div class="flex items-start gap-4">
               {/* Icon */}
-              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-green-500/30">
+              <div class="w-12 h-12 rounded-xl bg-success/20 text-success flex items-center justify-center flex-shrink-0">
                 <Show
                   when={isUpdating()}
-                  fallback={<TbOutlineDownload size={24} class="text-white" />}
+                  fallback={<TbOutlineDownload size={24} />}
                 >
-                  <svg
-                    class="animate-spin w-6 h-6 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      class="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      stroke-width="4"
-                    ></circle>
-                    <path
-                      class="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
+                  <span class="loading loading-spinner loading-sm"></span>
                 </Show>
               </div>
 
               {/* Content */}
               <div class="flex-1 min-w-0">
-                <h3 class="font-semibold text-white mb-1">Update Available</h3>
-                <p class="text-sm text-white/60">
+                <h3 class="font-semibold text-success-content mb-1">Update Available</h3>
+                <p class="text-sm text-success-content/70">
                   A new version of Sendme is ready to install
                 </p>
               </div>
@@ -133,10 +115,10 @@ export default function PWAUpdateNotification() {
               {/* Close button */}
               <button
                 onClick={handleDismiss}
-                class="flex-shrink-0 w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+                class="btn btn-ghost btn-xs btn-circle"
                 disabled={isUpdating()}
               >
-                <TbOutlineX size={16} class="text-white/60" />
+                <TbOutlineX size={16} />
               </button>
             </div>
 
@@ -144,9 +126,10 @@ export default function PWAUpdateNotification() {
             <button
               onClick={handleUpdate}
               disabled={isUpdating()}
-              class="w-full mt-4 px-4 py-2.5 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 hover:shadow-green-500/30 transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+              class="btn btn-success w-full mt-4"
             >
               <Show when={isUpdating()} fallback="Update Now">
+                <span class="loading loading-spinner loading-sm"></span>
                 Updating...
               </Show>
               <Show when={!isUpdating()}>

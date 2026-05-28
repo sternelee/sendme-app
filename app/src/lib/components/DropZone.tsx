@@ -1,4 +1,11 @@
-import { Component, Show, For, createSignal } from "solid-js";
+import {
+  type Component,
+  Show,
+  For,
+  createSignal,
+  onMount,
+  onCleanup,
+} from "solid-js";
 import { Upload, X } from "lucide-solid";
 import { formatFileSize } from "@sendme/ui";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -18,8 +25,60 @@ interface DropZoneProps {
 
 export const DropZone: Component<DropZoneProps> = (props) => {
   const [isDragover, setIsDragover] = createSignal(false);
+  const [isDesktop, setIsDesktop] = createSignal(false);
+  let unlisten: (() => void) | undefined;
 
-  const handleDrop = (e: DragEvent) => {
+  onMount(() => {
+    // Detect platform and only enable drag-drop on desktop
+    void (async () => {
+      try {
+        const p = await platform();
+        const desktop = p === "macos" || p === "windows" || p === "linux";
+        setIsDesktop(desktop);
+
+        if (!desktop) return;
+
+        // Tauri v2 window-level drag-drop events (desktop only)
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const window = getCurrentWindow();
+        unlisten = await window.onDragDropEvent(async (event: any) => {
+          const { type, paths } = event.payload;
+          if (type === "over" || type === "enter") {
+            setIsDragover(true);
+          } else if (type === "leave") {
+            setIsDragover(false);
+          } else if (type === "drop") {
+            setIsDragover(false);
+            const filePaths: string[] = paths ?? [];
+            if (filePaths.length === 0) return;
+            const fileInfos = await Promise.all(
+              filePaths.map(async (p: string) => {
+                const name = p.split(/[\\/]/).pop() || p;
+                let size = 0;
+                try {
+                  size = await get_file_size(p);
+                } catch {
+                  // ignore
+                }
+                return { name, size, path: p };
+              }),
+            );
+            props.onFilesSelected(fileInfos);
+          }
+        });
+      } catch {
+        // Not running inside Tauri — fall back to HTML5 drop handler
+        setIsDesktop(true);
+      }
+    })();
+  });
+
+  onCleanup(() => {
+    unlisten?.();
+  });
+
+  const handleHtmlDrop = (e: DragEvent) => {
+    if (!isDesktop()) return;
     e.preventDefault();
     setIsDragover(false);
     const files = Array.from(e.dataTransfer?.files || []);
@@ -36,7 +95,8 @@ export const DropZone: Component<DropZoneProps> = (props) => {
   const handleClick = async () => {
     try {
       const currentPlatform = platform();
-      const isMobile = currentPlatform === "android" || currentPlatform === "ios";
+      const isMobile =
+        currentPlatform === "android" || currentPlatform === "ios";
 
       if (isMobile) {
         const selected = await pick_file({ allowMultiple: false });
@@ -58,9 +118,8 @@ export const DropZone: Component<DropZoneProps> = (props) => {
       const paths = Array.isArray(selected) ? selected : [selected];
       const fileInfos = await Promise.all(
         paths.map(async (p) => {
-          const filePath = typeof p === "string" ? p : p.path;
-          const fileName =
-            typeof p === "string" ? p.split(/[\\/]/).pop() || p : p.name;
+          const filePath = p as string;
+          const fileName = filePath.split(/[\\/]/).pop() || filePath;
           let fileSize = 0;
           try {
             fileSize = await get_file_size(filePath);
@@ -78,20 +137,22 @@ export const DropZone: Component<DropZoneProps> = (props) => {
 
   return (
     <div
-      class={`cursor-pointer rounded-lg border-2 border-dashed transition-colors overflow-hidden min-w-0 ${
+      class={`min-w-0 cursor-pointer overflow-hidden rounded-lg border-2 border-dashed transition-colors ${
         isDragover()
           ? "border-primary bg-primary/5"
           : "border-base-300 bg-base-300/30 hover:border-primary/50"
-      } ${
-        props.files.length > 0 ? "p-2" : "p-8 text-center"
-      }`}
+      } ${props.files.length > 0 ? "p-2" : "p-8 text-center"}`}
       onClick={handleClick}
       onDragOver={(e) => {
+        if (!isDesktop()) return;
         e.preventDefault();
         setIsDragover(true);
       }}
-      onDragLeave={() => setIsDragover(false)}
-      onDrop={handleDrop}
+      onDragLeave={() => {
+        if (!isDesktop()) return;
+        setIsDragover(false);
+      }}
+      onDrop={handleHtmlDrop}
     >
       <Show
         when={props.files.length === 0}
@@ -100,8 +161,10 @@ export const DropZone: Component<DropZoneProps> = (props) => {
             <For each={props.files}>
               {(file, index) => (
                 <div class="bg-base-200 flex items-center gap-2 overflow-hidden rounded-lg px-3 py-2">
-                  <span class="flex-1 min-w-0 truncate text-sm">{file.name}</span>
-                  <span class="text-xs opacity-60 shrink-0 whitespace-nowrap">
+                  <span class="min-w-0 flex-1 truncate text-sm">
+                    {file.name}
+                  </span>
+                  <span class="shrink-0 text-xs whitespace-nowrap opacity-60">
                     {formatFileSize(file.size)}
                   </span>
                   <Show when={props.onRemoveFile}>
@@ -126,7 +189,9 @@ export const DropZone: Component<DropZoneProps> = (props) => {
         <p class="text-sm opacity-60">
           {isDragover()
             ? t("nearby.dropFilesHere")
-            : t("nearby.dropFilesOrTap")}
+            : isDesktop()
+              ? t("nearby.dropFilesOrTap")
+              : t("nearby.tapToSelect")}
         </p>
       </Show>
     </div>

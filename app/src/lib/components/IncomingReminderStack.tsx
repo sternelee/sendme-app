@@ -9,7 +9,7 @@ const t = i18n.t;
 
 interface IncomingReminderStackProps {
   isMobile: boolean;
-  nearbyRequest: IncomingRequest | null;
+  nearbyRequests: IncomingRequest[];
   cloudTickets: CloudTicket[];
   onOpenReceive: () => void;
   onAcceptNearby: () => void;
@@ -23,7 +23,7 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
 ) => {
   const reminders = createMemo(() =>
     buildIncomingReminders({
-      nearbyRequest: props.nearbyRequest,
+      nearbyRequests: props.nearbyRequests,
       cloudTickets: props.cloudTickets,
       maxVisible: 3,
     }),

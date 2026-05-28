@@ -68,50 +68,34 @@ mod menubar;
 #[cfg(desktop)]
 mod menubar_cmd;
 
-// Import tracing for non-Android platforms
-#[cfg(not(target_os = "android"))]
-use tracing;
-
 // Logging macros that work on both Android and other platforms
-#[cfg(target_os = "android")]
 macro_rules! log_info {
     ($($arg:tt)*) => {
-        log::info!($($arg)*)
+        if cfg!(target_os = "android") {
+            log::info!($($arg)*)
+        } else {
+            tracing::info!($($arg)*)
+        }
     };
 }
 
-#[cfg(not(target_os = "android"))]
-macro_rules! log_info {
-    ($($arg:tt)*) => {
-        tracing::info!($($arg)*)
-    };
-}
-
-#[cfg(target_os = "android")]
 macro_rules! log_error {
     ($($arg:tt)*) => {
-        log::error!($($arg)*)
+        if cfg!(target_os = "android") {
+            log::error!($($arg)*)
+        } else {
+            tracing::error!($($arg)*)
+        }
     };
 }
 
-#[cfg(not(target_os = "android"))]
-macro_rules! log_error {
-    ($($arg:tt)*) => {
-        tracing::error!($($arg)*)
-    };
-}
-
-#[cfg(target_os = "android")]
 macro_rules! log_warn {
     ($($arg:tt)*) => {
-        log::warn!($($arg)*)
-    };
-}
-
-#[cfg(not(target_os = "android"))]
-macro_rules! log_warn {
-    ($($arg:tt)*) => {
-        tracing::warn!($($arg)*)
+        if cfg!(target_os = "android") {
+            log::warn!($($arg)*)
+        } else {
+            tracing::warn!($($arg)*)
+        }
     };
 }
 
@@ -490,7 +474,7 @@ async fn append_to_history(app: &AppHandle, history: &ReceiveHistory, info: &Tra
     }
     let mut guard = history.write().await;
     guard.push(info.clone());
-    save_history(app, &*guard).await;
+    save_history(app, &guard).await;
     drop(guard);
 }
 
@@ -501,7 +485,7 @@ async fn remove_from_history(app: &AppHandle, history: &ReceiveHistory, id: &str
     guard.retain(|h| h.id != id);
     let removed = guard.len() < before;
     if removed {
-        save_history(app, &*guard).await;
+        save_history(app, &guard).await;
     }
     drop(guard);
     removed
@@ -511,7 +495,7 @@ async fn remove_from_history(app: &AppHandle, history: &ReceiveHistory, id: &str
 async fn clear_all_history(app: &AppHandle, history: &ReceiveHistory) {
     let mut guard = history.write().await;
     guard.clear();
-    save_history(app, &*guard).await;
+    save_history(app, &guard).await;
     drop(guard);
 }
 
@@ -734,21 +718,13 @@ enum CloudServerMessage {
 }
 
 #[derive(Debug)]
+#[derive(Default)]
 struct CloudPresenceRuntime {
     generation: u64,
     api_origin: Option<String>,
     snapshot: CloudPresenceSnapshotPayload,
 }
 
-impl Default for CloudPresenceRuntime {
-    fn default() -> Self {
-        Self {
-            generation: 0,
-            api_origin: None,
-            snapshot: CloudPresenceSnapshotPayload::default(),
-        }
-    }
-}
 
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 #[derive(Debug, Clone)]
@@ -2348,29 +2324,27 @@ fn flatten_nearby_stage_dir(root: &Path) -> Result<(), String> {
         if destination.exists() {
             let fallback_name = child_name.to_str().unwrap_or("item");
             copy_path_recursive(&child_path, &unique_child_path(root, fallback_name))?;
-        } else {
-            if let Err(rename_error) = std::fs::rename(&child_path, &destination) {
-                copy_path_recursive(&child_path, &destination).map_err(|copy_error| {
+        } else if let Err(rename_error) = std::fs::rename(&child_path, &destination) {
+            copy_path_recursive(&child_path, &destination).map_err(|copy_error| {
+                format!(
+                    "Failed to flatten nearby export item {}: {rename_error}; fallback copy failed: {copy_error}",
+                    child_path.display()
+                )
+            })?;
+            if child_path.is_dir() {
+                std::fs::remove_dir_all(&child_path).map_err(|e| {
                     format!(
-                        "Failed to flatten nearby export item {}: {rename_error}; fallback copy failed: {copy_error}",
+                        "Failed to remove staged nearby directory {} after copy: {e}",
                         child_path.display()
                     )
                 })?;
-                if child_path.is_dir() {
-                    std::fs::remove_dir_all(&child_path).map_err(|e| {
-                        format!(
-                            "Failed to remove staged nearby directory {} after copy: {e}",
-                            child_path.display()
-                        )
-                    })?;
-                } else {
-                    std::fs::remove_file(&child_path).map_err(|e| {
-                        format!(
-                            "Failed to remove staged nearby file {} after copy: {e}",
-                            child_path.display()
-                        )
-                    })?;
-                }
+            } else {
+                std::fs::remove_file(&child_path).map_err(|e| {
+                    format!(
+                        "Failed to remove staged nearby file {} after copy: {e}",
+                        child_path.display()
+                    )
+                })?;
             }
         }
     }
@@ -2837,7 +2811,8 @@ pub fn run() {
     {
         builder = builder
             .plugin(tauri_plugin_barcode_scanner::init())
-            .plugin(tauri_plugin_sharesheet::init());
+            .plugin(tauri_plugin_sharesheet::init())
+            .plugin(tauri_plugin_haptics::init());
     }
 
     #[cfg(desktop)]
@@ -2890,6 +2865,64 @@ pub fn run() {
             app.manage(nearby.clone());
             app.manage(cloud_presence.clone());
             app.manage(android_foreground.clone());
+
+            // Native macOS app menu
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+
+                let preferences_i = MenuItemBuilder::with_id("preferences", "Preferences...")
+                    .accelerator("CmdOrCtrl+,")
+                    .build(app)?;
+
+                let app_menu = SubmenuBuilder::new(app, "Sendme")
+                    .about(None)
+                    .separator()
+                    .item(&preferences_i)
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?;
+
+                let edit_menu = SubmenuBuilder::new(app, "Edit")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .build()?;
+
+                let window_menu = SubmenuBuilder::new(app, "Window")
+                    .minimize()
+                    .separator()
+                    .maximize()
+                    .separator()
+                    .fullscreen()
+                    .separator()
+                    .close_window()
+                    .build()?;
+
+                let menu = MenuBuilder::new(app)
+                    .item(&app_menu)
+                    .item(&edit_menu)
+                    .item(&window_menu)
+                    .build()?;
+
+                app.set_menu(menu)?;
+
+                app.on_menu_event(move |app_handle, event| {
+                    if event.id.as_ref() == "preferences" {
+                        let _ = app_handle.emit("show-settings", ());
+                    }
+                });
+            }
 
             let app_handle = app.handle().clone();
             let receive_history_state = receive_history.clone();
@@ -2987,22 +3020,41 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error building tauri application");
 
-    app.run(move |_app_handle, event| {
-        if let tauri::RunEvent::Exit = event {
-            // Gracefully close the nearby iroh Endpoint so it doesn't log
-            // "Endpoint dropped without calling Endpoint::close".
-            let nearby = nearby_for_exit.clone();
-            tauri::async_runtime::block_on(async move {
-                let endpoint = {
-                    let mut guard = nearby.write().await;
-                    guard.discovery = None;
-                    guard.listener_started = false;
-                    guard.endpoint.take()
-                };
-                if let Some(ep) = endpoint {
-                    ep.close().await;
+    app.run(move |app_handle, event| {
+        match event {
+            tauri::RunEvent::Exit => {
+                // Gracefully close the nearby iroh Endpoint so it doesn't log
+                // "Endpoint dropped without calling Endpoint::close".
+                let nearby = nearby_for_exit.clone();
+                tauri::async_runtime::block_on(async move {
+                    let endpoint = {
+                        let mut guard = nearby.write().await;
+                        guard.discovery = None;
+                        guard.listener_started = false;
+                        guard.endpoint.take()
+                    };
+                    if let Some(ep) = endpoint {
+                        ep.close().await;
+                    }
+                });
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
-            });
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Opened { urls } => {
+                for url in urls {
+                    if url.scheme() == "file" {
+                        let _ = app_handle.emit("dock-file-opened", url.to_string());
+                    }
+                }
+            }
+            _ => {}
         }
     });
 }
@@ -3467,7 +3519,7 @@ async fn receive_file(
         request
             .output_dir
             .as_ref()
-            .map(|d| std::path::PathBuf::from(d)),
+            .map(std::path::PathBuf::from),
         None,
     );
 

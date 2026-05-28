@@ -54,7 +54,7 @@ export default function AuthPanel(props: AuthPanelProps) {
       </div>
 
       <Show when={authError()}>
-        <div class="bg-error/10 border-error/20 text-error rounded-xl border p-3 text-sm">
+        <div class="alert alert-error text-sm">
           {authError()}
         </div>
       </Show>
@@ -138,16 +138,7 @@ export default function AuthPanel(props: AuthPanelProps) {
         </button>
       </div>
 
-      <div class="relative">
-        <div class="absolute inset-0 flex items-center">
-          <div class="border-base-300 w-full border-t" />
-        </div>
-        <div class="relative flex justify-center text-xs">
-          <span class="bg-base-100 text-base-content/50 px-2">
-            {t("common.orContinueWith")}
-          </span>
-        </div>
-      </div>
+      <div class="divider text-xs">{t("common.orContinueWith")}</div>
 
       <div class="grid grid-cols-2 gap-3">
         <button

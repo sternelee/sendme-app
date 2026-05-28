@@ -56,6 +56,18 @@ Important UX behavior: receive is optimized for **paste-and-go**. Clipboard impo
 - `app/src/bindings.ts` is the typed boundary to the Rust backend.
 - `app/src-tauri/src/lib.rs` owns transfer state, event emission, nearby runtime, cloud state, and mobile-specific file handling.
 
+## Critical Gotchas
+
+These are mistakes agents commonly make:
+
+- **Router keep-alive (CRITICAL)**: The sender's router must stay alive with `std::future::pending().await`. If dropped, no incoming connections work. Never replace with a sleep loop.
+- **Android temp directory**: Always use `CommonConfig.temp_dir` on Android. Apps run sandboxed; assuming current directory breaks file import/export.
+- **browser-lib is a separate workspace**: Do not add `browser-lib/` to the root `Cargo.toml` workspace. Its dependencies are not WASM-compatible.
+- **app/ and browser/ are separate products**: Both use SolidJS but share no state or build configuration. Code from one does not apply to the other.
+- **iOS first-time Xcode setup**: Before `xcodebuild` on a new machine, open the project in Xcode GUI once and confirm the Team. The daemon cannot access credentials without this.
+- **iOS entitlements**: `app/src-tauri/gen/apple/app_iOS/app_iOS.entitlements` must remain empty (`<dict></dict>`) for personal-team signing.
+- **CI tests require staging relays**: Run `IROH_FORCE_STAGING_RELAYS=1` before `cargo test` in CI environments.
+
 ## Key Directories
 
 | Path | Purpose |
@@ -85,6 +97,7 @@ pnpm test
 ### Rust backend used by the Tauri app
 ```bash
 cargo build -p app
+cargo run -p cli              # run the CLI binary
 cargo test --locked --workspace --all-features
 cargo fmt --all
 cargo clippy --locked --workspace --all-targets --all-features

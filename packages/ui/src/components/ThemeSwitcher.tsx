@@ -149,7 +149,7 @@ export function ThemeSwitcher(props: ThemeSwitcherProps) {
                         "flex w-full items-center gap-3 rounded-lg px-3 py-2 transition-colors",
                         currentTheme() === theme.id
                           ? "bg-primary/10 text-primary"
-                          : "hover:bg-muted",
+                          : "hover:bg-base-200",
                       )}
                     >
                       <div class="flex h-5 w-5 items-center justify-center rounded-full">

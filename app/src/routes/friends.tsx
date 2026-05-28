@@ -89,6 +89,7 @@ export interface FriendsPageProps {
   sendPath?: string;
   isTextMode?: boolean;
   textContent?: string;
+  fileSize?: number;
 }
 
 export default function FriendsPage(props: FriendsPageProps) {
@@ -338,6 +339,7 @@ export default function FriendsPage(props: FriendsPageProps) {
         friend.friend.id,
         ticket,
         filename,
+        props.fileSize,
       );
       toast.success(t("friends.ticketSent", { name: friend.friend.name }));
     } catch (error) {
@@ -551,7 +553,7 @@ export default function FriendsPage(props: FriendsPageProps) {
                               <div
                                 class={`h-1.5 w-1.5 rounded-full ${
                                   hasOnlineDevice()
-                                    ? "bg-white"
+                                    ? "bg-success-content"
                                     : "bg-base-content/40"
                                 }`}
                               />

@@ -154,6 +154,7 @@ class FriendsService {
     friendUserId: string,
     ticket: string,
     filename?: string,
+    fileSize?: number,
   ): Promise<{ success: boolean }> {
     try {
       const traceId = this.createTraceId("ticket-friend");
@@ -169,6 +170,7 @@ class FriendsService {
             friendUserId,
             ticket,
             filename,
+            fileSize,
           }),
         },
         { label: "tickets.send-friend", traceId },
@@ -198,6 +200,7 @@ class FriendsService {
     deviceId: string,
     ticket: string,
     filename?: string,
+    fileSize?: number,
   ): Promise<{ success: boolean }> {
     try {
       const traceId = this.createTraceId("ticket-device");
@@ -213,6 +216,7 @@ class FriendsService {
             deviceId,
             ticket,
             filename,
+            fileSize,
           }),
         },
         { label: "tickets.send-device", traceId },

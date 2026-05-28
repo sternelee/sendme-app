@@ -78,52 +78,27 @@ export default function AuthCallbackPage() {
   });
 
   return (
-    <div
-      style={{
-        display: "flex",
-        "flex-direction": "column",
-        "align-items": "center",
-        "justify-content": "center",
-        height: "100vh",
-        "font-family":
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        color: "#333",
-        "background-color": "#fafafa",
-      }}
-    >
-      {error() ? (
-        <>
-          <p style={{ "font-size": "16px", margin: "0", color: "#ef4444" }}>
-            {error()}
-          </p>
-          <p style={{ "font-size": "13px", color: "#999", "margin-top": "8px" }}>
-            Redirecting to sign-in…
-          </p>
-        </>
-      ) : (
-        <>
-          <div
-            style={{
-              width: "40px",
-              height: "40px",
-              border: "3px solid #e0e0e0",
-              "border-top-color": "#666",
-              "border-radius": "50%",
-              animation: "spin 0.8s linear infinite",
-              "margin-bottom": "20px",
-            }}
-          />
-          <p style={{ "font-size": "16px", margin: "0" }}>
-            {isTauriMode() ? "正在完成登录，即将返回应用…" : "正在登录…"}
-          </p>
-          <p style={{ "font-size": "13px", color: "#999", "margin-top": "8px" }}>
-            {isTauriMode()
-              ? "Completing sign-in, redirecting back to the app…"
-              : "Signing you in…"}
-          </p>
-        </>
-      )}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    <div class="min-h-screen bg-base-100 flex items-center justify-center">
+      <div class="text-center">
+        {error() ? (
+          <>
+            <p class="text-error text-lg mb-2">{error()}</p>
+            <p class="text-base-content/60 text-sm">Redirecting to sign-in…</p>
+          </>
+        ) : (
+          <>
+            <span class="loading loading-spinner loading-lg text-primary mb-4"></span>
+            <p class="text-base-content">
+              {isTauriMode() ? "正在完成登录，即将返回应用…" : "正在登录…"}
+            </p>
+            <p class="text-base-content/60 text-sm mt-2">
+              {isTauriMode()
+                ? "Completing sign-in, redirecting back to the app…"
+                : "Signing you in…"}
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 }

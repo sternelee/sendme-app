@@ -37,7 +37,8 @@ export function getTransferListClass(): string {
   return "space-y-3 max-h-[28rem] overflow-y-auto pr-1";
 }
 export function buildIncomingReminders(options: {
-  nearbyRequest: IncomingRequest | null;
+  nearbyRequest?: IncomingRequest | null;
+  nearbyRequests?: IncomingRequest[];
   cloudTickets: CloudTicket[];
   maxVisible?: number;
 }): {
@@ -47,19 +48,22 @@ export function buildIncomingReminders(options: {
 } {
   const maxVisible = options.maxVisible ?? 3;
   const reminders: IncomingReminderItem[] = [];
+  const nearbyRequests =
+    options.nearbyRequests ??
+    (options.nearbyRequest ? [options.nearbyRequest] : []);
 
-  if (options.nearbyRequest) {
-    const firstFile = options.nearbyRequest.files[0];
+  for (const request of nearbyRequests) {
+    const firstFile = request.files[0];
     reminders.push({
-      id: options.nearbyRequest.id,
+      id: request.id,
       kind: "nearby",
-      title: options.nearbyRequest.senderName,
-      subtitle: options.nearbyRequest.senderDeviceType || "Nearby transfer",
+      title: request.senderName,
+      subtitle: request.senderDeviceType || "Nearby transfer",
       fileLabel:
         firstFile?.name ??
-        `${Math.max(options.nearbyRequest.files.length, 1)} file${options.nearbyRequest.files.length === 1 ? "" : "s"}`,
-      fileCount: options.nearbyRequest.files.length,
-      totalSize: options.nearbyRequest.totalSize,
+        `${Math.max(request.files.length, 1)} file${request.files.length === 1 ? "" : "s"}`,
+      fileCount: request.files.length,
+      totalSize: request.totalSize,
     });
   }
 

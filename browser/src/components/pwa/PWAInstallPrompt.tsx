@@ -86,29 +86,17 @@ export default function PWAInstallPrompt() {
           transition={{ duration: 0.3 }}
           class="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50"
         >
-          <div class="glass rounded-2xl p-4 shadow-2xl border border-purple-500/20">
+          <div class="alert alert-info shadow-lg">
             <div class="flex items-start gap-4">
               {/* Icon */}
-              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-purple-500/30">
-                <svg
-                  class="w-6 h-6 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
-                  />
-                </svg>
+              <div class="w-12 h-12 rounded-xl bg-info/20 text-info flex items-center justify-center flex-shrink-0">
+                <TbOutlineDownload size={24} />
               </div>
 
               {/* Content */}
               <div class="flex-1 min-w-0">
-                <h3 class="font-semibold text-white mb-1">Install Sendme</h3>
-                <p class="text-sm text-white/60">
+                <h3 class="font-semibold text-info-content mb-1">Install Sendme</h3>
+                <p class="text-sm text-info-content/70">
                   Install the app for faster access and offline support
                 </p>
               </div>
@@ -116,16 +104,16 @@ export default function PWAInstallPrompt() {
               {/* Close button */}
               <button
                 onClick={handleDismiss}
-                class="flex-shrink-0 w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+                class="btn btn-ghost btn-xs btn-circle"
               >
-                <TbOutlineX size={16} class="text-white/60" />
+                <TbOutlineX size={16} />
               </button>
             </div>
 
             {/* Install button */}
             <button
               onClick={handleInstall}
-              class="w-full mt-4 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 hover:shadow-purple-500/30 transition-shadow"
+              class="btn btn-info w-full mt-4"
             >
               <TbOutlineDownload size={18} />
               Install App

@@ -28,6 +28,7 @@ interface DevicesPageProps {
   sendPath?: string;
   isTextMode?: boolean;
   textContent?: string;
+  fileSize?: number;
 }
 
 export default function DevicesPage(props: DevicesPageProps) {
@@ -92,7 +93,7 @@ export default function DevicesPage(props: DevicesPageProps) {
         ? undefined
         : props.sendPath?.split("/").pop() || undefined;
 
-      await friends.sendTicketToDevice(deviceId, ticket, filename);
+      await friends.sendTicketToDevice(deviceId, ticket, filename, props.fileSize);
       toast.success(t("devices.ticketSent", { name: deviceName }));
     } catch (error) {
       console.error("Failed to send to device:", error);
@@ -185,7 +186,7 @@ export default function DevicesPage(props: DevicesPageProps) {
                               <div
                                 class={`w-1.5 h-1.5 rounded-full ${
                                   device.online
-                                    ? "bg-white"
+                                    ? "bg-success-content"
                                     : "bg-base-content/40"
                                 }`}
                               />
