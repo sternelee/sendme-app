@@ -213,8 +213,7 @@
       "languageDescription": "Choose the language used across menus, buttons, and status text.",
       "themeDescription": "Adjust the app's appearance for the environment and visual comfort.",
       "contextMenu": "System context menu",
-      "contextMenuDescription": "Add 'Send with Sendme' to the file manager right-click menu (Windows & Linux).",
-      "contextMenuMacNote": "'Open With → Sendme' is always available on macOS."
+      "contextMenuDescription": "Add 'Send with Sendme' to Finder's Quick Actions / Services menu (macOS) or the file manager right-click menu (Windows & Linux)."
     },
     "splash": {
       "eyebrow": "Private transfer workspace",
@@ -546,8 +545,7 @@
       "languageDescription": "选择应用内菜单、按钮和状态信息所使用的语言。",
       "themeDescription": "根据当前环境和视觉偏好调整应用外观。",
       "contextMenu": "系统右键菜单",
-      "contextMenuDescription": "在文件管理器右键菜单中添加「Send with Sendme」（Windows 和 Linux）。",
-      "contextMenuMacNote": "macOS 上「打开方式 → Sendme」始终可用。"
+      "contextMenuDescription": "在 Finder 快速操作 / 服务菜单（macOS）或文件管理器右键菜单（Windows & Linux）中添加「Send with Sendme」。"
     },
     "splash": {
       "eyebrow": "私密传输工作区",

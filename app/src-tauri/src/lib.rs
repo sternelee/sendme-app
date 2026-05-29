@@ -2696,7 +2696,7 @@ fn app_ready(app: AppHandle) -> Result<(), String> {
 
 /// Returns true if "Send with Sendme" is registered in the system file manager.
 /// Windows: checks HKCU registry key. Linux: checks ~/.local/share/applications desktop file.
-/// macOS: always returns true (Open With support is built into the app bundle via Info.plist).
+/// macOS: checks if the Automator workflow exists in ~/Library/Services/.
 #[tauri::command]
 fn get_context_menu_enabled(app: AppHandle) -> bool {
     #[cfg(target_os = "windows")]
@@ -2717,7 +2717,9 @@ fn get_context_menu_enabled(app: AppHandle) -> bool {
     #[cfg(target_os = "macos")]
     {
         let _ = app;
-        true // Always-on via CFBundleDocumentTypes in Info.plist
+        macos_services_workflow_path()
+            .map(|p| p.exists())
+            .unwrap_or(false)
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
@@ -2729,7 +2731,7 @@ fn get_context_menu_enabled(app: AppHandle) -> bool {
 /// Enables or disables "Send with Sendme" in the system file manager.
 /// Windows: writes/removes HKCU registry keys (no admin required).
 /// Linux: creates/removes a .desktop file and updates the database.
-/// macOS: no-op (Open With is always available via Info.plist).
+/// macOS: installs/removes an Automator workflow to ~/Library/Services/.
 #[tauri::command]
 fn set_context_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -2758,14 +2760,222 @@ fn set_context_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String>
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = (app, enabled); // no-op
-        Ok(())
+        let _ = app;
+        if enabled {
+            macos_install_service()
+        } else {
+            macos_uninstall_service()
+        }
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
         let _ = (app, enabled);
         Ok(())
     }
+}
+
+/// Path to the Automator workflow bundle in ~/Library/Services/.
+#[cfg(target_os = "macos")]
+fn macos_services_workflow_path() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "HOME is not set".to_string())?;
+    Ok(std::path::Path::new(&home).join("Library/Services/Send with Sendme.workflow"))
+}
+
+/// Install an Automator workflow to ~/Library/Services/ so "Send with Sendme"
+/// appears in Finder's Quick Actions / Services submenu.
+/// The workflow calls `open -b io.sendme.app "$@"` which triggers RunEvent::Opened.
+#[cfg(target_os = "macos")]
+fn macos_install_service() -> Result<(), String> {
+    let workflow_dir = macos_services_workflow_path()?;
+    let contents_dir = workflow_dir.join("Contents");
+    std::fs::create_dir_all(&contents_dir)
+        .map_err(|e| format!("Failed to create workflow directory: {e}"))?;
+
+    // Info.plist: declares the service menu item name and accepted file types.
+    let info_plist = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSBackgroundColorName</key>
+			<string>background</string>
+			<key>NSIconName</key>
+			<string>NSActionTemplate</string>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Send with Sendme</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>runWorkflowAsService</string>
+			<key>NSRequiredContext</key>
+			<dict>
+				<key>NSApplicationIdentifier</key>
+				<string>com.apple.finder</string>
+			</dict>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
+"#;
+    std::fs::write(contents_dir.join("Info.plist"), info_plist)
+        .map_err(|e| format!("Failed to write Info.plist: {e}"))?;
+
+    // document.wflow: Automator workflow that passes selected files to Sendme.
+    // inputMethod=0 means files are passed as shell arguments ($@).
+    let document_wflow = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AMApplicationBuild</key>
+	<string>521</string>
+	<key>AMApplicationVersion</key>
+	<string>2.10</string>
+	<key>AMDocumentVersion</key>
+	<string>2</string>
+	<key>actions</key>
+	<array>
+		<dict>
+			<key>action</key>
+			<dict>
+				<key>AMAccepts</key>
+				<dict>
+					<key>Container</key>
+					<string>List</string>
+					<key>Optional</key>
+					<true/>
+					<key>Types</key>
+					<array>
+						<string>com.apple.cocoa.string</string>
+					</array>
+				</dict>
+				<key>AMActionIsEnabled</key>
+				<true/>
+				<key>AMParameterProperties</key>
+				<dict>
+					<key>COMMAND_STRING</key>
+					<dict/>
+					<key>CheckedForUserDefaultShell</key>
+					<dict/>
+					<key>inputMethod</key>
+					<dict/>
+					<key>shell</key>
+					<dict/>
+					<key>source</key>
+					<dict/>
+				</dict>
+				<key>AMProvides</key>
+				<dict>
+					<key>Container</key>
+					<string>List</string>
+					<key>Types</key>
+					<array>
+						<string>com.apple.cocoa.string</string>
+					</array>
+				</dict>
+				<key>ActionBundlePath</key>
+				<string>/System/Library/Automator/Run Shell Script.action</string>
+				<key>ActionName</key>
+				<string>Run Shell Script</string>
+				<key>ActionParameters</key>
+				<dict>
+					<key>COMMAND_STRING</key>
+					<string>open -b io.sendme.app "$@"</string>
+					<key>CheckedForUserDefaultShell</key>
+					<true/>
+					<key>inputMethod</key>
+					<integer>0</integer>
+					<key>shell</key>
+					<string>/bin/zsh</string>
+					<key>source</key>
+					<string></string>
+				</dict>
+				<key>BundleIdentifier</key>
+				<string>com.apple.RunShellScript</string>
+			</dict>
+		</dict>
+	</array>
+	<key>connectors</key>
+	<dict/>
+	<key>workflowMetaData</key>
+	<dict>
+		<key>applicationBundleID</key>
+		<string>com.apple.finder</string>
+		<key>applicationBundleIDsByPath</key>
+		<dict>
+			<key>/System/Library/CoreServices/Finder.app</key>
+			<string>com.apple.finder</string>
+		</dict>
+		<key>applicationPath</key>
+		<string>/System/Library/CoreServices/Finder.app</string>
+		<key>applicationPaths</key>
+		<array>
+			<string>/System/Library/CoreServices/Finder.app</string>
+		</array>
+		<key>inputTypeIdentifier</key>
+		<string>com.apple.Automator.fileSystemObject</string>
+		<key>outputTypeIdentifier</key>
+		<string>com.apple.Automator.nothing</string>
+		<key>presentationMode</key>
+		<integer>15</integer>
+		<key>processesInput</key>
+		<integer>0</integer>
+		<key>serviceApplicationBundleID</key>
+		<string>com.apple.finder</string>
+		<key>serviceApplicationPath</key>
+		<string>/System/Library/CoreServices/Finder.app</string>
+		<key>serviceInputTypeIdentifier</key>
+		<string>com.apple.Automator.fileSystemObject</string>
+		<key>serviceOutputTypeIdentifier</key>
+		<string>com.apple.Automator.nothing</string>
+		<key>serviceProcessesInput</key>
+		<integer>0</integer>
+		<key>systemImageName</key>
+		<string>NSActionTemplate</string>
+		<key>useAutomaticInputType</key>
+		<integer>0</integer>
+		<key>workflowTypeIdentifier</key>
+		<string>com.apple.Automator.servicesMenu</string>
+	</dict>
+</dict>
+</plist>
+"#;
+    std::fs::write(contents_dir.join("document.wflow"), document_wflow)
+        .map_err(|e| format!("Failed to write document.wflow: {e}"))?;
+
+    // Register with Launch Services so the workflow is discoverable immediately.
+    let _ = std::process::Command::new("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
+        .args(["-f", workflow_dir.to_str().unwrap_or("")])
+        .spawn();
+    // Flush the Services menu plist cache so the item appears without a logout.
+    let _ = std::process::Command::new("/System/Library/CoreServices/pbs")
+        .arg("-update")
+        .spawn();
+
+    Ok(())
+}
+
+/// Remove the Automator workflow from ~/Library/Services/ and flush the Services cache.
+#[cfg(target_os = "macos")]
+fn macos_uninstall_service() -> Result<(), String> {
+    let workflow_dir = macos_services_workflow_path()?;
+    if workflow_dir.exists() {
+        std::fs::remove_dir_all(&workflow_dir)
+            .map_err(|e| format!("Failed to remove workflow: {e}"))?;
+    }
+    let _ = std::process::Command::new("/System/Library/CoreServices/pbs")
+        .arg("-update")
+        .spawn();
+    Ok(())
 }
 
 /// Path to the per-user .desktop integration file on Linux.
