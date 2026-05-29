@@ -2,7 +2,7 @@ use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -15,6 +15,28 @@ use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
 
 use iroh::{endpoint::Incoming, Endpoint, RelayMode};
+
+/// Pending file path from CLI arguments (Windows/Linux "Open With" / context menu launch).
+/// Set during app startup before the frontend is ready; consumed by `app_ready`.
+type PendingFilePath = Arc<Mutex<Option<String>>>;
+
+/// Extract a file-system path from CLI arguments (skip flags and the executable name).
+/// Used on Windows and Linux where "Open With" and shell extensions pass the file path
+/// as the first non-flag argument.
+#[cfg(all(desktop, not(target_os = "macos")))]
+fn extract_file_path_from_args(args: &[String]) -> Option<String> {
+    for arg in args.iter().skip(1) {
+        // Skip flags and the sendme:// deep-link scheme
+        if arg.starts_with('-') || arg.starts_with("sendme://") {
+            continue;
+        }
+        // Accept the argument if it resolves to an existing file or directory
+        if std::path::Path::new(arg).exists() {
+            return Some(arg.clone());
+        }
+    }
+    None
+}
 
 // Mobile file picker type aliases
 // On Android, we use tauri-plugin-android-fs which returns FileUri
@@ -2652,6 +2674,217 @@ async fn read_nearby_message(
 fn app_ready(app: AppHandle) -> Result<(), String> {
     close_splashscreen(&app);
 
+    // Windows/Linux: emit any file path that was passed as a CLI argument
+    // (e.g., via "Open With" or "Send with Sendme" context menu).
+    // Delay slightly so the frontend's dock-file-opened listener is attached first.
+    #[cfg(all(desktop, not(target_os = "macos")))]
+    {
+        let pending = app.state::<PendingFilePath>();
+        let file_path = pending.lock().ok().and_then(|mut g| g.take());
+        if let Some(path) = file_path {
+            tracing::info!("app_ready: emitting pending CLI file: {}", path);
+            let app_clone = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                let _ = app_clone.emit("dock-file-opened", path);
+            });
+        }
+    }
+
+    Ok(())
+}
+
+/// Returns true if "Send with Sendme" is registered in the system file manager.
+/// Windows: checks HKCU registry key. Linux: checks ~/.local/share/applications desktop file.
+/// macOS: always returns true (Open With support is built into the app bundle via Info.plist).
+#[tauri::command]
+fn get_context_menu_enabled(app: AppHandle) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        hkcu.open_subkey(r"Software\Classes\*\shell\SendWithSendme")
+            .is_ok()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app;
+        linux_desktop_integration_path()
+            .map(|p| p.exists())
+            .unwrap_or(false)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        true // Always-on via CFBundleDocumentTypes in Info.plist
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        let _ = app;
+        false
+    }
+}
+
+/// Enables or disables "Send with Sendme" in the system file manager.
+/// Windows: writes/removes HKCU registry keys (no admin required).
+/// Linux: creates/removes a .desktop file and updates the database.
+/// macOS: no-op (Open With is always available via Info.plist).
+#[tauri::command]
+fn set_context_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("Failed to get exe path: {e}"))?
+            .to_string_lossy()
+            .to_string();
+        if enabled {
+            windows_register_context_menu(&exe_path)
+        } else {
+            windows_unregister_context_menu()
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("Failed to get exe path: {e}"))?
+            .to_string_lossy()
+            .to_string();
+        if enabled {
+            linux_register_context_menu(&exe_path)
+        } else {
+            linux_unregister_context_menu()
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = (app, enabled); // no-op
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        let _ = (app, enabled);
+        Ok(())
+    }
+}
+
+/// Path to the per-user .desktop integration file on Linux.
+/// Respects XDG_DATA_HOME; falls back to $HOME/.local/share.
+/// Returns an error if neither is usable so callers can surface it.
+#[cfg(target_os = "linux")]
+fn linux_desktop_integration_path() -> Result<std::path::PathBuf, String> {
+    let data_home = std::env::var("XDG_DATA_HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|h| std::path::Path::new(&h).join(".local/share"))
+        })
+        .ok_or_else(|| {
+            "Neither XDG_DATA_HOME nor HOME is set; cannot locate applications directory"
+                .to_string()
+        })?;
+    Ok(data_home.join("applications/sendme-context-menu.desktop"))
+}
+
+/// Write HKCU registry keys for "Send with Sendme" on Windows.
+#[cfg(target_os = "windows")]
+fn windows_register_context_menu(exe_path: &str) -> Result<(), String> {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ};
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let base = r"Software\Classes";
+    let icon_value = format!(r#""{exe_path}",0"#);
+    let cmd_value = format!(r#""{exe_path}" "%1""#);
+    for prefix in &["*", "Directory"] {
+        let shell_key = format!(r"{base}\{prefix}\shell\SendWithSendme");
+        let (key, _) = hkcu
+            .create_subkey(&shell_key)
+            .map_err(|e| format!("Failed to create registry key {shell_key}: {e}"))?;
+        key.set_value("", &"Send with Sendme")
+            .map_err(|e| format!("Failed to set registry value: {e}"))?;
+        key.set_value("Icon", &icon_value.as_str())
+            .map_err(|e| format!("Failed to set Icon value: {e}"))?;
+        let (cmd_key, _) = hkcu
+            .create_subkey(format!("{shell_key}\\command"))
+            .map_err(|e| format!("Failed to create command key: {e}"))?;
+        cmd_key
+            .set_value("", &cmd_value.as_str())
+            .map_err(|e| format!("Failed to set command value: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Remove HKCU registry keys for "Send with Sendme" on Windows.
+#[cfg(target_os = "windows")]
+fn windows_unregister_context_menu() -> Result<(), String> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let base = r"Software\Classes";
+    for prefix in &["*", "Directory"] {
+        let shell_key = format!(r"{base}\{prefix}\shell\SendWithSendme");
+        // delete_subkey_all recursively deletes the key and all children
+        match hkcu.delete_subkey_all(&shell_key) {
+            Ok(_) | Err(_) => {} // ignore if already absent
+        }
+    }
+    Ok(())
+}
+
+/// Create ~/.local/share/applications/sendme-context-menu.desktop and refresh DB.
+#[cfg(target_os = "linux")]
+fn linux_register_context_menu(exe_path: &str) -> Result<(), String> {
+    let dest = linux_desktop_integration_path()?;
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create applications dir: {e}"))?;
+    }
+    // Exec path is double-quoted to handle spaces in the installation directory.
+    let content = format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=Sendme\n\
+         GenericName=File Transfer\n\
+         Comment=P2P file transfer powered by iroh\n\
+         Exec=\"{exe_path}\" %F\n\
+         Icon=sendme\n\
+         MimeType=application/octet-stream;inode/directory;\n\
+         Categories=Network;FileTransfer;\n\
+         Terminal=false\n\
+         NoDisplay=true\n"
+    );
+    std::fs::write(&dest, content)
+        .map_err(|e| format!("Failed to write desktop file: {e}"))?;
+    // Best-effort DB refresh; failure is non-fatal
+    let apps_dir = dest
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let _ = std::process::Command::new("update-desktop-database")
+        .arg(&apps_dir)
+        .spawn();
+    Ok(())
+}
+
+/// Remove the context menu desktop file and refresh the desktop DB.
+#[cfg(target_os = "linux")]
+fn linux_unregister_context_menu() -> Result<(), String> {
+    let dest = linux_desktop_integration_path()?;
+    if dest.exists() {
+        std::fs::remove_file(&dest)
+            .map_err(|e| format!("Failed to remove desktop file: {e}"))?;
+        let apps_dir = dest
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let _ = std::process::Command::new("update-desktop-database")
+            .arg(&apps_dir)
+            .spawn();
+    }
     Ok(())
 }
 
@@ -2782,6 +3015,20 @@ pub fn run() {
         Arc::new(RwLock::new(AndroidForegroundRuntime::default()));
     let receive_history: ReceiveHistory = Arc::new(RwLock::new(Vec::new()));
 
+    // Windows/Linux: capture file path from CLI arguments (e.g. "Open With" / context menu).
+    // macOS handles file opens via RunEvent::Opened instead of CLI args.
+    let pending_file: PendingFilePath = Arc::new(Mutex::new(None));
+    #[cfg(all(desktop, not(target_os = "macos")))]
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if let Some(file_path) = extract_file_path_from_args(&args) {
+            tracing::info!("CLI arg file detected: {}", file_path);
+            if let Ok(mut guard) = pending_file.lock() {
+                *guard = Some(file_path);
+            }
+        }
+    }
+
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -2820,7 +3067,25 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
 
-    // macOS NSPanel support
+    // Windows/Linux: single-instance ensures only one app window runs.
+    // When "Send with Sendme" or "Open With" launches a second process, the callback
+    // forwards the file path to the already-running instance and the new process exits.
+    // macOS handles this natively via NSApplication (RunEvent::Opened).
+    #[cfg(all(desktop, not(target_os = "macos")))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // Bring existing window to the foreground
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            // Forward the file path (if any) to the already-running frontend
+            if let Some(file_path) = extract_file_path_from_args(&args) {
+                tracing::info!("single-instance forwarding file: {}", file_path);
+                let _ = app.emit("dock-file-opened", file_path);
+            }
+        }));
+    }
     #[cfg(target_os = "macos")]
     {
         builder = builder.plugin(tauri_nspanel::init());
@@ -2865,6 +3130,8 @@ pub fn run() {
             app.manage(nearby.clone());
             app.manage(cloud_presence.clone());
             app.manage(android_foreground.clone());
+            // Store pending CLI file path (Windows/Linux "Open With" / context menu)
+            app.manage(pending_file.clone());
 
             // Native macOS app menu
             #[cfg(target_os = "macos")]
@@ -3009,6 +3276,8 @@ pub fn run() {
             decline_cloud_ticket,
             app_ready,
             open_system_browser,
+            get_context_menu_enabled,
+            set_context_menu_enabled,
             // Menubar commands
             #[cfg(target_os = "macos")]
             menubar_cmd::init_menubar,

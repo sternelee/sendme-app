@@ -412,3 +412,20 @@ export async function accept_cloud_ticket(
 export async function decline_cloud_ticket(ticketId: string): Promise<void> {
   return await invoke("decline_cloud_ticket", { ticketId });
 }
+
+/**
+ * Get whether the system right-click context menu integration is enabled.
+ * Windows: checks HKCU registry. Linux: checks desktop file. macOS: always true.
+ */
+export async function get_context_menu_enabled(): Promise<boolean> {
+  return await invoke("get_context_menu_enabled");
+}
+
+/**
+ * Enable or disable the "Send with Sendme" system right-click context menu entry.
+ * Windows: writes/removes HKCU registry keys. Linux: creates/removes a .desktop file.
+ * macOS: no-op (Open With support is always active via Info.plist).
+ */
+export async function set_context_menu_enabled(enabled: boolean): Promise<void> {
+  return await invoke("set_context_menu_enabled", { enabled });
+}

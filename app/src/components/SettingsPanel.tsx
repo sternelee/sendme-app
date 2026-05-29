@@ -1,14 +1,50 @@
-import { Component, Show } from "solid-js";
+import { Component, createSignal, onMount, Show } from "solid-js";
 import { User, LogOut } from "lucide-solid";
+import { platform } from "@tauri-apps/plugin-os";
 import { i18n } from "@sendme/shared";
 import { ThemeSwitcher, LanguageSwitcher } from "@sendme/ui";
 import { useAuth } from "~/lib/auth";
 import AuthPanel from "./AuthPanel";
+import { get_context_menu_enabled, set_context_menu_enabled } from "~/bindings";
 
 const t = i18n.t;
 
 export const SettingsPanel: Component = () => {
   const auth = useAuth();
+  const currentPlatform = platform();
+  const isDesktop =
+    currentPlatform === "windows" ||
+    currentPlatform === "linux" ||
+    currentPlatform === "macos";
+  const supportsContextMenuToggle =
+    currentPlatform === "windows" || currentPlatform === "linux";
+
+  const [contextMenuEnabled, setContextMenuEnabled] = createSignal(false);
+  const [contextMenuLoading, setContextMenuLoading] = createSignal(false);
+
+  onMount(async () => {
+    if (supportsContextMenuToggle) {
+      try {
+        const enabled = await get_context_menu_enabled();
+        setContextMenuEnabled(enabled);
+      } catch (e) {
+        console.error("Failed to read context menu state", e);
+      }
+    }
+  });
+
+  const toggleContextMenu = async () => {
+    const next = !contextMenuEnabled();
+    setContextMenuLoading(true);
+    try {
+      await set_context_menu_enabled(next);
+      setContextMenuEnabled(next);
+    } catch (e) {
+      console.error("Failed to toggle context menu", e);
+    } finally {
+      setContextMenuLoading(false);
+    }
+  };
 
   return (
     <div class="space-y-4">
@@ -98,6 +134,26 @@ export const SettingsPanel: Component = () => {
             {t("common.poweredBy")}
           </p>
         </div>
+
+        <Show when={isDesktop && supportsContextMenuToggle}>
+          <div class="surface-card p-5 md:col-span-2">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <p class="font-semibold">{t("settings.contextMenu")}</p>
+                <p class="text-base-content/60 mt-2 text-sm">
+                  {t("settings.contextMenuDescription")}
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                class="toggle toggle-primary shrink-0"
+                checked={contextMenuEnabled()}
+                disabled={contextMenuLoading()}
+                onChange={toggleContextMenu}
+              />
+            </div>
+          </div>
+        </Show>
       </div>
     </div>
   );

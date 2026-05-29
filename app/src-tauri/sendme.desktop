@@ -1,0 +1,12 @@
+[Desktop Entry]
+Categories=Network;FileTransfer;P2P;
+Comment=P2P file transfer powered by iroh
+Exec=sendme %F
+GenericName=File Transfer
+Icon=sendme
+MimeType=application/octet-stream;inode/directory;
+Name=Sendme
+StartupNotify=false
+Terminal=false
+Type=Application
+Version=1.0

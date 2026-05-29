@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adds "Send with Sendme" to the Windows Explorer right-click context menu.
+
+  Registered for:
+    - All files  (HKCR\*\shell\SendWithSendme)
+    - Directories (HKCR\Directory\shell\SendWithSendme)
+
+  Also registers the app under HKCR\Applications so it appears in
+  "Open With" dialogs for any file type without claiming file ownership.
+
+  Installed/uninstalled automatically with the Sendme installer.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="APPLICATIONFOLDER">
+      <!-- Context menu entry for all files -->
+      <Component Id="ContextMenuFiles" Guid="7A3F1B2C-4D5E-6F70-8A9B-0C1D2E3F4A5B">
+        <RegistryKey Root="HKCR" Key="*\shell\SendWithSendme" Action="createAndRemoveOnUninstall">
+          <RegistryValue Type="string" Value="Send with Sendme" />
+          <RegistryValue Name="Icon" Type="string" Value='"[APPLICATIONFOLDER]Sendme.exe",0' />
+        </RegistryKey>
+        <RegistryKey Root="HKCR" Key="*\shell\SendWithSendme\command" Action="createAndRemoveOnUninstall">
+          <RegistryValue Type="string" Value='"[APPLICATIONFOLDER]Sendme.exe" "%1"' />
+        </RegistryKey>
+      </Component>
+
+      <!-- Context menu entry for directories -->
+      <Component Id="ContextMenuDirs" Guid="B1C2D3E4-F5A6-7B8C-9D0E-1F2A3B4C5D6E">
+        <RegistryKey Root="HKCR" Key="Directory\shell\SendWithSendme" Action="createAndRemoveOnUninstall">
+          <RegistryValue Type="string" Value="Send with Sendme" />
+          <RegistryValue Name="Icon" Type="string" Value='"[APPLICATIONFOLDER]Sendme.exe",0' />
+        </RegistryKey>
+        <RegistryKey Root="HKCR" Key="Directory\shell\SendWithSendme\command" Action="createAndRemoveOnUninstall">
+          <RegistryValue Type="string" Value='"[APPLICATIONFOLDER]Sendme.exe" "%1"' />
+        </RegistryKey>
+      </Component>
+
+      <!-- Register the app in "Open With" dialogs for all file types -->
+      <Component Id="OpenWithRegistration" Guid="C2D3E4F5-A6B7-8C9D-0E1F-2A3B4C5D6E7F">
+        <RegistryKey Root="HKCR" Key="Applications\Sendme.exe" Action="createAndRemoveOnUninstall">
+          <RegistryValue Name="FriendlyAppName" Type="string" Value="Sendme" />
+        </RegistryKey>
+        <RegistryKey Root="HKCR" Key="Applications\Sendme.exe\SupportedTypes" Action="createAndRemoveOnUninstall">
+          <!-- Empty value registers the app for all file types in Open With -->
+          <RegistryValue Name="*" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKCR" Key="Applications\Sendme.exe\shell\open\command" Action="createAndRemoveOnUninstall">
+          <RegistryValue Type="string" Value='"[APPLICATIONFOLDER]Sendme.exe" "%1"' />
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+
+    <ComponentGroup Id="SendmeContextMenu">
+      <ComponentRef Id="ContextMenuFiles" />
+      <ComponentRef Id="ContextMenuDirs" />
+      <ComponentRef Id="OpenWithRegistration" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>
