@@ -5,7 +5,11 @@ import { i18n } from "@sendme/shared";
 import { ThemeSwitcher, LanguageSwitcher } from "@sendme/ui";
 import { useAuth } from "~/lib/auth";
 import AuthPanel from "./AuthPanel";
-import { get_context_menu_enabled, set_context_menu_enabled } from "~/bindings";
+import {
+  get_context_menu_diagnostics,
+  get_context_menu_enabled,
+  set_context_menu_enabled,
+} from "~/bindings";
 
 const t = i18n.t;
 
@@ -27,6 +31,9 @@ export const SettingsPanel: Component = () => {
       try {
         const enabled = await get_context_menu_enabled();
         setContextMenuEnabled(enabled);
+        if (currentPlatform === "macos") {
+          console.info(await get_context_menu_diagnostics());
+        }
       } catch (e) {
         console.error("Failed to read context menu state", e);
       }
@@ -39,6 +46,9 @@ export const SettingsPanel: Component = () => {
     try {
       await set_context_menu_enabled(next);
       setContextMenuEnabled(next);
+      if (currentPlatform === "macos") {
+        console.info(await get_context_menu_diagnostics());
+      }
     } catch (e) {
       console.error("Failed to toggle context menu", e);
     } finally {

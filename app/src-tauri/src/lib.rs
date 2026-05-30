@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+
 use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -19,6 +21,152 @@ use iroh::{endpoint::Incoming, Endpoint, RelayMode};
 /// Pending file path from CLI arguments (Windows/Linux "Open With" / context menu launch).
 /// Set during app startup before the frontend is ready; consumed by `app_ready`.
 type PendingFilePath = Arc<Mutex<Option<String>>>;
+
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)]
+mod macos_file_service {
+    use std::ffi::{CStr, CString};
+    use std::os::raw::{c_char, c_void};
+    use std::ptr;
+    use std::sync::atomic::{AtomicPtr, Ordering};
+    use std::sync::OnceLock;
+
+    use objc::declare::ClassDecl;
+    use objc::runtime::{Class, Object, Sel};
+    use objc::{class, msg_send, sel, sel_impl};
+    use tauri::{AppHandle, Emitter, Manager};
+
+    static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+    static SERVICE_PROVIDER: AtomicPtr<Object> = AtomicPtr::new(ptr::null_mut());
+
+    pub fn register(app: AppHandle) {
+        let _ = APP_HANDLE.set(app);
+
+        unsafe {
+            let class = service_provider_class();
+            let provider: *mut Object = msg_send![class, new];
+            let ns_app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+            let _: () = msg_send![ns_app, setServicesProvider: provider];
+            SERVICE_PROVIDER.store(provider, Ordering::SeqCst);
+            tracing::info!("Registered macOS Finder service provider");
+        }
+    }
+
+    unsafe fn service_provider_class() -> &'static Class {
+        if let Some(class) = Class::get("SendmeFileServiceProvider") {
+            return class;
+        }
+
+        let superclass = class!(NSObject);
+        let mut decl = ClassDecl::new("SendmeFileServiceProvider", superclass)
+            .expect("SendmeFileServiceProvider class should be unique");
+        decl.add_method(
+            sel!(sendWithSendme:userData:error:),
+            send_with_sendme as extern "C" fn(&Object, Sel, *mut Object, *mut Object, *mut c_void),
+        );
+        decl.register()
+    }
+
+    extern "C" fn send_with_sendme(
+        _this: &Object,
+        _cmd: Sel,
+        pasteboard: *mut Object,
+        _user_data: *mut Object,
+        _error: *mut c_void,
+    ) {
+        if !super::macos_context_menu_enabled() {
+            tracing::info!(
+                "macOS file service ignored because context menu integration is disabled"
+            );
+            return;
+        }
+
+        if pasteboard.is_null() {
+            tracing::warn!("macOS file service invoked without a pasteboard");
+            return;
+        }
+
+        let paths = unsafe { selected_paths_from_pasteboard(pasteboard) };
+        if paths.is_empty() {
+            tracing::warn!("macOS file service invoked without file paths");
+            return;
+        }
+
+        let Some(app) = APP_HANDLE.get().cloned() else {
+            tracing::warn!("macOS file service invoked before app handle was available");
+            return;
+        };
+
+        tauri::async_runtime::spawn(async move {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+
+            // Give the webview listener a moment to attach when Services launches the app.
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            for path in paths {
+                if let Err(e) = app.emit("dock-file-opened", path) {
+                    tracing::error!("Failed to emit dock-file-opened from macOS service: {}", e);
+                }
+            }
+        });
+    }
+
+    unsafe fn selected_paths_from_pasteboard(pasteboard: *mut Object) -> Vec<String> {
+        let filenames_type = ns_string("NSFilenamesPboardType");
+        let property_list: *mut Object = msg_send![pasteboard, propertyListForType: filenames_type];
+        let mut paths = strings_from_array(property_list);
+        if !paths.is_empty() {
+            return paths;
+        }
+
+        for pasteboard_type in ["public.file-url", "public.plain-text"] {
+            let ns_type = ns_string(pasteboard_type);
+            let value: *mut Object = msg_send![pasteboard, stringForType: ns_type];
+            if let Some(value) = string_from_nsstring(value) {
+                paths.push(value);
+            }
+        }
+        paths
+    }
+
+    unsafe fn strings_from_array(array: *mut Object) -> Vec<String> {
+        if array.is_null() {
+            return Vec::new();
+        }
+
+        let count: usize = msg_send![array, count];
+        let mut values = Vec::with_capacity(count);
+        for index in 0..count {
+            let item: *mut Object = msg_send![array, objectAtIndex: index];
+            if let Some(value) = string_from_nsstring(item) {
+                values.push(value);
+            }
+        }
+        values
+    }
+
+    unsafe fn string_from_nsstring(value: *mut Object) -> Option<String> {
+        if value.is_null() {
+            return None;
+        }
+
+        let bytes: *const c_char = msg_send![value, UTF8String];
+        if bytes.is_null() {
+            return None;
+        }
+
+        Some(CStr::from_ptr(bytes).to_string_lossy().into_owned())
+    }
+
+    unsafe fn ns_string(value: &str) -> *mut Object {
+        let c_value = CString::new(value).expect("pasteboard type should not contain NUL");
+        let string: *mut Object = msg_send![class!(NSString), alloc];
+        msg_send![string, initWithUTF8String: c_value.as_ptr()]
+    }
+}
 
 /// Extract a file-system path from CLI arguments (skip flags and the executable name).
 /// Used on Windows and Linux where "Open With" and shell extensions pass the file path
@@ -525,7 +673,10 @@ async fn clear_all_history(app: &AppHandle, history: &ReceiveHistory) {
 /// Merge all active transfers with persistent completed-receive history.
 /// Active transfers override history entries with the same id.
 /// Sorted by created_at desc (newest first).
-async fn get_merged_transfers(transfers: &Transfers, history: &ReceiveHistory) -> Vec<TransferInfo> {
+async fn get_merged_transfers(
+    transfers: &Transfers,
+    history: &ReceiveHistory,
+) -> Vec<TransferInfo> {
     let active: Vec<TransferInfo> = {
         let guard = transfers.read().await;
         guard.values().map(|s| s.info.clone()).collect()
@@ -739,14 +890,12 @@ enum CloudServerMessage {
     TransferReceived(CloudTransferReceivedPayload),
 }
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct CloudPresenceRuntime {
     generation: u64,
     api_origin: Option<String>,
     snapshot: CloudPresenceSnapshotPayload,
 }
-
 
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 #[derive(Debug, Clone)]
@@ -2694,9 +2843,9 @@ fn app_ready(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Returns true if "Send with Sendme" is registered in the system file manager.
+/// Returns true if "Send with Sendme" is enabled in the system file manager.
 /// Windows: checks HKCU registry key. Linux: checks ~/.local/share/applications desktop file.
-/// macOS: checks if the Automator workflow exists in ~/Library/Services/.
+/// macOS: checks the per-user toggle marker; the app-bundle service is registered by Info.plist.
 #[tauri::command]
 fn get_context_menu_enabled(app: AppHandle) -> bool {
     #[cfg(target_os = "windows")]
@@ -2717,7 +2866,7 @@ fn get_context_menu_enabled(app: AppHandle) -> bool {
     #[cfg(target_os = "macos")]
     {
         let _ = app;
-        macos_services_workflow_path()
+        macos_context_menu_marker_path()
             .map(|p| p.exists())
             .unwrap_or(false)
     }
@@ -2731,7 +2880,7 @@ fn get_context_menu_enabled(app: AppHandle) -> bool {
 /// Enables or disables "Send with Sendme" in the system file manager.
 /// Windows: writes/removes HKCU registry keys (no admin required).
 /// Linux: creates/removes a .desktop file and updates the database.
-/// macOS: installs/removes an Automator workflow to ~/Library/Services/.
+/// macOS: records the user preference and removes the obsolete Automator workflow if present.
 #[tauri::command]
 fn set_context_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -2762,9 +2911,9 @@ fn set_context_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String>
     {
         let _ = app;
         if enabled {
-            macos_install_service()
+            macos_set_context_menu_marker(true)
         } else {
-            macos_uninstall_service()
+            macos_set_context_menu_marker(false)
         }
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -2774,9 +2923,32 @@ fn set_context_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String>
     }
 }
 
-/// Path to the Automator workflow bundle in ~/Library/Services/.
+#[tauri::command]
+fn get_context_menu_diagnostics(app: AppHandle) -> String {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        macos_context_menu_diagnostics()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        "Context menu diagnostics are only available on macOS.".to_string()
+    }
+}
+
 #[cfg(target_os = "macos")]
-fn macos_services_workflow_path() -> Result<std::path::PathBuf, String> {
+fn macos_context_menu_marker_path() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "HOME is not set".to_string())?;
+    Ok(std::path::Path::new(&home)
+        .join("Library/Application Support/io.sendme.app/context-menu-enabled"))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_obsolete_workflow_path() -> Result<std::path::PathBuf, String> {
     let home = std::env::var("HOME")
         .ok()
         .filter(|s| !s.is_empty())
@@ -2784,198 +2956,215 @@ fn macos_services_workflow_path() -> Result<std::path::PathBuf, String> {
     Ok(std::path::Path::new(&home).join("Library/Services/Send with Sendme.workflow"))
 }
 
-/// Install an Automator workflow to ~/Library/Services/ so "Send with Sendme"
-/// appears in Finder's Quick Actions / Services submenu.
-/// The workflow calls `open -b io.sendme.app "$@"` which triggers RunEvent::Opened.
 #[cfg(target_os = "macos")]
-fn macos_install_service() -> Result<(), String> {
-    let workflow_dir = macos_services_workflow_path()?;
-    let contents_dir = workflow_dir.join("Contents");
-    std::fs::create_dir_all(&contents_dir)
-        .map_err(|e| format!("Failed to create workflow directory: {e}"))?;
+fn macos_set_context_menu_marker(enabled: bool) -> Result<(), String> {
+    let marker = macos_context_menu_marker_path()?;
+    if enabled {
+        if let Some(parent) = marker.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create context menu settings dir: {e}"))?;
+        }
+        std::fs::write(&marker, b"enabled")
+            .map_err(|e| format!("Failed to save context menu setting: {e}"))?;
+    } else if marker.exists() {
+        std::fs::remove_file(&marker)
+            .map_err(|e| format!("Failed to remove context menu setting: {e}"))?;
+    }
 
-    // Info.plist: declares the service menu item name and accepted file types.
-    let info_plist = r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>NSServices</key>
-	<array>
-		<dict>
-			<key>NSBackgroundColorName</key>
-			<string>background</string>
-			<key>NSIconName</key>
-			<string>NSActionTemplate</string>
-			<key>NSMenuItem</key>
-			<dict>
-				<key>default</key>
-				<string>Send with Sendme</string>
-			</dict>
-			<key>NSMessage</key>
-			<string>runWorkflowAsService</string>
-			<key>NSRequiredContext</key>
-			<dict>
-				<key>NSApplicationIdentifier</key>
-				<string>com.apple.finder</string>
-			</dict>
-			<key>NSSendFileTypes</key>
-			<array>
-				<string>public.item</string>
-			</array>
-		</dict>
-	</array>
-</dict>
-</plist>
-"#;
-    std::fs::write(contents_dir.join("Info.plist"), info_plist)
-        .map_err(|e| format!("Failed to write Info.plist: {e}"))?;
-
-    // document.wflow: Automator workflow that passes selected files to Sendme.
-    // inputMethod=0 means files are passed as shell arguments ($@).
-    let document_wflow = r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>AMApplicationBuild</key>
-	<string>521</string>
-	<key>AMApplicationVersion</key>
-	<string>2.10</string>
-	<key>AMDocumentVersion</key>
-	<string>2</string>
-	<key>actions</key>
-	<array>
-		<dict>
-			<key>action</key>
-			<dict>
-				<key>AMAccepts</key>
-				<dict>
-					<key>Container</key>
-					<string>List</string>
-					<key>Optional</key>
-					<true/>
-					<key>Types</key>
-					<array>
-						<string>com.apple.cocoa.string</string>
-					</array>
-				</dict>
-				<key>AMActionIsEnabled</key>
-				<true/>
-				<key>AMParameterProperties</key>
-				<dict>
-					<key>COMMAND_STRING</key>
-					<dict/>
-					<key>CheckedForUserDefaultShell</key>
-					<dict/>
-					<key>inputMethod</key>
-					<dict/>
-					<key>shell</key>
-					<dict/>
-					<key>source</key>
-					<dict/>
-				</dict>
-				<key>AMProvides</key>
-				<dict>
-					<key>Container</key>
-					<string>List</string>
-					<key>Types</key>
-					<array>
-						<string>com.apple.cocoa.string</string>
-					</array>
-				</dict>
-				<key>ActionBundlePath</key>
-				<string>/System/Library/Automator/Run Shell Script.action</string>
-				<key>ActionName</key>
-				<string>Run Shell Script</string>
-				<key>ActionParameters</key>
-				<dict>
-					<key>COMMAND_STRING</key>
-					<string>open -b io.sendme.app "$@"</string>
-					<key>CheckedForUserDefaultShell</key>
-					<true/>
-					<key>inputMethod</key>
-					<integer>0</integer>
-					<key>shell</key>
-					<string>/bin/zsh</string>
-					<key>source</key>
-					<string></string>
-				</dict>
-				<key>BundleIdentifier</key>
-				<string>com.apple.RunShellScript</string>
-			</dict>
-		</dict>
-	</array>
-	<key>connectors</key>
-	<dict/>
-	<key>workflowMetaData</key>
-	<dict>
-		<key>applicationBundleID</key>
-		<string>com.apple.finder</string>
-		<key>applicationBundleIDsByPath</key>
-		<dict>
-			<key>/System/Library/CoreServices/Finder.app</key>
-			<string>com.apple.finder</string>
-		</dict>
-		<key>applicationPath</key>
-		<string>/System/Library/CoreServices/Finder.app</string>
-		<key>applicationPaths</key>
-		<array>
-			<string>/System/Library/CoreServices/Finder.app</string>
-		</array>
-		<key>inputTypeIdentifier</key>
-		<string>com.apple.Automator.fileSystemObject</string>
-		<key>outputTypeIdentifier</key>
-		<string>com.apple.Automator.nothing</string>
-		<key>presentationMode</key>
-		<integer>15</integer>
-		<key>processesInput</key>
-		<integer>0</integer>
-		<key>serviceApplicationBundleID</key>
-		<string>com.apple.finder</string>
-		<key>serviceApplicationPath</key>
-		<string>/System/Library/CoreServices/Finder.app</string>
-		<key>serviceInputTypeIdentifier</key>
-		<string>com.apple.Automator.fileSystemObject</string>
-		<key>serviceOutputTypeIdentifier</key>
-		<string>com.apple.Automator.nothing</string>
-		<key>serviceProcessesInput</key>
-		<integer>0</integer>
-		<key>systemImageName</key>
-		<string>NSActionTemplate</string>
-		<key>useAutomaticInputType</key>
-		<integer>0</integer>
-		<key>workflowTypeIdentifier</key>
-		<string>com.apple.Automator.servicesMenu</string>
-	</dict>
-</dict>
-</plist>
-"#;
-    std::fs::write(contents_dir.join("document.wflow"), document_wflow)
-        .map_err(|e| format!("Failed to write document.wflow: {e}"))?;
-
-    // Register with Launch Services so the workflow is discoverable immediately.
-    let _ = std::process::Command::new("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
-        .args(["-f", workflow_dir.to_str().unwrap_or("")])
-        .spawn();
-    // Flush the Services menu plist cache so the item appears without a logout.
-    let _ = std::process::Command::new("/System/Library/CoreServices/pbs")
-        .arg("-update")
-        .spawn();
-
+    if let Ok(workflow) = macos_obsolete_workflow_path() {
+        if workflow.exists() {
+            std::fs::remove_dir_all(&workflow)
+                .map_err(|e| format!("Failed to remove obsolete Automator workflow: {e}"))?;
+        }
+    }
+    macos_remove_obsolete_quick_action_preferences();
+    if enabled {
+        macos_register_app_services();
+    }
+    macos_refresh_services_cache();
+    macos_write_context_menu_diagnostics();
     Ok(())
 }
 
-/// Remove the Automator workflow from ~/Library/Services/ and flush the Services cache.
 #[cfg(target_os = "macos")]
-fn macos_uninstall_service() -> Result<(), String> {
-    let workflow_dir = macos_services_workflow_path()?;
-    if workflow_dir.exists() {
-        std::fs::remove_dir_all(&workflow_dir)
-            .map_err(|e| format!("Failed to remove workflow: {e}"))?;
-    }
+fn macos_context_menu_enabled() -> bool {
+    macos_context_menu_marker_path()
+        .map(|p| p.exists())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_refresh_services_cache() {
+    let _ = std::process::Command::new("/System/Library/CoreServices/pbs")
+        .arg("-flush")
+        .status();
     let _ = std::process::Command::new("/System/Library/CoreServices/pbs")
         .arg("-update")
-        .spawn();
-    Ok(())
+        .status();
+}
+
+#[cfg(target_os = "macos")]
+fn macos_register_app_services() -> Option<std::path::PathBuf> {
+    let Ok(exe) = std::env::current_exe() else {
+        return None;
+    };
+
+    let Some(bundle_path) = exe
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "app"))
+    else {
+        return None;
+    };
+
+    let _ = std::process::Command::new(
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    )
+    .arg("-f")
+    .arg(bundle_path)
+    .status();
+    Some(bundle_path.to_path_buf())
+}
+
+#[cfg(target_os = "macos")]
+fn macos_context_menu_diagnostics_path() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "HOME is not set".to_string())?;
+    Ok(std::path::Path::new(&home)
+        .join("Library/Application Support/io.sendme.app/context-menu-diagnostics.txt"))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_write_context_menu_diagnostics() {
+    let Ok(path) = macos_context_menu_diagnostics_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, macos_context_menu_diagnostics());
+}
+
+#[cfg(target_os = "macos")]
+fn macos_remove_obsolete_quick_action_preferences() {
+    let Ok(home) = std::env::var("HOME") else {
+        return;
+    };
+    if home.is_empty() {
+        return;
+    }
+
+    let preferences_path = std::path::Path::new(&home).join("Library/Preferences/pbs.plist");
+    let preferences_path = preferences_path.to_string_lossy().to_string();
+    for key in [
+        "Delete :FinderActive:io.sendme.finder.quick-action",
+        "Delete :FinderOrdering:io.sendme.finder.quick-action",
+    ] {
+        let _ = std::process::Command::new("/usr/libexec/PlistBuddy")
+            .args(["-c", key, &preferences_path])
+            .status();
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn command_output(command: &str, args: &[&str]) -> String {
+    match std::process::Command::new(command).args(args).output() {
+        Ok(output) => {
+            let mut text = String::new();
+            text.push_str(&String::from_utf8_lossy(&output.stdout));
+            text.push_str(&String::from_utf8_lossy(&output.stderr));
+            if text.trim().is_empty() {
+                format!("<empty; status: {}>", output.status)
+            } else {
+                text
+            }
+        }
+        Err(e) => format!("failed to run {command}: {e}"),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_context_menu_diagnostics() -> String {
+    let marker = macos_context_menu_marker_path().ok();
+    let obsolete_workflow = macos_obsolete_workflow_path().ok();
+    let exe = std::env::current_exe().ok();
+    let bundle = exe.as_ref().and_then(|exe| {
+        exe.parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .filter(|p| p.extension().is_some_and(|ext| ext == "app"))
+            .map(|p| p.to_path_buf())
+    });
+    let bundle_str = bundle
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "<not found>".to_string());
+
+    let mut text = String::new();
+    text.push_str("Sendme macOS context menu diagnostics\n");
+    text.push_str("=====================================\n");
+    text.push_str(&format!(
+        "enabled_marker: {:?} exists={}\n",
+        marker,
+        marker.as_ref().is_some_and(|p| p.exists())
+    ));
+    text.push_str(&format!(
+        "obsolete_workflow: {:?} exists={}\n",
+        obsolete_workflow,
+        obsolete_workflow.as_ref().is_some_and(|p| p.exists())
+    ));
+    text.push_str(&format!("current_exe: {:?}\n", exe));
+    text.push_str(&format!("bundle_path: {bundle_str}\n\n"));
+
+    text.push_str("[bundle Info.plist NSServices]\n");
+    if bundle.is_some() {
+        let info_plist = format!("{bundle_str}/Contents/Info.plist");
+        text.push_str(&command_output(
+            "/usr/libexec/PlistBuddy",
+            &["-c", "Print :NSServices", &info_plist],
+        ));
+    } else {
+        text.push_str("<bundle not found>");
+    }
+
+    text.push_str("\n\n[pbs -read_bundle]\n");
+    if bundle.is_some() {
+        text.push_str(&command_output(
+            "/System/Library/CoreServices/pbs",
+            &["-read_bundle", &bundle_str],
+        ));
+    } else {
+        text.push_str("<bundle not found>");
+    }
+
+    text.push_str("\n\n[pbs -dump Sendme snippets]\n");
+    let dump = command_output("/System/Library/CoreServices/pbs", &["-dump"]);
+    for needle in ["Send with Sendme", "io.sendme.app", "NSPortName = Sendme"] {
+        text.push_str(&format!("-- needle: {needle}\n"));
+        if let Some(index) = dump.find(needle) {
+            let start = index.saturating_sub(800);
+            let end = (index + 1600).min(dump.len());
+            text.push_str(&dump[start..end]);
+            text.push('\n');
+        } else {
+            text.push_str("<not found>\n");
+        }
+    }
+
+    text.push_str("\n\n[codesign]\n");
+    if bundle.is_some() {
+        text.push_str(&command_output(
+            "/usr/bin/codesign",
+            &["-dv", "--verbose=4", &bundle_str],
+        ));
+    } else {
+        text.push_str("<bundle not found>");
+    }
+
+    text
 }
 
 /// Path to the per-user .desktop integration file on Linux.
@@ -3067,8 +3256,7 @@ fn linux_register_context_menu(exe_path: &str) -> Result<(), String> {
          Terminal=false\n\
          NoDisplay=true\n"
     );
-    std::fs::write(&dest, content)
-        .map_err(|e| format!("Failed to write desktop file: {e}"))?;
+    std::fs::write(&dest, content).map_err(|e| format!("Failed to write desktop file: {e}"))?;
     // Best-effort DB refresh; failure is non-fatal
     let apps_dir = dest
         .parent()
@@ -3085,8 +3273,7 @@ fn linux_register_context_menu(exe_path: &str) -> Result<(), String> {
 fn linux_unregister_context_menu() -> Result<(), String> {
     let dest = linux_desktop_integration_path()?;
     if dest.exists() {
-        std::fs::remove_file(&dest)
-            .map_err(|e| format!("Failed to remove desktop file: {e}"))?;
+        std::fs::remove_file(&dest).map_err(|e| format!("Failed to remove desktop file: {e}"))?;
         let apps_dir = dest
             .parent()
             .map(|p| p.to_string_lossy().to_string())
@@ -3307,7 +3494,9 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 #[cfg(target_os = "macos")]
                 {
-                    let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    let _ = window
+                        .app_handle()
+                        .set_activation_policy(tauri::ActivationPolicy::Accessory);
                     let _ = window.app_handle().hide();
                 }
                 #[cfg(not(target_os = "macos"))]
@@ -3399,6 +3588,13 @@ pub fn run() {
                         let _ = app_handle.emit("show-settings", ());
                     }
                 });
+
+                macos_file_service::register(app.handle().clone());
+                if macos_context_menu_enabled() {
+                    let _ = macos_register_app_services();
+                    macos_refresh_services_cache();
+                }
+                macos_write_context_menu_diagnostics();
             }
 
             let app_handle = app.handle().clone();
@@ -3488,6 +3684,7 @@ pub fn run() {
             open_system_browser,
             get_context_menu_enabled,
             set_context_menu_enabled,
+            get_context_menu_diagnostics,
             // Menubar commands
             #[cfg(target_os = "macos")]
             menubar_cmd::init_menubar,
@@ -3995,10 +4192,7 @@ async fn receive_file(
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let (export_dir, _content_uri_output): (Option<std::path::PathBuf>, Option<String>) = (
-        request
-            .output_dir
-            .as_ref()
-            .map(std::path::PathBuf::from),
+        request.output_dir.as_ref().map(std::path::PathBuf::from),
         None,
     );
 
@@ -4252,7 +4446,10 @@ async fn receive_file(
                 let mut guard = transfers.inner().write().await;
                 if let Some(state) = guard.get_mut(&transfer_id) {
                     let collection = &result.collection;
-                    let names: Vec<_> = collection.iter().map(|(name, _)| name.to_string()).collect();
+                    let names: Vec<_> = collection
+                        .iter()
+                        .map(|(name, _)| name.to_string())
+                        .collect();
                     let display_name = if names.len() == 1 {
                         names[0].clone()
                     } else if names.len() > 1 {
@@ -4283,7 +4480,11 @@ async fn receive_file(
                 let history = app.state::<ReceiveHistory>().inner().clone();
                 append_to_history(&app, &history, &info).await;
                 let file_label = info.filename.as_deref().unwrap_or("file");
-                notify_transfer_event(&app, "Transfer complete", &format!("Received {}", file_label));
+                notify_transfer_event(
+                    &app,
+                    "Transfer complete",
+                    &format!("Received {}", file_label),
+                );
             }
 
             Ok(format!(

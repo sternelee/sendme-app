@@ -40,6 +40,7 @@ iroh-blobs.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+objc = "0.2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
