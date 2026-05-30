@@ -77,6 +77,13 @@ export async function get_transfer_status(id: string): Promise<string> {
 }
 
 /**
+ * Start native window dragging from a custom desktop title bar region.
+ */
+export async function start_window_drag(): Promise<void> {
+  return await invoke("start_window_drag");
+}
+
+/**
  * Clear all transfers and clean up temporary directories
  */
 export async function clear_transfers(): Promise<void> {

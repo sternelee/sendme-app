@@ -2843,6 +2843,21 @@ fn app_ready(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn start_window_drag(window: tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        window
+            .start_dragging()
+            .map_err(|e| format!("Failed to start window drag: {e}"))
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = window;
+        Ok(())
+    }
+}
+
 /// Returns true if "Send with Sendme" is enabled in the system file manager.
 /// Windows: checks HKCU registry key. Linux: checks ~/.local/share/applications desktop file.
 /// macOS: checks the per-user toggle marker; the app-bundle service is registered by Info.plist.
@@ -3681,6 +3696,7 @@ pub fn run() {
             accept_cloud_ticket,
             decline_cloud_ticket,
             app_ready,
+            start_window_drag,
             open_system_browser,
             get_context_menu_enabled,
             set_context_menu_enabled,

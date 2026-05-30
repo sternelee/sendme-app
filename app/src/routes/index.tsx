@@ -33,6 +33,7 @@ import {
   decline_incoming,
   accept_cloud_ticket,
   decline_cloud_ticket,
+  start_window_drag,
   type IncomingRequest,
   type NearbyTransferState,
   type CloudTicket,
@@ -88,6 +89,28 @@ export default function MainPage() {
     applyTheme(newTheme);
     setTheme(newTheme);
     localStorage.setItem("theme", newTheme);
+  }
+
+  async function handleDesktopWindowDrag(
+    event: PointerEvent & { currentTarget: HTMLElement; target: Element },
+  ) {
+    if (isMobile() || event.button !== 0) return;
+
+    const target = event.target as HTMLElement;
+    if (
+      target.closest(
+        "button,a,input,textarea,select,[role='button'],[data-no-window-drag]",
+      )
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    try {
+      await start_window_drag();
+    } catch (e) {
+      console.warn("[window] Failed to start native drag:", e);
+    }
   }
 
   async function loadTransfers() {
@@ -464,7 +487,10 @@ export default function MainPage() {
       </Show>
 
       <Show when={!isMobile()}>
-        <header class="border-base-300/60 bg-base-100/90 sticky top-0 z-40 border-b backdrop-blur-xl">
+        <header
+          class="border-base-300/60 bg-base-100/90 sticky top-0 z-40 cursor-default border-b backdrop-blur-xl"
+          onPointerDown={handleDesktopWindowDrag}
+        >
           <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
             <h1 class="text-lg font-bold tracking-tight opacity-0">
               {t("common.appName")}
