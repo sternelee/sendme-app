@@ -11,7 +11,7 @@ import { triggerHaptic } from "./lib/haptics";
 import Home from "./routes/index";
 import "./styles.css";
 
-const CLOUD_WS_CONNECT_DEBOUNCE_MS = 2500;
+const CLOUD_WS_CONNECT_DEBOUNCE_MS = 5000;
 
 function PresenceConnector() {
   const auth = useAuth();

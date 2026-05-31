@@ -2,6 +2,7 @@ const LOG_STORAGE_KEY = "sendme_debug_log";
 const MAX_LINES = 800;
 const FREEZE_SAMPLE_MS = 1000;
 const FREEZE_WARN_DRIFT_MS = 2500;
+const SLEEP_OR_SUSPEND_DRIFT_MS = 30_000;
 
 function getLines(): string[] {
   try {
@@ -83,17 +84,42 @@ export function debugError(scope: string, message: string, meta?: unknown) {
 }
 
 export function startUiFreezeWatchdog(): () => void {
-  let expected = performance.now() + FREEZE_SAMPLE_MS;
+  let lastTick = Date.now();
   const timer = setInterval(() => {
-    const now = performance.now();
-    const drift = now - expected;
+    const now = Date.now();
+    const elapsed = now - lastTick;
+    const drift = elapsed - FREEZE_SAMPLE_MS;
+    lastTick = now;
+
+    if (document.visibilityState === "hidden") {
+      return;
+    }
+
+    if (drift > SLEEP_OR_SUSPEND_DRIFT_MS) {
+      debugInfo(
+        "ui-freeze",
+        `App resumed after ${Math.round(drift)}ms timer pause`,
+      );
+      return;
+    }
+
     if (drift > FREEZE_WARN_DRIFT_MS) {
       debugWarn("ui-freeze", `Main thread stalled for ${Math.round(drift)}ms`);
     }
-    expected = now + FREEZE_SAMPLE_MS;
   }, FREEZE_SAMPLE_MS);
 
-  return () => clearInterval(timer);
+  const handleVisibilityChange = () => {
+    lastTick = Date.now();
+    if (document.visibilityState === "visible") {
+      debugInfo("ui-freeze", "App became visible");
+    }
+  };
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+
+  return () => {
+    clearInterval(timer);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  };
 }
 
 /** 返回日志全文字符串，可贴给开发者 */

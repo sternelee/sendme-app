@@ -51,7 +51,7 @@ import type {
 } from "~/lib/types";
 
 const t = i18n.t;
-const NEARBY_AUTOSTART_DELAY_MS = 2500;
+const NEARBY_AUTOSTART_DELAY_MS = 8000;
 
 export default function MainPage() {
   const globalStore = useGlobalStore();
