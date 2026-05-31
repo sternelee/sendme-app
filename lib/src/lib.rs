@@ -40,7 +40,7 @@ pub fn get_or_create_secret(verbose: bool) -> anyhow::Result<SecretKey> {
             Ok(SecretKey::from_bytes(&bytes))
         }
         Err(_) => {
-            let key = SecretKey::generate(&mut rand::rng());
+            let key = SecretKey::generate();
             if verbose {
                 let key = hex::encode(key.to_bytes());
                 eprintln!("using secret key {key}");

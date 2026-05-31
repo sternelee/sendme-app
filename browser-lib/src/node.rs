@@ -6,7 +6,7 @@
 use anyhow::Result;
 use bytes::Bytes;
 use futures_lite::StreamExt;
-use iroh::{discovery::static_provider::StaticProvider, protocol::Router, Endpoint};
+use iroh::{protocol::Router, Endpoint};
 use iroh_blobs::{
     api::{blobs::BlobStatus, Store},
     format::collection::Collection,
@@ -19,7 +19,6 @@ use iroh_blobs::{
 /// Uses in-memory storage and WebAssembly-compatible networking.
 #[derive(Clone)]
 pub struct SendmeNode {
-    discovery: StaticProvider,
     router: Router,
     pub blobs: Store,
 }
@@ -27,9 +26,7 @@ pub struct SendmeNode {
 impl SendmeNode {
     /// Spawn a new sendme node
     pub async fn spawn() -> Result<Self> {
-        let discovery = StaticProvider::default();
-        let endpoint = Endpoint::bind().await?;
-        endpoint.discovery().add(discovery.clone());
+        let endpoint = Endpoint::bind(iroh::endpoint::presets::N0).await?;
 
         // Use in-memory store for WebAssembly
         let store = iroh_blobs::store::mem::MemStore::default();
@@ -42,7 +39,6 @@ impl SendmeNode {
         Ok(Self {
             blobs: store.as_ref().clone(),
             router,
-            discovery,
         })
     }
 
@@ -170,7 +166,6 @@ impl SendmeNode {
         if !has_local {
             // Download from remote peer using direct connection
             tracing::info!("Collection not local, attempting remote fetch");
-            self.discovery.add_endpoint_info(ticket.addr().clone());
 
             // Connect to the peer
             let endpoint = self.router.endpoint();
@@ -241,7 +236,6 @@ impl SendmeNode {
         if !has_local {
             // Download from remote peer using direct connection
             tracing::info!("Collection not local, attempting remote fetch");
-            self.discovery.add_endpoint_info(ticket.addr().clone());
 
             // Connect to the peer
             let endpoint = self.router.endpoint();
