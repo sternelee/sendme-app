@@ -422,11 +422,14 @@ jobs:
 
       # Mirror public build artifacts to a public repo
       - name: Mirror to public repo
-        if: ${{ secrets.PUBLIC_REPO_PAT != '' }}
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_PAT }}
         run: |
           set -euo pipefail
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "PUBLIC_REPO_PAT not set, skipping mirror step."
+            exit 0
+          fi
 
           TAG="${{ github.ref_name }}"
           REPO="sternelee/sendme-mirror"
