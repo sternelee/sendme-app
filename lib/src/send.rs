@@ -155,9 +155,26 @@ async fn send_internal(
     // Spawn a task to keep the router alive for connections.
     // AGENTS.md: "Never replace with sleep loop. Dropping the router breaks
     // all subsequent incoming connections."
+    //
+    // The task serves until an explicit shutdown signal is received, at which
+    // point it stops the router and removes the temporary blob store. If the
+    // SendShutdown handle is dropped without signaling, it keeps serving
+    // indefinitely (preserving the original long-lived sharing behavior).
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let cleanup_dir = blobs_data_dir.clone();
     tokio::spawn(async move {
-        let _router = router;
-        std::future::pending::<()>().await;
+        let router = router;
+        match shutdown_rx.await {
+            Ok(()) => {
+                let _ = router.shutdown().await;
+                drop(router);
+                let _ = tokio::fs::remove_dir_all(&cleanup_dir).await;
+            }
+            Err(_) => {
+                // Handle dropped without an explicit shutdown: serve forever.
+                std::future::pending::<()>().await;
+            }
+        }
     });
 
     Ok(SendResult {
@@ -166,6 +183,7 @@ async fn send_internal(
         total_size: size,
         import_duration: dt,
         ticket,
+        shutdown: SendShutdown::new(shutdown_tx),
     })
 }
 

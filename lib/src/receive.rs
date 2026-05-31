@@ -94,6 +94,11 @@ async fn receive_internal(
 
         tracing::info!("✅ Temp directory created/verified");
 
+        // Ensure the temp blob store is removed on every exit path (success,
+        // error, or abort). Declared before `db` so the store's file handles
+        // are dropped before we delete the directory (important on Windows).
+        let _cleanup_guard = TempDirGuard(iroh_data_dir.clone());
+
         let db = FsStore::load(&iroh_data_dir).await.map_err(|e| {
             tracing::error!("❌ Failed to load FsStore: {}", e);
             anyhow::anyhow!("Failed to load FsStore: {}", e)
@@ -282,8 +287,7 @@ async fn receive_internal(
                 .await;
         }
 
-        // Clean up temp directory
-        tokio::fs::remove_dir_all(iroh_data_dir).await?;
+        // Temp directory cleanup is handled by `_cleanup_guard` on scope exit.
 
         Ok(ReceiveResult {
             collection,
@@ -297,6 +301,19 @@ async fn receive_internal(
     endpoint.close().await;
 
     result
+}
+
+/// RAII guard that removes a temporary directory when dropped.
+///
+/// This guarantees the temporary blob store is cleaned up on every exit path,
+/// including download errors and user cancellation (where the receive future is
+/// aborted and dropped at an await point), not just the success path.
+struct TempDirGuard(std::path::PathBuf);
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Show get error with context.

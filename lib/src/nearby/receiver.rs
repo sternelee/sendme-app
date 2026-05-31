@@ -236,9 +236,7 @@ async fn write_message(send: &mut (impl AsyncWriteExt + Unpin), msg: &Message) -
 }
 
 async fn read_message(recv: &mut (impl AsyncReadExt + Unpin)) -> Result<Message> {
-    let mut len_buf = [0u8; 4];
-    recv.read_exact(&mut len_buf).await?;
-    let len = u32::from_le_bytes(len_buf) as usize;
+    let len = recv.read_u32().await? as usize;
     let mut buf = vec![0u8; len];
     recv.read_exact(&mut buf).await?;
     let msg: Message = serde_json::from_slice(&buf)?;

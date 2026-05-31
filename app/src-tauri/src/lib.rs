@@ -713,6 +713,10 @@ type AndroidForegroundState = Arc<RwLock<AndroidForegroundRuntime>>;
 struct TransferState {
     info: TransferInfo,
     abort_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    /// For active send providers: handle to stop serving and delete the
+    /// temporary blob store. `None` for receives and for sends that have not
+    /// started serving yet.
+    send_shutdown: Option<sendme_lib::SendShutdown>,
 }
 
 struct NearbyRuntime {
@@ -1147,6 +1151,7 @@ async fn send_to_device(
             TransferState {
                 info: transfer_info,
                 abort_tx: None,
+                send_shutdown: None,
             },
         );
     }
@@ -1345,6 +1350,20 @@ async fn send_to_device(
     let ticket = send_result.ticket.to_string();
     update_transfer_status(transfers.inner(), &transfer_id, "serving").await;
     update_transfer_ticket(transfers.inner(), &transfer_id, &ticket).await;
+
+    // Hand the shutdown handle to the transfer registry so cancelling, deleting,
+    // or clearing this nearby transfer stops the provider and removes its
+    // temporary blob store. If the transfer was already removed, shut down now.
+    {
+        let mut guard = transfers.inner().write().await;
+        match guard.get_mut(&transfer_id) {
+            Some(state) => state.send_shutdown = Some(send_result.shutdown),
+            None => {
+                drop(guard);
+                send_result.shutdown.shutdown();
+            }
+        }
+    }
 
     write_nearby_message(
         &mut send,
@@ -1814,6 +1833,7 @@ async fn start_nearby_receive(
                     duration_ms: None,
                 },
                 abort_tx: None,
+                send_shutdown: None,
             },
         );
     }
@@ -3623,6 +3643,13 @@ pub fn run() {
             #[cfg(all(target_os = "ios", feature = "ios-web-inspector"))]
             enable_ios_web_inspector(app.handle())?;
 
+            // Reclaim disk used by leftover transfer blob stores from a previous
+            // session (e.g. after a crash or force-quit). At startup no provider
+            // or receiver is running, so both send and receive stores are stale.
+            if let Ok(temp_dir) = app.handle().path().temp_dir() {
+                sweep_stale_temp_dirs(&temp_dir, true);
+            }
+
             // Splashscreen removed — main window is shown immediately.
 
             // Create system tray icon on desktop
@@ -3911,6 +3938,7 @@ async fn send_file(
         TransferState {
             info: transfer_info.clone(),
             abort_tx: Some(abort_tx),
+            send_shutdown: None,
         },
     );
     drop(transfers_guard);
@@ -4085,6 +4113,23 @@ async fn send_file(
             log_info!("🎫 Ticket: {}", result.ticket.to_string());
             log_info!("📊 Transfer ID: {}", transfer_id);
             let ticket_str = result.ticket.to_string();
+            let send_shutdown = result.shutdown;
+
+            // Hand the shutdown handle to the transfer registry so cancelling
+            // or clearing the transfer stops the provider and removes its
+            // temporary blob store. If the transfer was already removed (e.g.
+            // cancelled during setup), shut the provider down immediately.
+            {
+                let mut guard = transfers.inner().write().await;
+                match guard.get_mut(&transfer_id) {
+                    Some(state) => state.send_shutdown = Some(send_shutdown),
+                    None => {
+                        drop(guard);
+                        send_shutdown.shutdown();
+                    }
+                }
+            }
+
             update_transfer_status(transfers.inner(), &transfer_id, "serving").await;
             update_transfer_ticket(transfers.inner(), &transfer_id, &ticket_str).await;
             notify_transfer_event(
@@ -4257,6 +4302,7 @@ async fn receive_file(
         TransferState {
             info: transfer_info.clone(),
             abort_tx: Some(abort_tx),
+            send_shutdown: None,
         },
     );
     drop(transfers_guard);
@@ -4536,6 +4582,10 @@ async fn cancel_transfer(
         if let Some(abort_tx) = state.abort_tx.take() {
             let _ = abort_tx.send(());
         }
+        // Stop an active send provider and delete its temporary blob store.
+        if let Some(shutdown) = state.send_shutdown.take() {
+            shutdown.shutdown();
+        }
         state.info.status = "cancelled".to_string();
         transfers_guard.insert(id.clone(), state);
         Ok(true)
@@ -4556,6 +4606,10 @@ async fn delete_transfer(
         // Send abort signal if still active
         if let Some(abort_tx) = state.abort_tx.take() {
             let _ = abort_tx.send(());
+        }
+        // Stop an active send provider and delete its temporary blob store.
+        if let Some(shutdown) = state.send_shutdown.take() {
+            shutdown.shutdown();
         }
         drop(transfers_guard);
         // Also remove from persistent history if present
@@ -4686,6 +4740,30 @@ fn serialize_download_progress(progress: &DownloadProgress) -> serde_json::Value
     }
 }
 
+/// Remove leftover sendme temporary blob stores from a directory.
+///
+/// `.sendme-send-*` and `.sendme-recv-*` directories are created during
+/// transfers. Receives clean up their own store on completion/abort, but
+/// crashes or force-quits can leave stores behind — especially costly for
+/// large transfers. When `include_send` is false, active `.sendme-send-*`
+/// stores are preserved (their providers may still be serving data).
+fn sweep_stale_temp_dirs(dir: &std::path::Path, include_send: bool) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let is_recv = name.starts_with(".sendme-recv-");
+        let is_send = name.starts_with(".sendme-send-");
+        if (is_recv || (include_send && is_send)) && entry.path().is_dir() {
+            log_info!("Removing stale temp directory: {:?}", entry.path());
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 #[tauri::command]
 async fn clear_transfers(
     app: AppHandle,
@@ -4698,24 +4776,41 @@ async fn clear_transfers(
         if let Some(abort_tx) = state.abort_tx.take() {
             let _ = abort_tx.send(());
         }
+        // Stop active send providers so their temporary stores are removed.
+        if let Some(shutdown) = state.send_shutdown.take() {
+            shutdown.shutdown();
+        }
     }
     drop(transfers_guard);
 
     // Clear persistent receive history
     clear_all_history(&app, &history).await;
 
-    // Clean up temporary sendme directories
-    let temp_dirs = std::fs::read_dir(".")
-        .map_err(|e| e.to_string())?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.file_name().to_string_lossy().starts_with(".sendme-"))
-        .filter(|entry| entry.path().is_dir())
-        .map(|entry| entry.path())
-        .collect::<Vec<_>>();
+    // Clean up leftover receive blob stores in the current directory (legacy
+    // CLI-style location). Send stores are left untouched in case a provider
+    // is still serving.
+    if let Ok(read_dir) = std::fs::read_dir(".") {
+        let temp_dirs = read_dir
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".sendme-recv-")
+            })
+            .filter(|entry| entry.path().is_dir())
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        for path in temp_dirs {
+            log_info!("Removing temporary directory: {:?}", path);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
 
-    for path in temp_dirs {
-        log_info!("Removing temporary directory: {:?}", path);
-        let _ = std::fs::remove_dir_all(&path);
+    // Clean up leftover receive blob stores in the app temp directory, which is
+    // where mobile and sandboxed desktop stores actually live.
+    if let Ok(temp_dir) = app.path().temp_dir() {
+        sweep_stale_temp_dirs(&temp_dir, false);
     }
 
     Ok(())

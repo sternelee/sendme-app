@@ -190,6 +190,34 @@ pub struct SendResult {
     pub import_duration: std::time::Duration,
     /// Ticket for receiving the data.
     pub ticket: BlobTicket,
+    /// Handle to stop serving and clean up the temporary blob store.
+    pub shutdown: SendShutdown,
+}
+
+/// Handle to shut down an active send provider and remove its temporary store.
+///
+/// The provider keeps serving for as long as this handle is alive. Calling
+/// [`SendShutdown::shutdown`] stops the provider's router and deletes the
+/// temporary blob store directory. If the handle is dropped *without* calling
+/// `shutdown`, the provider keeps serving indefinitely (preserving the
+/// long-lived sharing behavior) and the store is left in place.
+#[derive(Debug)]
+pub struct SendShutdown {
+    tx: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
+impl SendShutdown {
+    /// Create a new shutdown handle wrapping a oneshot sender.
+    pub(crate) fn new(tx: tokio::sync::oneshot::Sender<()>) -> Self {
+        Self { tx: Some(tx) }
+    }
+
+    /// Signal the provider to stop serving and remove its temporary blob store.
+    pub fn shutdown(mut self) {
+        if let Some(tx) = self.tx.take() {
+            let _ = tx.send(());
+        }
+    }
 }
 
 /// Result from a receive operation.

@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn endpoint_addr_roundtrips_through_txt_encoding() {
-        let endpoint_addr = EndpointAddr::new(iroh::SecretKey::generate(&mut rand::rng()).public())
+        let endpoint_addr = EndpointAddr::new(iroh::SecretKey::generate().public())
             .with_ip_addr(SocketAddr::from((Ipv4Addr::LOCALHOST, 7001)));
         let encoded = encode_endpoint_addr(&endpoint_addr).unwrap();
         let decoded = decode_endpoint_addr(&encoded).unwrap();

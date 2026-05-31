@@ -98,11 +98,46 @@ pub fn canonicalized_path_to_string(
 
 /// Validate a path component.
 ///
-/// Ensures the component does not contain path separators.
+/// Ensures the component is safe to join onto a destination directory when
+/// exporting data received from an untrusted peer. Rejects path separators,
+/// parent/current directory references, and empty components to prevent path
+/// traversal outside the export directory.
 pub fn validate_path_component(component: &str) -> anyhow::Result<()> {
     anyhow::ensure!(
-        !component.contains('/'),
-        "path components must not contain the path separator /"
+        !component.contains('/') && !component.contains('\\'),
+        "path components must not contain a path separator"
+    );
+    anyhow::ensure!(
+        !component.is_empty() && component != "." && component != "..",
+        "invalid path component {:?}",
+        component
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_path_component_rejects_traversal() {
+        // Valid components pass.
+        assert!(validate_path_component("photo.jpg").is_ok());
+        assert!(validate_path_component("sub dir").is_ok());
+
+        // Traversal and separators from an untrusted sender are rejected.
+        assert!(validate_path_component("..").is_err());
+        assert!(validate_path_component(".").is_err());
+        assert!(validate_path_component("").is_err());
+        assert!(validate_path_component("a/b").is_err());
+        assert!(validate_path_component("a\\b").is_err());
+    }
+
+    #[test]
+    fn get_export_path_blocks_escape() {
+        let root = std::path::Path::new("/tmp/out");
+        // A malicious collection name must not escape the export root.
+        assert!(get_export_path(root, "../../etc/passwd").is_err());
+        assert!(get_export_path(root, "ok/nested.txt").is_ok());
+    }
 }
