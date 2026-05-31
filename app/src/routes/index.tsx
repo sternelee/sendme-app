@@ -16,13 +16,14 @@ import { Toaster, toast } from "solid-sonner";
 import { i18n } from "@sendme/shared";
 
 import { requestCloudApi, getCloudApiUrl } from "~/lib/cloud-api";
+import { debugError, debugInfo } from "~/lib/debug-log";
 import { useGlobalStore } from "~/lib/store";
 import { IncomingReminderStack } from "~/lib/components/IncomingReminderStack";
 import { ShareTicketCard } from "~/lib/components/ShareTicketCard";
+import { EnhancedHistoryPanel } from "~/lib/components/EnhancedHistoryPanel";
 import type { PendingReceiveCard } from "~/lib/transfer-ui";
 import { SplashScreen } from "~/lib/components/SplashScreen";
 import { TransferTab } from "~/components/TransferTab";
-import { HistoryPanel } from "~/components/HistoryPanel";
 import { SettingsPanel } from "~/components/SettingsPanel";
 import {
   get_file_size,
@@ -39,6 +40,7 @@ import {
   type CloudTicket,
 } from "~/bindings";
 import { copyToClipboard, nativeShare } from "~/lib/utils";
+import { triggerHaptic } from "~/lib/haptics";
 import type {
   ProgressUpdate,
   ShareSubTab,
@@ -49,6 +51,7 @@ import type {
 } from "~/lib/types";
 
 const t = i18n.t;
+const NEARBY_AUTOSTART_DELAY_MS = 2500;
 
 export default function MainPage() {
   const globalStore = useGlobalStore();
@@ -91,10 +94,24 @@ export default function MainPage() {
     localStorage.setItem("theme", newTheme);
   }
 
-  async function handleDesktopWindowDrag(
-    event: PointerEvent & { currentTarget: HTMLElement; target: Element },
+  // 带触觉反馈的标签切换
+  function handleTabChange(tab: Tab) {
+    triggerHaptic("light");
+    setActiveTab(tab);
+  }
+
+  // 带触觉反馈的传输模式切换
+  function handleTransferView(mode: TransferMode) {
+    triggerHaptic("selection");
+    setTransferView(mode);
+  }
+
+  let lastWindowDragAt = 0;
+
+  function handleDesktopWindowDrag(
+    event: MouseEvent & { currentTarget: HTMLElement; target: Element },
   ) {
-    if (isMobile() || event.button !== 0) return;
+    if (isMobile() || event.button !== 0 || event.buttons !== 1) return;
 
     const target = event.target as HTMLElement;
     if (
@@ -105,12 +122,14 @@ export default function MainPage() {
       return;
     }
 
+    const now = Date.now();
+    if (now - lastWindowDragAt < 350) return;
+    lastWindowDragAt = now;
+
     event.preventDefault();
-    try {
-      await start_window_drag();
-    } catch (e) {
+    void start_window_drag().catch((e) => {
       console.warn("[window] Failed to start native drag:", e);
-    }
+    });
   }
 
   async function loadTransfers() {
@@ -270,11 +289,20 @@ export default function MainPage() {
     void withTimeout(loadTransfers(), 5000, "loadTransfers").catch((e) =>
       console.warn("[init] loadTransfers failed:", e),
     );
-    void withTimeout(
-      start_nearby_discovery(),
-      5000,
-      "start_nearby_discovery",
-    ).catch((e) => console.warn("[init] start_nearby_discovery failed:", e));
+    const nearbyAutostartTimer = setTimeout(() => {
+      debugInfo(
+        "init",
+        `Starting nearby discovery after ${NEARBY_AUTOSTART_DELAY_MS}ms delay`,
+      );
+      void withTimeout(
+        start_nearby_discovery(),
+        8000,
+        "start_nearby_discovery",
+      ).catch((e) => {
+        debugError("init", "start_nearby_discovery failed", e);
+        console.warn("[init] start_nearby_discovery failed:", e);
+      });
+    }, NEARBY_AUTOSTART_DELAY_MS);
 
     const unlistenNearby = await listen<IncomingRequest>(
       "incoming_nearby_request",
@@ -457,6 +485,7 @@ export default function MainPage() {
     );
 
     onCleanup(() => {
+      clearTimeout(nearbyAutostartTimer);
       unlistenNearby();
       unlistenNearbyCancel();
       unlistenNearbyDecline();
@@ -489,31 +518,37 @@ export default function MainPage() {
       <Show when={!isMobile()}>
         <header
           class="border-base-300/60 bg-base-100/90 sticky top-0 z-40 cursor-default border-b backdrop-blur-xl"
-          onPointerDown={handleDesktopWindowDrag}
+          onMouseDown={handleDesktopWindowDrag}
         >
           <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
             <h1 class="text-lg font-bold tracking-tight opacity-0">
               {t("common.appName")}
             </h1>
             <div class="flex gap-1">
-              <button
+              <Motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 class={`btn btn-sm rounded-md ${activeTab() === "transfer" ? "btn-primary" : "btn-ghost"}`}
-                onClick={() => setActiveTab("transfer")}
+                onClick={() => handleTabChange("transfer")}
               >
                 {t("common.transfer")}
-              </button>
-              <button
+              </Motion.button>
+              <Motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 class={`btn btn-sm rounded-md ${activeTab() === "history" ? "btn-primary" : "btn-ghost"}`}
-                onClick={() => setActiveTab("history")}
+                onClick={() => handleTabChange("history")}
               >
                 {t("common.history")}
-              </button>
-              <button
+              </Motion.button>
+              <Motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 class={`btn btn-sm rounded-md ${activeTab() === "settings" ? "btn-primary" : "btn-ghost"}`}
-                onClick={() => setActiveTab("settings")}
+                onClick={() => handleTabChange("settings")}
               >
                 {t("common.settings")}
-              </button>
+              </Motion.button>
             </div>
           </div>
         </header>
@@ -533,7 +568,7 @@ export default function MainPage() {
               >
                 <TransferTab
                   transferMode={transferMode()}
-                  setTransferView={setTransferView}
+                  setTransferView={handleTransferView}
                   shareSubTab={shareSubTab()}
                   setShareSubTab={setShareSubTab}
                   isMobile={isMobile()}
@@ -554,7 +589,7 @@ export default function MainPage() {
                 transition={{ duration: 0.15 }}
                 class="space-y-4"
               >
-                <HistoryPanel
+                <EnhancedHistoryPanel
                   transfers={transfers()}
                   onReload={loadTransfers}
                   onReshare={handleReshare}
@@ -620,27 +655,30 @@ export default function MainPage() {
 
       <Show when={isMobile()}>
         <nav class="dock dock-md border-base-300 bg-base-100/85 border-t backdrop-blur-xl">
-          <button
+          <Motion.button
+            whileTap={{ scale: 0.9 }}
             class={`dock-label ${activeTab() === "transfer" ? "active" : ""}`}
-            onClick={() => setActiveTab("transfer")}
+            onClick={() => handleTabChange("transfer")}
           >
             <Send size={24} />
             <span>{t("common.transfer")}</span>
-          </button>
-          <button
+          </Motion.button>
+          <Motion.button
+            whileTap={{ scale: 0.9 }}
             class={`dock-label ${activeTab() === "history" ? "active" : ""}`}
-            onClick={() => setActiveTab("history")}
+            onClick={() => handleTabChange("history")}
           >
             <History size={24} />
             <span>{t("common.history")}</span>
-          </button>
-          <button
+          </Motion.button>
+          <Motion.button
+            whileTap={{ scale: 0.9 }}
             class={`dock-label ${activeTab() === "settings" ? "active" : ""}`}
-            onClick={() => setActiveTab("settings")}
+            onClick={() => handleTabChange("settings")}
           >
             <Settings size={24} />
             <span>{t("common.settings")}</span>
-          </button>
+          </Motion.button>
         </nav>
       </Show>
     </div>

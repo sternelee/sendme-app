@@ -12,6 +12,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { platform } from "@tauri-apps/plugin-os";
 import { pick_file, get_file_size } from "~/bindings";
 import { i18n } from "@sendme/shared";
+import { Motion } from "solid-motionone";
 
 const t = i18n.t;
 
@@ -136,12 +137,12 @@ export const DropZone: Component<DropZoneProps> = (props) => {
   };
 
   return (
-    <div
-      class={`min-w-0 cursor-pointer overflow-hidden rounded-lg border-2 border-dashed transition-colors ${
+    <Motion.div
+      class={`min-w-0 cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed transition-all duration-200 ${
         isDragover()
-          ? "border-primary bg-primary/5"
-          : "border-base-300 bg-base-300/30 hover:border-primary/50"
-      } ${props.files.length > 0 ? "p-2" : "p-8 text-center"}`}
+          ? "border-primary bg-primary/5 scale-[1.02] shadow-lg shadow-primary/10"
+          : "border-base-300 bg-base-300/30 hover:border-primary/50 hover:bg-primary/[0.02]"
+      } ${props.files.length > 0 ? "p-3" : "p-8 text-center"}`}
       onClick={handleClick}
       onDragOver={(e) => {
         if (!isDesktop()) return;
@@ -153,6 +154,9 @@ export const DropZone: Component<DropZoneProps> = (props) => {
         setIsDragover(false);
       }}
       onDrop={handleHtmlDrop}
+      whileHover={isDesktop() && !isDragover() ? { scale: 1.01 } : undefined}
+      whileTap={{ scale: 0.98 }}
+      transition={{ duration: 0.15 }}
     >
       <Show
         when={props.files.length === 0}
@@ -194,6 +198,6 @@ export const DropZone: Component<DropZoneProps> = (props) => {
               : t("nearby.tapToSelect")}
         </p>
       </Show>
-    </div>
+    </Motion.div>
   );
 };

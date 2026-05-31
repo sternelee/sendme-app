@@ -141,6 +141,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Sendme ${{ github.ref_name }}
@@ -417,3 +419,44 @@ jobs:
             ## Mobile Apps
 
             Android APKs and AAB files are available below.
+
+      # Mirror public build artifacts to a public repo
+      - name: Mirror to public repo
+        if: ${{ secrets.PUBLIC_REPO_PAT != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_PAT }}
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.ref_name }}"
+          REPO="sternelee/sendme-mirror"
+          echo "Mirroring release artifacts for ${TAG} to ${REPO}"
+
+          # Upload CLI archives
+          for f in dist/*.tar.gz dist/*.zip; do
+            if [[ -f "$f" ]]; then
+              echo "Uploading $f to mirror"
+              gh release upload "${TAG}" "$f" \
+                --repo "${REPO}" \
+                --clobber || echo "Warning: Failed to upload $f"
+            fi
+          done
+
+          # Upload checksums
+          if [[ -f dist/checksums.txt ]]; then
+            gh release upload "${TAG}" dist/checksums.txt \
+              --repo "${REPO}" \
+              --clobber || echo "Warning: Failed to upload checksums.txt"
+          fi
+
+          # Upload Android APKs and AABs
+          for f in dist/android/**/*.apk dist/android/**/*.aab; do
+            if [[ -f "$f" ]]; then
+              echo "Uploading $f to mirror"
+              gh release upload "${TAG}" "$f" \
+                --repo "${REPO}" \
+                --clobber || echo "Warning: Failed to upload $f"
+            fi
+          done
+
+          echo "Mirror upload complete"

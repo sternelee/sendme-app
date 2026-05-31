@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "Sendme by P2P",
-        "width": 400,
-        "height": 560,
+        "width": 416,
+        "height": 906,
         "resizable": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,

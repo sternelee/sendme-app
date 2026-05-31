@@ -1,5 +1,6 @@
 import { Component, Show } from "solid-js";
-import { Copy, Share2, ChevronDown } from "lucide-solid";
+import { Copy, Share2, ChevronDown, Check, QrCode } from "lucide-solid";
+import { Motion } from "solid-motionone";
 import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
@@ -30,45 +31,66 @@ export const ShareTicketCard: Component<ShareTicketCardProps> = (props) => {
       </div>
 
       <div class="grid gap-2 sm:grid-cols-2">
-        <button
+        <Motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           onClick={() => props.onCopy(props.ticket)}
-          class="btn btn-primary btn-sm rounded-2xl"
+          class="btn btn-primary btn-sm rounded-2xl gap-2"
         >
           <Copy size={14} /> {t("common.copy")}
-        </button>
+        </Motion.button>
         <Show when={canShare()} fallback={<div class="hidden sm:block" />}>
-          <button
+          <Motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => props.onShare(props.ticket)}
-            class="btn btn-outline btn-sm rounded-2xl"
+            class="btn btn-outline btn-sm rounded-2xl gap-2"
           >
             <Share2 size={14} /> {t("common.share")}
-          </button>
+          </Motion.button>
         </Show>
       </div>
 
       <Show when={props.qrCode && props.isMobile}>
-        <button
+        <Motion.button
+          whileTap={{ scale: 0.98 }}
           onClick={() => props.setShowQrCode(!props.showQrCode)}
-          class="btn btn-ghost btn-sm w-full gap-1 rounded-2xl"
+          class="btn btn-ghost btn-sm w-full gap-2 rounded-2xl"
         >
-          <ChevronDown
-            size={14}
-            class={`transition-transform ${props.showQrCode ? "rotate-180" : ""}`}
-          />
+          <QrCode size={14} />
+          <Motion.div
+            animate={{ rotate: props.showQrCode ? 180 : 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ChevronDown size={14} />
+          </Motion.div>
           {props.showQrCode ? t("send.hideQrCode") : t("send.showQrCode")}
-        </button>
+        </Motion.button>
       </Show>
 
       <Show when={props.qrCode && showQrInline()}>
-        <div class="flex justify-center">
-          <div class="rounded-xl bg-base-100 p-3">
+        <Motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          class="flex justify-center"
+        >
+          <div class="rounded-2xl bg-white p-4 shadow-lg">
             <img src={props.qrCode} alt="QR" class="h-48 w-48" />
           </div>
-        </div>
+        </Motion.div>
       </Show>
 
-      <div class="bg-base-300/50 overflow-hidden rounded-xl p-3">
+      <div class="bg-base-300/50 overflow-hidden rounded-xl p-3 relative group">
         <code class="text-primary font-mono text-xs break-all">{props.ticket}</code>
+        <Motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => props.onCopy(props.ticket)}
+          class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-base-100/80 opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <Copy size={12} />
+        </Motion.button>
       </div>
     </div>
   );

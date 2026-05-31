@@ -1,4 +1,4 @@
-import { createEffect, onCleanup } from "solid-js";
+import { createEffect, onCleanup, onMount } from "solid-js";
 import { Router, Route } from "@solidjs/router";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { GlobalStoreProvider } from "./lib/store";
@@ -6,11 +6,12 @@ import {
   connectCloudWebSocket,
   disconnectCloudWebSocket,
 } from "./lib/cloud-ws";
-import { debugError, debugInfo } from "./lib/debug-log";
+import { debugError, debugInfo, startUiFreezeWatchdog } from "./lib/debug-log";
+import { triggerHaptic } from "./lib/haptics";
 import Home from "./routes/index";
 import "./styles.css";
 
-const CLOUD_WS_CONNECT_DEBOUNCE_MS = 1200;
+const CLOUD_WS_CONNECT_DEBOUNCE_MS = 2500;
 
 function PresenceConnector() {
   const auth = useAuth();
@@ -50,13 +51,6 @@ function PresenceConnector() {
         );
       }, CLOUD_WS_CONNECT_DEBOUNCE_MS);
       return;
-
-      // WORKAROUND: Uncomment below and comment out the setTimeout above
-      // to disable cloud WebSocket and test if login still freezes.
-      // This isolates whether the freeze is caused by WebSocket connect
-      // or message handling.
-      // debugInfo("PresenceConnector", "WebSocket connect disabled for debugging");
-      // return;
     }
 
     disconnectCloudWebSocket().catch((e) =>
@@ -73,6 +67,11 @@ function PresenceConnector() {
 }
 
 export default function App() {
+  onMount(() => {
+    const stopWatchdog = startUiFreezeWatchdog();
+    onCleanup(stopWatchdog);
+  });
+
   return (
     <AuthProvider>
       <GlobalStoreProvider>

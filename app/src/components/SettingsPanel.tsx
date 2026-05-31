@@ -10,6 +10,8 @@ import {
   get_context_menu_enabled,
   set_context_menu_enabled,
 } from "~/bindings";
+import { clearDebugLog, exportDebugLog } from "~/lib/debug-log";
+import { copyToClipboard } from "~/lib/utils";
 
 const t = i18n.t;
 
@@ -54,6 +56,10 @@ export const SettingsPanel: Component = () => {
     } finally {
       setContextMenuLoading(false);
     }
+  };
+
+  const copyDiagnostics = async () => {
+    await copyToClipboard(exportDebugLog() || "No diagnostics collected yet.");
   };
 
   return (
@@ -164,6 +170,33 @@ export const SettingsPanel: Component = () => {
             </div>
           </div>
         </Show>
+
+        <div class="surface-card p-5 md:col-span-2">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold">{t("settings.diagnostics")}</p>
+              <p class="text-base-content/60 mt-2 text-sm">
+                {t("settings.diagnosticsDescription")}
+              </p>
+            </div>
+            <div class="flex shrink-0 gap-2">
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm rounded-xl"
+                onClick={clearDebugLog}
+              >
+                {t("common.clear")}
+              </button>
+              <button
+                type="button"
+                class="btn btn-primary btn-sm rounded-xl"
+                onClick={copyDiagnostics}
+              >
+                {t("settings.copyDiagnostics")}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

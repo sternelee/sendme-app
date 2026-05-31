@@ -1,5 +1,7 @@
 const LOG_STORAGE_KEY = "sendme_debug_log";
 const MAX_LINES = 800;
+const FREEZE_SAMPLE_MS = 1000;
+const FREEZE_WARN_DRIFT_MS = 2500;
 
 function getLines(): string[] {
   try {
@@ -78,6 +80,20 @@ export function debugWarn(scope: string, message: string, meta?: unknown) {
 
 export function debugError(scope: string, message: string, meta?: unknown) {
   logToConsole("error", scope, message, meta);
+}
+
+export function startUiFreezeWatchdog(): () => void {
+  let expected = performance.now() + FREEZE_SAMPLE_MS;
+  const timer = setInterval(() => {
+    const now = performance.now();
+    const drift = now - expected;
+    if (drift > FREEZE_WARN_DRIFT_MS) {
+      debugWarn("ui-freeze", `Main thread stalled for ${Math.round(drift)}ms`);
+    }
+    expected = now + FREEZE_SAMPLE_MS;
+  }, FREEZE_SAMPLE_MS);
+
+  return () => clearInterval(timer);
 }
 
 /** 返回日志全文字符串，可贴给开发者 */

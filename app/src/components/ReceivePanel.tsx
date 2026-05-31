@@ -6,12 +6,13 @@ import {
   createMemo,
   createSignal,
 } from "solid-js";
-import { Download, Copy, Shield, Scan, RefreshCw } from "lucide-solid";
+import { Download, Copy, Shield, Scan, RefreshCw, Zap } from "lucide-solid";
 
 import { i18n } from "@sendme/shared";
 import { useGlobalStore } from "~/lib/store";
 import { receive_file, cancel_transfer, pick_directory } from "~/bindings";
 import { toast } from "solid-sonner";
+import { Motion } from "solid-motionone";
 
 import {
   scan,
@@ -20,7 +21,8 @@ import {
   requestPermissions,
 } from "@tauri-apps/plugin-barcode-scanner";
 import { listen } from "@tauri-apps/api/event";
-import { TransferProgress } from "~/lib/components/TransferProgress";
+import { EnhancedTransferProgress } from "~/lib/components/EnhancedTransferProgress";
+import { ScanOverlay } from "~/lib/components/ScanOverlay";
 import {
   buildReceiveProgressCards,
   type PendingReceiveCard,
@@ -41,6 +43,7 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
   const [progressData, setProgressData] = createSignal<
     Record<string, ReceiveProgressSnapshot>
   >({});
+  const [showScanOverlay, setShowScanOverlay] = createSignal(false);
 
   const receiveTicket = () => globalStore.receive.state().ticket;
   const receiveOutputDir = () => globalStore.receive.state().outputDir;
@@ -120,22 +123,59 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
   }
 
   async function handleScanBarcode() {
-    try {
-      let permissionStatus = await checkPermissions();
-      if (permissionStatus !== "granted") {
-        permissionStatus = await requestPermissions();
-      }
-      if (permissionStatus === "granted") {
-        const result = await scan({ formats: [Format.QRCode] });
-        if (result?.content) {
-          globalStore.receive.setTicket(result.content);
+    if (props.isMobile) {
+      // 使用沉浸式扫描覆盖层
+      setShowScanOverlay(true);
+      try {
+        let permissionStatus = await checkPermissions();
+        if (permissionStatus !== "granted") {
+          permissionStatus = await requestPermissions();
         }
-      } else {
+        if (permissionStatus === "granted") {
+          const result = await scan({ formats: [Format.QRCode] });
+          if (result?.content) {
+            globalStore.receive.setTicket(result.content);
+            setShowScanOverlay(false);
+            toast.success(t("receive.qrDetected"));
+          }
+        } else {
+          toast.error(t("receive.scanError"));
+          setShowScanOverlay(false);
+        }
+      } catch {
+        toast.error(t("receive.scanError"));
+        setShowScanOverlay(false);
+      }
+    } else {
+      // 桌面端保持原有逻辑
+      try {
+        let permissionStatus = await checkPermissions();
+        if (permissionStatus !== "granted") {
+          permissionStatus = await requestPermissions();
+        }
+        if (permissionStatus === "granted") {
+          const result = await scan({ formats: [Format.QRCode] });
+          if (result?.content) {
+            globalStore.receive.setTicket(result.content);
+          }
+        } else {
+          toast.error(t("receive.scanError"));
+        }
+      } catch {
         toast.error(t("receive.scanError"));
       }
-    } catch {
-      toast.error(t("receive.scanError"));
     }
+  }
+
+  function handleScanComplete(content: string) {
+    globalStore.receive.setTicket(content);
+    setShowScanOverlay(false);
+    toast.success(t("receive.qrDetected"));
+  }
+
+  function handlePickFromGallery() {
+    // 从相册选择二维码图片的逻辑
+    toast.info(t("receive.galleryNotImplemented"));
   }
 
   async function pasteTicketFromClipboard() {
@@ -319,11 +359,19 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
         <Download size={18} /> {t("receive.receiveFile")}
       </button>
 
+      {/* 扫描覆盖层 */}
+      <ScanOverlay
+        isOpen={showScanOverlay()}
+        onClose={() => setShowScanOverlay(false)}
+        onScan={handleScanComplete}
+        onPickFromGallery={handlePickFromGallery}
+      />
+
       <Show when={receiveCards().length > 0}>
         <div class="space-y-3">
           <For each={receiveCards()}>
             {(card) => (
-              <TransferProgress
+              <EnhancedTransferProgress
                 title={card.title}
                 transferred={card.transferred}
                 total={card.total}
@@ -345,7 +393,7 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
 
       <Show when={nearbyReceiveCard()}>
         {(card) => (
-          <TransferProgress
+          <EnhancedTransferProgress
             title={card().title}
             transferred={card().transferred}
             total={card().total}

@@ -1,8 +1,9 @@
 import { Component, Show, createEffect } from "solid-js";
-import { Smartphone, FileText, Loader2 } from "lucide-solid";
+import { Smartphone, FileText, Loader2, Sparkles } from "lucide-solid";
 import QRCode from "qrcode";
 import { getDisplayName } from "@sendme/ui";
 import { i18n } from "@sendme/shared";
+import { Motion } from "solid-motionone";
 import { useGlobalStore } from "~/lib/store";
 import { DropZone } from "~/lib/components/DropZone";
 import { ShareTicketCard } from "~/lib/components/ShareTicketCard";
@@ -180,16 +181,36 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
       </Show>
 
       <Show when={isSending() && !sendTicket()}>
-        <div class="surface-card flex items-center justify-center gap-3 py-8">
-          <Loader2 size={20} class="text-primary animate-spin" />
+        <Motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          class="surface-card flex items-center justify-center gap-3 py-8"
+        >
+          <Motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, easing: "linear" }}
+          >
+            <Loader2 size={20} class="text-primary" />
+          </Motion.div>
           <span class="text-sm opacity-60">{t("send.sending")}</span>
-        </div>
+        </Motion.div>
       </Show>
 
       <Show when={sendTicket()}>
-        <div class="surface-card space-y-4 p-5">
+        <Motion.div
+          initial={{ opacity: 0, y: 20, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.4, type: "spring", stiffness: 400, damping: 30 }}
+          class="surface-card space-y-4 p-5"
+        >
           <div class="flex items-center gap-2">
-            <Smartphone size={16} class="text-success" />
+            <Motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 500, damping: 25, delay: 0.1 }}
+            >
+              <Sparkles size={16} class="text-success" />
+            </Motion.div>
             <div>
               <p class="text-sm font-semibold">{t("send.ticketReady")}</p>
               <p class="text-base-content/60 mt-1 text-xs leading-5">
@@ -209,7 +230,7 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
             onCopy={props.onCopy}
             onShare={props.onShare}
           />
-        </div>
+        </Motion.div>
       </Show>
     </div>
   );

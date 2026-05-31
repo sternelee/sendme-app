@@ -145,8 +145,8 @@
       "ticketReady": "Your ticket is ready",
       "chooseFriend": "Choose a friend",
       "shareViaTicket": "Share via Ticket Link",
-      "shareViaTicketHint": "Generate a ticket link to share with anyone — paste in forums, chats, or anywhere.",
-      "firstFileOnly": "Multiple selection isn't available yet — sharing the first file only.",
+      "shareViaTicketHint": "Generate a ticket link to share with anyone - paste in forums, chats, or anywhere.",
+      "firstFileOnly": "Multiple selection isn't available yet - sharing the first file only.",
       "selectSomethingFirst": "Choose a file or message in the Share panel first."
     },
     "receive": {
@@ -171,6 +171,11 @@
       "folderPickerError": "Failed to choose a download folder",
       "receiveError": "Failed to start receiving",
       "cancelError": "Failed to cancel receive",
+      "scanning": "Scanning...",
+      "qrDetected": "QR Code detected!",
+      "alignQrCode": "Align QR code within the frame",
+      "gallery": "Gallery",
+      "enterTicketManually": "Enter ticket manually",
       "stackHint": "Paste a ticket here, or accept an incoming request from the stacked cards at the bottom.",
       "receiveWorkspaceTitle": "Receive inbox",
       "incomingCount": "Incoming requests: {{count}}",
@@ -205,6 +210,17 @@
       "clear": "Clear All",
       "copyTicket": "Copy Ticket"
     },
+    "preview": {
+      "imagePreview": "Image Preview",
+      "textPreview": "Text Preview", 
+      "noPreview": "No preview available"
+    },
+    "toast": {
+      "transferStarted": "Transfer started",
+      "transferComplete": "Transfer complete", 
+      "transferFailed": "Transfer failed",
+      "transferCancelled": "Transfer cancelled"
+    },
     "settings": {
       "title": "Settings",
       "theme": "Theme",
@@ -213,7 +229,10 @@
       "languageDescription": "Choose the language used across menus, buttons, and status text.",
       "themeDescription": "Adjust the app's appearance for the environment and visual comfort.",
       "contextMenu": "System context menu",
-      "contextMenuDescription": "Add 'Send with Sendme' to Finder's Quick Actions / Services menu (macOS) or the file manager right-click menu (Windows & Linux)."
+      "contextMenuDescription": "Add 'Send with Sendme' to Finder's Quick Actions / Services menu (macOS) or the file manager right-click menu (Windows & Linux).",
+      "diagnostics": "Diagnostics",
+      "diagnosticsDescription": "Copy recent startup, auth, cloud, and UI-freeze logs when reporting app hangs.",
+      "copyDiagnostics": "Copy diagnostics"
     },
     "splash": {
       "eyebrow": "Private transfer workspace",
@@ -342,7 +361,7 @@
       "protocol": "协议",
       "p2pReady": "P2P 已就绪",
       "initializing": "正在初始化安全的 P2P 节点...",
-      "copied": "已复制到剪贴板！",
+      "copied": "已复制到剪贴板!",
       "send": "发送",
       "receive": "接收",
       "text": "文本",
@@ -370,8 +389,8 @@
       "name": "姓名",
       "orContinueWith": "或使用以下方式",
       "createAccount": "创建账户",
-      "alreadyHaveAccount": "已有账户？",
-      "dontHaveAccount": "没有账户？",
+      "alreadyHaveAccount": "已有账户?",
+      "dontHaveAccount": "没有账户?",
       "authFailed": "认证失败",
       "selectFileOrFolder": "选择文件或文件夹",
       "pasteTicket": "在此粘贴票据...",
@@ -389,18 +408,18 @@
         "subtitle": "安全、快速、点对点传输。无需云端、无需服务器、无忧操作。"
       },
       "features": {
-        "title": "为什么选择 Sendme？",
+        "title": "为什么选择 Sendme?",
         "subtitle": "为现代网络构建的快速、安全、私密的文件传输",
         "encryptedTitle": "端到端加密",
         "encryptedDesc": "BLAKE3 验证流确保您的文件完整无损地到达。",
         "fastTitle": "闪电般的速度",
-        "fastDesc": "直接的 P2P 传输配合 NAT 打洞，实现最大速度。",
+        "fastDesc": "直接的 P2P 传输配合 NAT 打洞,实现最大速度。",
         "syncTitle": "跨设备同步",
-        "syncDesc": "在您的设备间共享票据，随时继续传输。"
+        "syncDesc": "在您的设备间共享票据,随时继续传输。"
       },
       "install": {
         "title": "安装 Sendme",
-        "subtitle": "选择您的平台，立即开始传输文件",
+        "subtitle": "选择您的平台,立即开始传输文件",
         "webApp": "网页应用",
         "webAppDesc": "无需安装",
         "webAppAction": "启动应用",
@@ -425,8 +444,8 @@
         "step3Desc": "将票据分享给接收者。他们粘贴票据即可立即开始下载。"
       },
       "cta": {
-        "title": "准备传输了吗？",
-        "subtitle": "加入成千上万的用户，使用 Sendme 安全地发送文件",
+        "title": "准备传输了吗?",
+        "subtitle": "加入成千上万的用户,使用 Sendme 安全地发送文件",
         "action": "启动 Sendme"
       },
       "footer": {
@@ -445,7 +464,7 @@
     },
     "send": {
       "title": "分享文件",
-      "subtitle": "所有内容均已加密，直接点对点发送。",
+      "subtitle": "所有内容均已加密,直接点对点发送。",
       "chooseFile": "选择文件",
       "chooseFolder": "选择文件夹",
       "dragDrop": "或拖放文件或文件夹",
@@ -459,13 +478,13 @@
       "failed": "分享失败",
       "ticketTypeLabel": "票据格式",
       "readyToShare": "可以分享了",
-      "readyHint": "在接收方加入前请保持此页面开启，或复制票据并通过任意聊天工具发送。",
+      "readyHint": "在接收方加入前请保持此页面开启,或复制票据并通过任意聊天工具发送。",
       "showQrCode": "显示二维码",
       "hideQrCode": "收起二维码",
-      "keepPageOpen": "在接收方完成下载前请保持此页面开启，关闭页面将中断传输。",
+      "keepPageOpen": "在接收方完成下载前请保持此页面开启,关闭页面将中断传输。",
       "newTransfer": "新建传输",
-      "sendSuccess": "票据已生成！请将其分享给接收方。",
-      "sendError": "生成票据失败，请重试。",
+      "sendSuccess": "票据已生成!请将其分享给接收方。",
+      "sendError": "生成票据失败,请重试。",
       "dropFile": "拖放文件到此处",
       "orClick": "或点击浏览",
       "selectFile": "选择文件",
@@ -477,8 +496,8 @@
       "ticketReady": "票据已就绪",
       "chooseFriend": "选择好友",
       "shareViaTicket": "通过票据链接分享",
-      "shareViaTicketHint": "生成一个票据链接，可分享到论坛、群聊等任何地方。",
-      "firstFileOnly": "当前暂不支持一次分享多个文件，将只发送第一个文件。",
+      "shareViaTicketHint": "生成一个票据链接,可分享到论坛、群聊等任何地方。",
+      "firstFileOnly": "当前暂不支持一次分享多个文件,将只发送第一个文件。",
       "selectSomethingFirst": "请先在分享面板中选择文件或输入消息。"
     },
     "receive": {
@@ -503,10 +522,15 @@
       "folderPickerError": "选择下载目录失败",
       "receiveError": "启动接收失败",
       "cancelError": "取消接收失败",
-      "stackHint": "可在此粘贴票据，或直接处理底部层叠显示的传入请求卡片。",
+      "scanning": "正在扫描...",
+      "qrDetected": "已识别二维码！",
+      "alignQrCode": "将二维码对准扫描框",
+      "gallery": "相册",
+      "enterTicketManually": "手动输入票据",
+      "stackHint": "可在此粘贴票据,或直接处理底部层叠显示的传入请求卡片。",
       "receiveWorkspaceTitle": "接收收件箱",
       "incomingCount": "共有 {{count}} 个待处理请求",
-      "bottomStackHint": "待处理请求会固定显示在底部导航上方，无需离开当前页面即可处理。",
+      "bottomStackHint": "待处理请求会固定显示在底部导航上方,无需离开当前页面即可处理。",
       "cloudQueue": "云端",
       "moreIncoming": "更多"
     },
@@ -515,13 +539,13 @@
       "subtitle": "安全地向任何设备发送文本。",
       "placeholder": "输入要分享的文本...",
       "shareText": "发送",
-      "textShared": "文本已分享！",
-      "copiedTicket": "票据已复制！",
+      "textShared": "文本已分享!",
+      "copiedTicket": "票据已复制!",
       "receiveText": "接收",
       "pasteText": "在此粘贴文本票据",
       "receive": "接收",
       "generateTicket": "生成票据",
-      "receiveSuccess": "文本已接收！",
+      "receiveSuccess": "文本已接收!",
       "sendFailed": "发送文本失败",
       "receiveFailed": "接收文本失败",
       "received": "已接收"
@@ -537,6 +561,17 @@
       "clear": "清空全部",
       "copyTicket": "复制票据"
     },
+    "preview": {
+      "imagePreview": "图片预览",
+      "textPreview": "文本预览",
+      "noPreview": "暂不支持预览"
+    },
+    "toast": {
+      "transferStarted": "开始传输",
+      "transferComplete": "传输完成",
+      "transferFailed": "传输失败",
+      "transferCancelled": "传输已取消"
+    },
     "settings": {
       "title": "设置",
       "theme": "主题",
@@ -545,12 +580,15 @@
       "languageDescription": "选择应用内菜单、按钮和状态信息所使用的语言。",
       "themeDescription": "根据当前环境和视觉偏好调整应用外观。",
       "contextMenu": "系统右键菜单",
-      "contextMenuDescription": "在 Finder 快速操作 / 服务菜单（macOS）或文件管理器右键菜单（Windows & Linux）中添加「Send with Sendme」。"
+      "contextMenuDescription": "在 Finder 快速操作 / 服务菜单(macOS)或文件管理器右键菜单(Windows & Linux)中添加「Send with Sendme」。",
+      "diagnostics": "诊断日志",
+      "diagnosticsDescription": "反馈卡死问题时,可复制最近的启动、登录、云端连接和 UI 卡顿日志。",
+      "copyDiagnostics": "复制诊断"
     },
     "splash": {
       "eyebrow": "私密传输工作区",
       "title": "正在准备 Sendme",
-      "subtitle": "正在启动安全的点对点会话，并恢复你进入传输所需的关键工具。",
+      "subtitle": "正在启动安全的点对点会话,并恢复你进入传输所需的关键工具。",
       "loadingAuth": "正在连接安全服务",
       "loadingShell": "正在加载传输工具",
       "stepNetwork": "准备加密传输通道",
@@ -576,8 +614,8 @@
       "add": "添加",
       "adding": "添加中...",
       "enterEmail": "请输入邮箱地址",
-      "friendAdded": "好友已添加！",
-      "requestSent": "好友请求已发送！",
+      "friendAdded": "好友已添加!",
+      "requestSent": "好友请求已发送!",
       "ticketSent": "票据已发送给 {{name}}",
       "sendFailed": "发送给好友失败",
       "addFailed": "添加好友失败",
@@ -614,7 +652,7 @@
       "noDevicesFound": "未在网络中找到设备",
       "noDevicesHint": "请确认其他设备正在运行 Sendme",
       "selectFilesFirst": "请先选择文件",
-      "transferComplete": "传输完成！",
+      "transferComplete": "传输完成!",
       "transferFailed": "附近传输失败",
       "transferRequest": "附近传输请求",
       "requestModalHint": "无需切换标签页即可响应。",
@@ -637,7 +675,7 @@
       "dropFilesOrTap": "拖放文件或点击选择",
       "tapToSelect": "点击选择",
       "workspaceTitle": "更多分享方式",
-      "workspaceSubtitle": "同一网络下优先用附近分享；需要长期可信通道时用好友。"
+      "workspaceSubtitle": "同一网络下优先用附近分享;需要长期可信通道时用好友。"
     },
     "apiKeys": {
       "title": "API 密钥",
@@ -645,19 +683,19 @@
       "create": "创建 API 密钥",
       "createTitle": "新建 API 密钥",
       "nameLabel": "密钥名称",
-      "namePlaceholder": "例如：我的电脑 CLI",
+      "namePlaceholder": "例如:我的电脑 CLI",
       "expiresLabel": "有效期",
       "expiresNever": "永不过期",
       "expires30": "30 天",
       "expires90": "90 天",
       "expires365": "1 年",
-      "revokeConfirm": "确认吊销此密钥？",
+      "revokeConfirm": "确认吊销此密钥?",
       "revoke": "吊销",
       "revoked": "密钥已吊销",
       "created": "密钥已创建",
       "copyKey": "复制密钥",
-      "copied": "已复制！",
-      "onceWarning": "请立即复制密钥，此后将不再显示。",
+      "copied": "已复制!",
+      "onceWarning": "请立即复制密钥,此后将不再显示。",
       "lastUsed": "最近使用",
       "never": "从未",
       "expires": "过期时间",

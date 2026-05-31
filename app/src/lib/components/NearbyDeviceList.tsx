@@ -1,5 +1,6 @@
 import { Component, Show, For } from "solid-js";
 import { Smartphone, Laptop, Monitor, Tablet, RefreshCw } from "lucide-solid";
+import { Motion } from "solid-motionone";
 import { i18n } from "@sendme/shared";
 
 const t = i18n.t;
@@ -46,19 +47,25 @@ export const NearbyDeviceList: Component<NearbyDeviceListProps> = (props) => {
               : t("nearby.noDevicesHint")}
           </p>
         </div>
-        <button
+        <Motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
           onClick={props.onRefresh}
           class={`btn btn-ghost btn-sm rounded-xl ${props.isScanning ? "loading" : ""}`}
           disabled={props.isScanning}
         >
           <RefreshCw size={14} class={props.isScanning ? "animate-spin" : ""} />
-        </button>
+        </Motion.button>
       </div>
 
       <Show when={props.error}>
-        <div class="border-error/20 bg-error/10 text-error rounded-2xl border px-4 py-3 text-sm">
+        <Motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          class="border-error/20 bg-error/10 text-error rounded-2xl border px-4 py-3 text-sm"
+        >
           {props.error}
-        </div>
+        </Motion.div>
       </Show>
 
       <Show
@@ -81,17 +88,22 @@ export const NearbyDeviceList: Component<NearbyDeviceListProps> = (props) => {
         >
           <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <For each={props.devices}>
-              {(device) => (
-                <button
+              {(device, index) => (
+                <Motion.button
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: index() * 0.05 }}
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => props.onDeviceSelect(device)}
-                  class={`flex items-center gap-4 rounded-3xl border p-4 text-left transition-all ${
+                  class={`flex items-center gap-4 rounded-3xl border p-4 text-left transition-shadow ${
                     props.selectedDeviceId === device.id
-                      ? "border-primary bg-primary/10 shadow-sm"
-                      : "border-base-300/70 bg-base-100/80 hover:border-primary/40 hover:bg-primary/5"
+                      ? "border-primary bg-primary/10 shadow-md shadow-primary/10"
+                      : "border-base-300/70 bg-base-100/80 hover:border-primary/40 hover:bg-primary/5 hover:shadow-lg"
                   }`}
                 >
                   <div
-                    class={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                    class={`flex h-12 w-12 items-center justify-center rounded-2xl transition-colors ${
                       props.selectedDeviceId === device.id
                         ? "bg-primary/15 text-primary"
                         : "bg-base-200 text-base-content/70"
@@ -105,7 +117,16 @@ export const NearbyDeviceList: Component<NearbyDeviceListProps> = (props) => {
                       {device.id.slice(0, 8)}
                     </p>
                   </div>
-                </button>
+                  
+                  {/* 选中指示器 */}
+                  <Show when={props.selectedDeviceId === device.id}>
+                    <Motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      class="w-2 h-2 rounded-full bg-primary"
+                    />
+                  </Show>
+                </Motion.button>
               )}
             </For>
           </div>

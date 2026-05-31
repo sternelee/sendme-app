@@ -20,6 +20,10 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempt = 0;
 let isConnecting = false;
 let shouldBeConnected = false;
+let connectGeneration = 0;
+
+const REGISTER_TIMEOUT_MS = 10_000;
+const WS_CONNECT_TIMEOUT_MS = 10_000;
 
 function clearTimers() {
   if (heartbeatTimer) {
@@ -80,7 +84,9 @@ function scheduleReconnect() {
     `Reconnecting in ${delayMs}ms (attempt ${reconnectAttempt})`,
   );
   reconnectTimer = setTimeout(() => {
-    connectCloudWebSocket();
+    connectCloudWebSocket().catch((e) =>
+      debugError("cloud-ws", "Reconnect failed", e),
+    );
   }, delayMs);
 }
 
@@ -92,30 +98,41 @@ async function registerCloudDevice(
     "get_nearby_profile",
   );
   const url = getCloudApiUrl("/api/devices");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REGISTER_TIMEOUT_MS);
 
-  const response = await requestCloudApi(
-    url,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        deviceId,
-        name: profile.name,
-        hostname: profile.name,
-      }),
-      headers: { "Content-Type": "application/json" },
-    },
-    { label: "cloud-devices", traceId },
-  );
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to register cloud device (${response.status}): ${body}`,
+  try {
+    const response = await requestCloudApi(
+      url,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          deviceId,
+          name: profile.name,
+          hostname: profile.name,
+        }),
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+      },
+      { label: "cloud-devices", traceId },
     );
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to register cloud device (${response.status}): ${body}`,
+      );
+    }
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
@@ -128,6 +145,7 @@ export async function connectCloudWebSocket(): Promise<void> {
   if (isConnecting || (ws && shouldBeConnected)) return;
   shouldBeConnected = true;
   isConnecting = true;
+  const generation = ++connectGeneration;
 
   try {
     const traceId = createAuthTraceId("cloud-ws");
@@ -160,7 +178,9 @@ export async function connectCloudWebSocket(): Promise<void> {
       );
       isConnecting = false;
       await updateConnectionState(false, "No auth token available");
-      scheduleReconnect();
+      if (generation === connectGeneration) {
+        scheduleReconnect();
+      }
       return;
     }
 
@@ -173,9 +193,13 @@ export async function connectCloudWebSocket(): Promise<void> {
     try {
       await withTimeout(
         registerCloudDevice(deviceId, traceId),
-        10_000,
+        REGISTER_TIMEOUT_MS,
         "registerCloudDevice",
       );
+      if (!shouldBeConnected || generation !== connectGeneration) {
+        isConnecting = false;
+        return;
+      }
       debugInfo("cloud-ws", `register success trace=${traceId}`);
     } catch (e) {
       debugError("cloud-ws", "Device registration failed", e);
@@ -184,7 +208,9 @@ export async function connectCloudWebSocket(): Promise<void> {
         false,
         `Device registration failed: ${e}`,
       );
-      scheduleReconnect();
+      if (generation === connectGeneration) {
+        scheduleReconnect();
+      }
       return;
     }
 
@@ -211,9 +237,15 @@ export async function connectCloudWebSocket(): Promise<void> {
     // Connect with timeout
     ws = await withTimeout(
       WebSocket.connect(url.toString()),
-      10_000,
+      WS_CONNECT_TIMEOUT_MS,
       "WebSocket.connect",
     );
+    if (!shouldBeConnected || generation !== connectGeneration) {
+      await ws.disconnect().catch(() => {});
+      ws = null;
+      isConnecting = false;
+      return;
+    }
     debugInfo("cloud-ws", `websocket connected successfully trace=${traceId}`);
 
     ws.addListener((msg) => {
@@ -240,12 +272,15 @@ export async function connectCloudWebSocket(): Promise<void> {
     isConnecting = false;
     ws = null;
     await updateConnectionState(false, `Connection failed: ${e}`);
-    scheduleReconnect();
+    if (generation === connectGeneration) {
+      scheduleReconnect();
+    }
   }
 }
 
 export async function disconnectCloudWebSocket(): Promise<void> {
   shouldBeConnected = false;
+  connectGeneration++;
   clearTimers();
   isConnecting = false;
   reconnectAttempt = 0;
