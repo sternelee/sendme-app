@@ -56,6 +56,11 @@ Important UX behavior: receive is optimized for **paste-and-go**. Clipboard impo
 - `app/src/bindings.ts` is the typed boundary to the Rust backend.
 - `app/src-tauri/src/lib.rs` owns transfer state, event emission, nearby runtime, cloud state, and mobile-specific file handling.
 
+### Auth flow
+- The Tauri app authenticates via system-browser OAuth (not in-app WebView).
+- Frontend opens browser to the browser app's OAuth page → user authenticates → deep link back to Tauri app with token.
+- No compile-time auth keys needed in the Tauri app.
+
 ## Critical Gotchas
 
 These are mistakes agents commonly make:
@@ -67,6 +72,10 @@ These are mistakes agents commonly make:
 - **iOS first-time Xcode setup**: Before `xcodebuild` on a new machine, open the project in Xcode GUI once and confirm the Team. The daemon cannot access credentials without this.
 - **iOS entitlements**: `app/src-tauri/gen/apple/app_iOS/app_iOS.entitlements` must remain empty (`<dict></dict>`) for personal-team signing.
 - **CI tests require staging relays**: Run `IROH_FORCE_STAGING_RELAYS=1` before `cargo test` in CI environments.
+- **iOS mDNS limitation**: iOS cannot publish mDNS services without the `com.apple.developer.networking.multicast` entitlement (requires Apple Developer Program). On personal-team signing, iOS can receive nearby broadcasts but other devices may not see it. This is a platform limit, not a code bug.
+- **Recursion limit**: If you hit "recursion limit reached" compiling `app/src-tauri/src/lib.rs`, add `#![recursion_limit = "256"]` at the top.
+- **Android sodium_memcmp crash**: Cross-compiling Android on macOS can produce an empty libsodium static library. See `ANDROID_DEBUG_GUIDE.md` for the one-time NDK fix.
+- **MSRV**: Rust 1.81 minimum.
 
 ## Key Directories
 
