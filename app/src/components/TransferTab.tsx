@@ -89,22 +89,32 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
               </div>
             </div>
 
-            <div class="join border-base-300/80 bg-base-100/60 flex gap-2 self-start rounded-md border p-1">
+            <div
+              class="join border-base-300/80 bg-base-100/60 flex gap-2 self-start rounded-md border p-1"
+              role="radiogroup"
+              aria-label={t("common.transfer")}
+            >
               <button
                 class={`join-item btn rounded-xl border-0 ${props.transferMode === "send" ? "btn-primary" : "btn-ghost"}`}
                 onClick={() => props.setTransferView("send")}
+                role="radio"
+                aria-checked={props.transferMode === "send"}
               >
                 {t("common.send")}
               </button>
               <button
                 class={`join-item btn rounded-xl border-0 ${props.transferMode === "receive" ? "btn-secondary" : "btn-ghost"}`}
                 onClick={() => props.setTransferView("receive")}
+                role="radio"
+                aria-checked={props.transferMode === "receive"}
               >
                 {t("common.receive")}
               </button>
               <button
                 class={`join-item btn rounded-xl border-0 ${props.transferMode === "text" ? "btn-accent" : "btn-ghost"}`}
                 onClick={() => props.setTransferView("text")}
+                role="radio"
+                aria-checked={props.transferMode === "text"}
               >
                 {t("common.text")}
               </button>

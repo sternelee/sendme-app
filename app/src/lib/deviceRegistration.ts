@@ -8,7 +8,9 @@ interface DeviceRegistrationGuardOptions {
   ttlMs?: number;
 }
 
-export type DeviceRegistrationFn = (params: DeviceRegistrationParams) => Promise<void>;
+export type DeviceRegistrationFn = (
+  params: DeviceRegistrationParams,
+) => Promise<void>;
 
 export function createDeviceRegistrationGuard(
   register: DeviceRegistrationFn,
@@ -23,7 +25,8 @@ export function createDeviceRegistrationGuard(
 
   const ensureRegistered = async (params: DeviceRegistrationParams) => {
     const requestKey = `${params.token}:${params.deviceId}`;
-    const cacheIsFresh = registeredKey === requestKey && now() - registeredAt < ttlMs;
+    const cacheIsFresh =
+      registeredKey === requestKey && now() - registeredAt < ttlMs;
 
     if (cacheIsFresh) {
       return;

@@ -42,7 +42,9 @@ html {
 
 /* 触摸优化 */
 @media (pointer: coarse) {
-  .btn, button, [role="button"] {
+  .btn,
+  button,
+  [role="button"] {
     min-height: 44px;
     min-width: 44px;
   }
@@ -50,7 +52,9 @@ html {
 
 /* 减少动画偏好 */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -58,22 +62,31 @@ html {
 }
 
 /* 弹性滚动 */
-.overflow-auto, .overflow-scroll, .overflow-y-auto, .overflow-x-auto {
+.overflow-auto,
+.overflow-scroll,
+.overflow-y-auto,
+.overflow-x-auto {
   -webkit-overflow-scrolling: touch;
 }
 
 /* 按钮按压效果 */
-.btn, button {
-  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+.btn,
+button {
+  transition:
+    transform 0.15s ease-out,
+    box-shadow 0.15s ease-out;
 }
 
-.btn:active, button:active {
+.btn:active,
+button:active {
   transform: scale(0.97);
 }
 
 /* 卡片悬停效果 */
 .surface-card {
-  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+  transition:
+    transform 0.2s ease-out,
+    box-shadow 0.2s ease-out;
 }
 
 .surface-card:hover {
@@ -81,11 +94,17 @@ html {
 }
 
 /* 平滑的输入框焦点 */
-input, textarea, select {
-  transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+input,
+textarea,
+select {
+  transition:
+    border-color 0.2s ease-out,
+    box-shadow 0.2s ease-out;
 }
 
-input:focus, textarea:focus, select:focus {
+input:focus,
+textarea:focus,
+select:focus {
   outline: none;
   box-shadow: 0 0 0 3px oklch(from var(--color-primary) l c h / 0.15);
 }
@@ -108,7 +127,8 @@ input:focus, textarea:focus, select:focus {
 
 /* 脉冲光晕效果 */
 @keyframes glow-pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 5px oklch(from var(--color-primary) l c h / 0.2);
   }
   50% {
@@ -122,9 +142,16 @@ input:focus, textarea:focus, select:focus {
 
 /* 摇晃动画 - 用于错误提示 */
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-6px); }
-  75% { transform: translateX(6px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  75% {
+    transform: translateX(6px);
+  }
 }
 
 .animate-shake {
@@ -142,7 +169,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .progress-shine::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(

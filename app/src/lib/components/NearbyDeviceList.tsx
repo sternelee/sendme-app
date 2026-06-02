@@ -53,6 +53,7 @@ export const NearbyDeviceList: Component<NearbyDeviceListProps> = (props) => {
           onClick={props.onRefresh}
           class={`btn btn-ghost btn-sm rounded-xl ${props.isScanning ? "loading" : ""}`}
           disabled={props.isScanning}
+          aria-label={t("nearby.refresh")}
         >
           <RefreshCw size={14} class={props.isScanning ? "animate-spin" : ""} />
         </Motion.button>
@@ -98,7 +99,7 @@ export const NearbyDeviceList: Component<NearbyDeviceListProps> = (props) => {
                   onClick={() => props.onDeviceSelect(device)}
                   class={`flex items-center gap-4 rounded-3xl border p-4 text-left transition-shadow ${
                     props.selectedDeviceId === device.id
-                      ? "border-primary bg-primary/10 shadow-md shadow-primary/10"
+                      ? "border-primary bg-primary/10 shadow-primary/10 shadow-md"
                       : "border-base-300/70 bg-base-100/80 hover:border-primary/40 hover:bg-primary/5 hover:shadow-lg"
                   }`}
                 >
@@ -117,13 +118,13 @@ export const NearbyDeviceList: Component<NearbyDeviceListProps> = (props) => {
                       {device.id.slice(0, 8)}
                     </p>
                   </div>
-                  
+
                   {/* 选中指示器 */}
                   <Show when={props.selectedDeviceId === device.id}>
                     <Motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
-                      class="w-2 h-2 rounded-full bg-primary"
+                      class="bg-primary h-2 w-2 rounded-full"
                     />
                   </Show>
                 </Motion.button>

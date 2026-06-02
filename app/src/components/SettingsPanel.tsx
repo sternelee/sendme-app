@@ -23,7 +23,9 @@ export const SettingsPanel: Component = () => {
     currentPlatform === "linux" ||
     currentPlatform === "macos";
   const supportsContextMenuToggle =
-    currentPlatform === "windows" || currentPlatform === "linux" || currentPlatform === "macos";
+    currentPlatform === "windows" ||
+    currentPlatform === "linux" ||
+    currentPlatform === "macos";
 
   const [contextMenuEnabled, setContextMenuEnabled] = createSignal(false);
   const [contextMenuLoading, setContextMenuLoading] = createSignal(false);

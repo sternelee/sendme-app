@@ -42,31 +42,33 @@ export const DropZone: Component<DropZoneProps> = (props) => {
         // Tauri v2 window-level drag-drop events (desktop only)
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const window = getCurrentWindow();
-        unlisten = await window.onDragDropEvent(async (event: any) => {
-          const { type, paths } = event.payload;
-          if (type === "over" || type === "enter") {
-            setIsDragover(true);
-          } else if (type === "leave") {
-            setIsDragover(false);
-          } else if (type === "drop") {
-            setIsDragover(false);
-            const filePaths: string[] = paths ?? [];
-            if (filePaths.length === 0) return;
-            const fileInfos = await Promise.all(
-              filePaths.map(async (p: string) => {
-                const name = p.split(/[\\/]/).pop() || p;
-                let size = 0;
-                try {
-                  size = await get_file_size(p);
-                } catch {
-                  // ignore
-                }
-                return { name, size, path: p };
-              }),
-            );
-            props.onFilesSelected(fileInfos);
-          }
-        });
+        unlisten = await window.onDragDropEvent(
+          async (event: { payload: { type: string; paths?: string[] } }) => {
+            const { type, paths } = event.payload;
+            if (type === "over" || type === "enter") {
+              setIsDragover(true);
+            } else if (type === "leave") {
+              setIsDragover(false);
+            } else if (type === "drop") {
+              setIsDragover(false);
+              const filePaths: string[] = paths ?? [];
+              if (filePaths.length === 0) return;
+              const fileInfos = await Promise.all(
+                filePaths.map(async (p: string) => {
+                  const name = p.split(/[\\/]/).pop() || p;
+                  let size = 0;
+                  try {
+                    size = await get_file_size(p);
+                  } catch {
+                    // ignore
+                  }
+                  return { name, size, path: p };
+                }),
+              );
+              props.onFilesSelected(fileInfos);
+            }
+          },
+        );
       } catch {
         // Not running inside Tauri — fall back to HTML5 drop handler
         setIsDesktop(true);
@@ -84,10 +86,13 @@ export const DropZone: Component<DropZoneProps> = (props) => {
     setIsDragover(false);
     const files = Array.from(e.dataTransfer?.files || []);
     if (files.length > 0) {
+      interface ElectronFile extends File {
+        path?: string;
+      }
       const fileInfos = files.map((f) => ({
         name: f.name,
         size: f.size,
-        path: (f as unknown as { path?: string }).path || f.name,
+        path: (f as ElectronFile).path || f.name,
       }));
       props.onFilesSelected(fileInfos);
     }
@@ -95,7 +100,7 @@ export const DropZone: Component<DropZoneProps> = (props) => {
 
   const handleClick = async () => {
     try {
-      const currentPlatform = platform();
+      const currentPlatform = await platform();
       const isMobile =
         currentPlatform === "android" || currentPlatform === "ios";
 
@@ -138,9 +143,11 @@ export const DropZone: Component<DropZoneProps> = (props) => {
 
   return (
     <Motion.div
+      role="button"
+      aria-label={t("nearby.tapToSelect")}
       class={`min-w-0 cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed transition-all duration-200 ${
         isDragover()
-          ? "border-primary bg-primary/5 scale-[1.02] shadow-lg shadow-primary/10"
+          ? "border-primary bg-primary/5 shadow-primary/10 scale-[1.02] shadow-lg"
           : "border-base-300 bg-base-300/30 hover:border-primary/50 hover:bg-primary/[0.02]"
       } ${props.files.length > 0 ? "p-3" : "p-8 text-center"}`}
       onClick={handleClick}

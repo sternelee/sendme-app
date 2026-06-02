@@ -7,7 +7,6 @@ import {
   disconnectCloudWebSocket,
 } from "./lib/cloud-ws";
 import { debugError, debugInfo, startUiFreezeWatchdog } from "./lib/debug-log";
-import { triggerHaptic } from "./lib/haptics";
 import Home from "./routes/index";
 import "./styles.css";
 

@@ -1,5 +1,5 @@
 import { Component, Show } from "solid-js";
-import { Copy, Share2, ChevronDown, Check, QrCode } from "lucide-solid";
+import { Copy, Share2, ChevronDown, QrCode } from "lucide-solid";
 import { Motion } from "solid-motionone";
 import { i18n } from "@sendme/shared";
 
@@ -18,7 +18,8 @@ interface ShareTicketCardProps {
 }
 
 export const ShareTicketCard: Component<ShareTicketCardProps> = (props) => {
-  const canShare = () => typeof navigator !== "undefined" && "share" in navigator;
+  const canShare = () =>
+    typeof navigator !== "undefined" && "share" in navigator;
   const showQrInline = () => !props.isMobile || props.showQrCode;
 
   return (
@@ -26,7 +27,9 @@ export const ShareTicketCard: Component<ShareTicketCardProps> = (props) => {
       <div>
         <p class="text-sm font-semibold">{props.title}</p>
         <Show when={props.subtitle}>
-          <p class="text-base-content/60 mt-1 text-xs leading-5">{props.subtitle}</p>
+          <p class="text-base-content/60 mt-1 text-xs leading-5">
+            {props.subtitle}
+          </p>
         </Show>
       </div>
 
@@ -35,7 +38,7 @@ export const ShareTicketCard: Component<ShareTicketCardProps> = (props) => {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => props.onCopy(props.ticket)}
-          class="btn btn-primary btn-sm rounded-2xl gap-2"
+          class="btn btn-primary btn-sm gap-2 rounded-2xl"
         >
           <Copy size={14} /> {t("common.copy")}
         </Motion.button>
@@ -44,7 +47,7 @@ export const ShareTicketCard: Component<ShareTicketCardProps> = (props) => {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => props.onShare(props.ticket)}
-            class="btn btn-outline btn-sm rounded-2xl gap-2"
+            class="btn btn-outline btn-sm gap-2 rounded-2xl"
           >
             <Share2 size={14} /> {t("common.share")}
           </Motion.button>
@@ -81,13 +84,16 @@ export const ShareTicketCard: Component<ShareTicketCardProps> = (props) => {
         </Motion.div>
       </Show>
 
-      <div class="bg-base-300/50 overflow-hidden rounded-xl p-3 relative group">
-        <code class="text-primary font-mono text-xs break-all">{props.ticket}</code>
+      <div class="bg-base-300/50 group relative overflow-hidden rounded-xl p-3">
+        <code class="text-primary font-mono text-xs break-all">
+          {props.ticket}
+        </code>
         <Motion.button
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={() => props.onCopy(props.ticket)}
-          class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-base-100/80 opacity-0 group-hover:opacity-100 transition-opacity"
+          class="bg-base-100/80 absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-1.5 opacity-0 transition-opacity group-hover:opacity-100"
+          aria-label={t("common.copy")}
         >
           <Copy size={12} />
         </Motion.button>

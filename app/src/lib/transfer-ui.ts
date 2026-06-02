@@ -32,7 +32,6 @@ export function pickPrimarySendSelection(files: SendSelectionItem[]): {
   };
 }
 
-
 export function getTransferListClass(): string {
   return "space-y-3 max-h-[28rem] overflow-y-auto pr-1";
 }

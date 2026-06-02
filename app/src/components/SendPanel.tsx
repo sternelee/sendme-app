@@ -1,5 +1,5 @@
 import { Component, Show, createEffect } from "solid-js";
-import { Smartphone, FileText, Loader2, Sparkles } from "lucide-solid";
+import { FileText, Loader2, Sparkles } from "lucide-solid";
 import QRCode from "qrcode";
 import { getDisplayName } from "@sendme/ui";
 import { i18n } from "@sendme/shared";
@@ -33,7 +33,7 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
   const textContent = () => globalStore.send.state().textContent;
   const isTextMode = () => globalStore.send.state().isTextMode;
 
-  let debounceTimer: ReturnType<typeof setTimeout>;
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let requestVersion = 0;
 
   async function autoGenerateTicket() {
@@ -174,6 +174,7 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
           <button
             onClick={handleRemoveFile}
             class="btn btn-ghost btn-xs btn-circle shrink-0"
+            aria-label={t("common.remove")}
           >
             ✕
           </button>
@@ -200,14 +201,24 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
         <Motion.div
           initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.4, type: "spring", stiffness: 400, damping: 30 }}
+          transition={{
+            duration: 0.4,
+            type: "spring",
+            stiffness: 400,
+            damping: 30,
+          }}
           class="surface-card space-y-4 p-5"
         >
           <div class="flex items-center gap-2">
             <Motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 500, damping: 25, delay: 0.1 }}
+              transition={{
+                type: "spring",
+                stiffness: 500,
+                damping: 25,
+                delay: 0.1,
+              }}
             >
               <Sparkles size={16} class="text-success" />
             </Motion.div>

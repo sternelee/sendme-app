@@ -1,12 +1,7 @@
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "solid-sonner";
 import { i18n } from "@sendme/shared";
-import {
-  FileText,
-  FileImage,
-  FileArchive,
-  FileCode,
-} from "lucide-solid";
+import { FileText, FileImage, FileArchive, FileCode } from "lucide-solid";
 import { getFileIcon, getDisplayName } from "@sendme/ui";
 import type { Component } from "solid-js";
 

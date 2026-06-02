@@ -1,5 +1,16 @@
-import { Component, Show, For, createSignal, createMemo, JSX } from "solid-js";
-import { History, Trash2, Send, Download, Eye, FileText, Image as ImageIcon, Film, Music, Archive, File, ChevronRight, X, Check } from "lucide-solid";
+import { Component, Show, For, createSignal, createMemo } from "solid-js";
+import {
+  History,
+  Trash2,
+  Send,
+  Download,
+  Eye,
+  FileText,
+  Image as ImageIcon,
+  File,
+  ChevronRight,
+  X,
+} from "lucide-solid";
 import {
   formatDate,
   formatFileSize,
@@ -11,7 +22,7 @@ import { open_received_file, delete_transfer } from "~/bindings";
 import { toast } from "solid-sonner";
 import { Motion, Presence } from "solid-motionone";
 import type { Transfer } from "~/lib/types";
-import { getFileIconComponent } from "~/lib/utils";
+import { getFileIconComponent, copyToClipboard } from "~/lib/utils";
 
 const t = i18n.t;
 
@@ -24,13 +35,23 @@ interface FilePreviewModalProps {
 
 const FilePreviewModal: Component<FilePreviewModalProps> = (props) => {
   const isImage = () => {
-    const ext = props.transfer?.filename?.split('.').pop()?.toLowerCase();
-    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext || '');
+    const ext = props.transfer?.filename?.split(".").pop()?.toLowerCase();
+    return ["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext || "");
   };
 
   const isText = () => {
-    const ext = props.transfer?.filename?.split('.').pop()?.toLowerCase();
-    return ['txt', 'md', 'json', 'js', 'ts', 'html', 'css', 'py', 'rs'].includes(ext || '');
+    const ext = props.transfer?.filename?.split(".").pop()?.toLowerCase();
+    return [
+      "txt",
+      "md",
+      "json",
+      "js",
+      "ts",
+      "html",
+      "css",
+      "py",
+      "rs",
+    ].includes(ext || "");
   };
 
   return (
@@ -40,7 +61,7 @@ const FilePreviewModal: Component<FilePreviewModalProps> = (props) => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={props.onClose}
         >
           <Motion.div
@@ -48,33 +69,44 @@ const FilePreviewModal: Component<FilePreviewModalProps> = (props) => {
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.9, y: 20 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            class="bg-base-100 rounded-3xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden"
+            class="bg-base-100 max-h-[80vh] w-full max-w-lg overflow-hidden rounded-3xl shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 头部 */}
-            <div class="flex items-center justify-between p-4 border-b border-base-300/50">
+            <div class="border-base-300/50 flex items-center justify-between border-b p-4">
               <div class="flex items-center gap-3">
-                <div class={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                  props.transfer?.transfer_type === 'send' ? "bg-primary/12 text-primary" : "bg-secondary/12 text-secondary"
-                }`}>
-                  {props.transfer && getFileIconComponent(props.transfer.path)({ size: 20 })}
+                <div
+                  class={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                    props.transfer?.transfer_type === "send"
+                      ? "bg-primary/12 text-primary"
+                      : "bg-secondary/12 text-secondary"
+                  }`}
+                >
+                  {props.transfer &&
+                    getFileIconComponent(props.transfer.path)({ size: 20 })}
                 </div>
                 <div>
-                  <p class="text-sm font-medium truncate max-w-[200px]">
-                    {props.transfer?.filename || getDisplayName(props.transfer?.path || '')}
+                  <p class="max-w-[200px] truncate text-sm font-medium">
+                    {props.transfer?.filename ||
+                      getDisplayName(props.transfer?.path || "")}
                   </p>
                   <p class="text-xs opacity-50">
-                    {props.transfer?.file_size ? formatFileSize(props.transfer.file_size) : ''}
+                    {props.transfer?.file_size
+                      ? formatFileSize(props.transfer.file_size)
+                      : ""}
                   </p>
                 </div>
               </div>
-              <button onClick={props.onClose} class="btn btn-ghost btn-circle btn-sm">
+              <button
+                onClick={props.onClose}
+                class="btn btn-ghost btn-circle btn-sm"
+              >
                 <X size={18} />
               </button>
             </div>
 
             {/* 预览内容 */}
-            <div class="p-4 min-h-[200px] flex items-center justify-center">
+            <div class="flex min-h-[200px] items-center justify-center p-4">
               <Show when={isImage()}>
                 <div class="text-center text-sm opacity-50">
                   <ImageIcon size={48} class="mx-auto mb-2 opacity-30" />
@@ -96,11 +128,11 @@ const FilePreviewModal: Component<FilePreviewModalProps> = (props) => {
             </div>
 
             {/* 底部操作 */}
-            <div class="p-4 border-t border-base-300/50 flex gap-2">
+            <div class="border-base-300/50 flex gap-2 border-t p-4">
               <button
                 onClick={() => {
-                  if (props.transfer?.transfer_type === 'receive') {
-                    open_received_file(props.transfer.id);
+                  if (props.transfer?.transfer_type === "receive") {
+                    open_received_file(props.transfer.id).catch(console.error);
                   }
                 }}
                 class="btn btn-primary btn-sm flex-1 rounded-xl"
@@ -108,7 +140,12 @@ const FilePreviewModal: Component<FilePreviewModalProps> = (props) => {
                 <Download size={14} />
                 {t("common.open")}
               </button>
-              <Show when={props.transfer?.transfer_type === 'send' && props.transfer?.ticket}>
+              <Show
+                when={
+                  props.transfer?.transfer_type === "send" &&
+                  props.transfer?.ticket
+                }
+              >
                 <button
                   onClick={() => {
                     // 重新分享逻辑
@@ -140,7 +177,7 @@ interface HistoryItemProps {
 }
 
 const HistoryItem: Component<HistoryItemProps> = (props) => {
-  const isSend = () => props.transfer.transfer_type === 'send';
+  const isSend = () => props.transfer.transfer_type === "send";
 
   return (
     <Motion.div
@@ -150,14 +187,11 @@ const HistoryItem: Component<HistoryItemProps> = (props) => {
       class="surface-card group relative overflow-hidden"
     >
       {/* 悬停背景效果 */}
-      <div class="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div class="via-primary/5 absolute inset-0 bg-gradient-to-r from-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
       <div class="relative flex items-center gap-3 p-4">
         {/* 选择框 */}
-        <label
-          class="cursor-pointer"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <label class="cursor-pointer" onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
             class="checkbox checkbox-sm rounded"
@@ -185,12 +219,16 @@ const HistoryItem: Component<HistoryItemProps> = (props) => {
             >
               {isSend() ? t("history.sent") : t("history.received")}
             </span>
-            <span class="truncate text-sm font-medium cursor-pointer hover:text-primary transition-colors">
+            <span class="hover:text-primary cursor-pointer truncate text-sm font-medium transition-colors">
               {props.transfer.filename ?? getDisplayName(props.transfer.path)}
             </span>
           </div>
           <div class="mt-1 flex flex-wrap items-center gap-2 text-xs opacity-70">
-            <span>{formatDate(props.transfer.completed_at ?? props.transfer.created_at)}</span>
+            <span>
+              {formatDate(
+                props.transfer.completed_at ?? props.transfer.created_at,
+              )}
+            </span>
             <Show when={props.transfer.file_size != null}>
               <span>· {formatFileSize(props.transfer.file_size!)}</span>
             </Show>
@@ -207,32 +245,36 @@ const HistoryItem: Component<HistoryItemProps> = (props) => {
         </div>
 
         {/* 操作按钮 */}
-        <div class="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        <div class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <button
-            onClick={(e) => { e.stopPropagation(); props.onPreview(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onPreview();
+            }}
             class="btn btn-ghost btn-xs btn-circle"
             title={t("common.preview")}
           >
             <Eye size={14} />
           </button>
-              <Show when={isSend() && props.transfer.ticket}>
-                <button
-                  onClick={() => {
-                    // 复制已有票据到剪贴板进行重分享
-                    if (props.transfer?.ticket) {
-                      navigator.clipboard.writeText(props.transfer.ticket);
-                      toast.success(t("common.copied"));
-                    }
-                  }}
-                  class="btn btn-outline btn-sm flex-1 rounded-xl"
-                >
-                  <Send size={14} />
-                  {t("common.share")}
-                </button>
-              </Show>
+          <Show when={isSend() && props.transfer.ticket}>
+            <button
+              onClick={() => {
+                if (props.transfer?.ticket) {
+                  copyToClipboard(props.transfer.ticket);
+                }
+              }}
+              class="btn btn-outline btn-sm flex-1 rounded-xl"
+            >
+              <Send size={14} />
+              {t("common.share")}
+            </button>
+          </Show>
           <Show when={!isSend()}>
             <button
-              onClick={(e) => { e.stopPropagation(); props.onOpenFile(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onOpenFile();
+              }}
               class="btn btn-ghost btn-xs btn-circle"
               title="Open file"
             >
@@ -240,7 +282,10 @@ const HistoryItem: Component<HistoryItemProps> = (props) => {
             </button>
           </Show>
           <button
-            onClick={(e) => { e.stopPropagation(); props.onDelete(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onDelete();
+            }}
             class="btn btn-ghost btn-xs btn-circle text-error"
           >
             <Trash2 size={14} />
@@ -250,7 +295,10 @@ const HistoryItem: Component<HistoryItemProps> = (props) => {
         {/* 移动端始终显示的操作按钮 */}
         <div class="flex shrink-0 items-center gap-1 sm:hidden">
           <button
-            onClick={(e) => { e.stopPropagation(); props.onPreview(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onPreview();
+            }}
             class="btn btn-ghost btn-xs btn-circle"
           >
             <ChevronRight size={14} />
@@ -267,11 +315,15 @@ interface EnhancedHistoryPanelProps {
   onReshare?: (transfer: Transfer) => void;
 }
 
-export const EnhancedHistoryPanel: Component<EnhancedHistoryPanelProps> = (props) => {
+export const EnhancedHistoryPanel: Component<EnhancedHistoryPanelProps> = (
+  props,
+) => {
   const [selectedHistory, setSelectedHistory] = createSignal<Set<string>>(
     new Set<string>(),
   );
-  const [previewTransfer, setPreviewTransfer] = createSignal<Transfer | null>(null);
+  const [previewTransfer, setPreviewTransfer] = createSignal<Transfer | null>(
+    null,
+  );
 
   const historyTransfers = createMemo(() =>
     props.transfers
@@ -283,7 +335,10 @@ export const EnhancedHistoryPanel: Component<EnhancedHistoryPanelProps> = (props
   );
 
   async function handleOpenFile(transfer: Transfer) {
-    if (transfer.transfer_type === "receive" && transfer.status.includes("complete")) {
+    if (
+      transfer.transfer_type === "receive" &&
+      transfer.status.includes("complete")
+    ) {
       try {
         await open_received_file(transfer.id);
       } catch (e) {}

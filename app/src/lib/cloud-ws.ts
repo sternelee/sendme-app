@@ -64,7 +64,8 @@ async function handleMessage(message: {
 
   if (message.type !== "Text") return;
 
-  const text = message.data as string;
+  if (typeof message.data !== "string") return;
+  const text = message.data;
   try {
     await invoke("update_cloud_state", { messageJson: text });
   } catch (e) {
@@ -136,7 +137,10 @@ function withTimeout<T>(
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+      setTimeout(
+        () => reject(new Error(`${label} timed out after ${ms}ms`)),
+        ms,
+      ),
     ),
   ]);
 }
@@ -204,10 +208,7 @@ export async function connectCloudWebSocket(): Promise<void> {
     } catch (e) {
       debugError("cloud-ws", "Device registration failed", e);
       isConnecting = false;
-      await updateConnectionState(
-        false,
-        `Device registration failed: ${e}`,
-      );
+      await updateConnectionState(false, `Device registration failed: ${e}`);
       if (generation === connectGeneration) {
         scheduleReconnect();
       }

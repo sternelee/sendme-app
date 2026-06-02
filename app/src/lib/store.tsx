@@ -127,7 +127,10 @@ interface GlobalStore {
     addIncomingRequest: (request: IncomingRequest) => void;
     removeIncomingRequest: (requestId: string) => void;
     setActiveRequestId: (requestId: string | null) => void;
-    setPendingRequestState: (requestId: string, state: "pending" | "accepting" | "declining") => void;
+    setPendingRequestState: (
+      requestId: string,
+      state: "pending" | "accepting" | "declining",
+    ) => void;
     setTransferState: (state: NearbyReceiveState["transferState"]) => void;
     setTransferProgress: (progress: TransferProgress | null) => void;
     setError: (error: string | null) => void;
@@ -237,7 +240,9 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
       setShowReshareModal: (show) => setSendState("showReshareModal", show),
       setIsFolder: (isFolder) => setSendState("isFolder", isFolder),
       prepareReshare: (path: string) => {
-        setSendState("files", [{ path, name: path.split(/[\\/]/).pop() || path, size: 0 }]);
+        setSendState("files", [
+          { path, name: path.split(/[\\/]/).pop() || path, size: 0 },
+        ]);
         setSendState("path", path);
         setSendState("ticket", "");
         setSendState("ticketQrCode", "");

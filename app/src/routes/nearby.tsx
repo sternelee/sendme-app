@@ -273,7 +273,7 @@ export default function NearbyPage(props: NearbyPageProps) {
       </Show>
 
       <Show when={nearbyState().transferState === "done"}>
-        <div                     class="alert alert-success text-center">
+        <div class="alert alert-success text-center">
           <p class="text-success font-medium">{t("nearby.transferComplete")}</p>
           <button onClick={handleDone} class="btn btn-success btn-sm mt-2">
             {t("common.done")}
@@ -282,7 +282,7 @@ export default function NearbyPage(props: NearbyPageProps) {
       </Show>
 
       <Show when={nearbyState().transferState === "error"}>
-        <div                     class="alert alert-error text-center">
+        <div class="alert alert-error text-center">
           <p class="text-error font-medium">{nearbyState().error}</p>
           <button onClick={handleCancel} class="btn btn-error btn-sm mt-2">
             {t("common.tryAgain")}

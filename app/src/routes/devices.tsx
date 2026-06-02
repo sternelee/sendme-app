@@ -1,6 +1,11 @@
 import { createSignal, createEffect, onCleanup, Show, For } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
-import { get_cloud_presence_state, send_file, send_text, type CloudDevice } from "~/bindings";
+import {
+  get_cloud_presence_state,
+  send_file,
+  send_text,
+  type CloudDevice,
+} from "~/bindings";
 import { getTransferListClass } from "~/lib/transfer-ui";
 import { useAuth } from "~/lib/auth";
 import { getPersistentDeviceId } from "~/lib/cloud-api";
@@ -42,7 +47,8 @@ export default function DevicesPage(props: DevicesPageProps) {
   const currentDeviceId = getPersistentDeviceId();
 
   const hasSendContent = () =>
-    (props.isTextMode && props.textContent?.trim()) || (!props.isTextMode && props.sendPath);
+    (props.isTextMode && props.textContent?.trim()) ||
+    (!props.isTextMode && props.sendPath);
 
   const otherDevices = () =>
     devices().filter((d) => d.deviceId !== currentDeviceId);
@@ -63,12 +69,21 @@ export default function DevicesPage(props: DevicesPageProps) {
     }
   });
 
-  let unlisten: (() => void) | undefined;
-  listen("cloud_devices_updated", () => {
-    loadDevices();
-  }).then((fn) => (unlisten = fn));
-
-  onCleanup(() => unlisten?.());
+  createEffect(() => {
+    if (!isLoggedIn()) return;
+    let disposed = false;
+    const setup = async () => {
+      const unlisten = await listen("cloud_devices_updated", () => {
+        loadDevices();
+      });
+      if (disposed) {
+        unlisten();
+      } else {
+        onCleanup(() => unlisten());
+      }
+    };
+    void setup();
+  });
 
   async function handleRefresh() {
     setIsRefreshing(true);
@@ -86,14 +101,25 @@ export default function DevicesPage(props: DevicesPageProps) {
       // Generate ticket on-demand
       const ticketType = "relay_and_addresses";
       const ticket = props.isTextMode
-        ? await send_text({ text: props.textContent!.trim(), ticket_type: ticketType })
-        : await send_file({ path: props.sendPath!, ticket_type: ticketType });
+        ? await send_text({
+            text: props.textContent?.trim() ?? "",
+            ticket_type: ticketType,
+          })
+        : await send_file({
+            path: props.sendPath ?? "",
+            ticket_type: ticketType,
+          });
 
       const filename = props.isTextMode
         ? undefined
         : props.sendPath?.split("/").pop() || undefined;
 
-      await friends.sendTicketToDevice(deviceId, ticket, filename, props.fileSize);
+      await friends.sendTicketToDevice(
+        deviceId,
+        ticket,
+        filename,
+        props.fileSize,
+      );
       toast.success(t("devices.ticketSent", { name: deviceName }));
     } catch (error) {
       console.error("Failed to send to device:", error);
@@ -135,17 +161,17 @@ export default function DevicesPage(props: DevicesPageProps) {
 
         <Show when={!isLoading()}>
           <Show when={otherDevices().length > 0 && !hasSendContent()}>
-            <div class="rounded-xl border border-base-300/50 bg-base-200/40 px-4 py-3 text-center text-sm opacity-70">
+            <div class="border-base-300/50 bg-base-200/40 rounded-xl border px-4 py-3 text-center text-sm opacity-70">
               {t("send.selectSomethingFirst")}
             </div>
           </Show>
           <Show
             when={otherDevices().length > 0}
             fallback={
-              <div class="text-center py-12 text-base-content/50">
+              <div class="text-base-content/50 py-12 text-center">
                 <Smartphone size={48} class="mx-auto mb-3 opacity-50" />
                 <p class="text-sm">{t("devices.noDevices")}</p>
-                <p class="text-xs mt-1 text-base-content/40">
+                <p class="text-base-content/40 mt-1 text-xs">
                   {t("devices.subtitle")}
                 </p>
               </div>
@@ -155,22 +181,23 @@ export default function DevicesPage(props: DevicesPageProps) {
               <For each={otherDevices()}>
                 {(device) => {
                   const PlatformIcon = getPlatformIcon(device.platform);
-                  const isSending = () => sendingTo() === (device.deviceId ?? device.id);
+                  const isSending = () =>
+                    sendingTo() === (device.deviceId ?? device.id);
                   return (
-                    <div class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="card bg-base-200 shadow-sm transition-shadow hover:shadow-md">
                       <div class="card-body p-4">
                         <div class="flex items-center gap-3">
                           <div class="avatar placeholder">
-                            <div class="bg-primary text-primary-content rounded-full w-12 h-12 flex items-center justify-center">
+                            <div class="bg-primary text-primary-content flex h-12 w-12 items-center justify-center rounded-full">
                               <PlatformIcon size={24} />
                             </div>
                           </div>
 
-                          <div class="flex-1 min-w-0">
-                            <h4 class="font-semibold truncate">
+                          <div class="min-w-0 flex-1">
+                            <h4 class="truncate font-semibold">
                               {device.name || "Unknown Device"}
                             </h4>
-                            <p class="text-xs text-base-content/60 capitalize">
+                            <p class="text-base-content/60 text-xs capitalize">
                               {device.platform}
                             </p>
                           </div>
@@ -184,7 +211,7 @@ export default function DevicesPage(props: DevicesPageProps) {
                               }`}
                             >
                               <div
-                                class={`w-1.5 h-1.5 rounded-full ${
+                                class={`h-1.5 w-1.5 rounded-full ${
                                   device.online
                                     ? "bg-success-content"
                                     : "bg-base-content/40"
@@ -205,7 +232,9 @@ export default function DevicesPage(props: DevicesPageProps) {
                                 }
                                 class="btn btn-primary btn-sm"
                                 disabled={!hasSendContent() || isSending()}
-                                title={t("devices.sendTo", { name: device.name })}
+                                title={t("devices.sendTo", {
+                                  name: device.name,
+                                })}
                               >
                                 <Show
                                   when={!isSending()}

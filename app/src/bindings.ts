@@ -29,7 +29,16 @@ export interface TransferInfo {
 
 export interface ProgressUpdate {
   event_type: string;
-  data: any;
+  data: {
+    transfer_id: string;
+    name?: string;
+    progress?: {
+      type?: string;
+      offset?: number;
+      total?: number;
+      speed?: number;
+    };
+  };
 }
 
 /**
@@ -433,7 +442,9 @@ export async function get_context_menu_enabled(): Promise<boolean> {
  * Windows: writes/removes HKCU registry keys. Linux: creates/removes a .desktop file.
  * macOS: stores local setting and refreshes Launch Services/pbs registration.
  */
-export async function set_context_menu_enabled(enabled: boolean): Promise<void> {
+export async function set_context_menu_enabled(
+  enabled: boolean,
+): Promise<void> {
   return await invoke("set_context_menu_enabled", { enabled });
 }
 

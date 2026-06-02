@@ -54,9 +54,7 @@ export default function AuthPanel(props: AuthPanelProps) {
       </div>
 
       <Show when={authError()}>
-        <div class="alert alert-error text-sm">
-          {authError()}
-        </div>
+        <div class="alert alert-error text-sm">{authError()}</div>
       </Show>
 
       <Show when={authMode() === "sign-up"}>
@@ -71,6 +69,7 @@ export default function AuthPanel(props: AuthPanelProps) {
               type="text"
               class="input input-bordered w-full pl-10"
               placeholder="Your name"
+              aria-label={t("common.name")}
               value={name()}
               onInput={(e) => setName(e.currentTarget.value)}
             />
@@ -89,6 +88,7 @@ export default function AuthPanel(props: AuthPanelProps) {
             type="email"
             class="input input-bordered w-full pl-10"
             placeholder="you@example.com"
+            aria-label={t("common.email")}
             value={email()}
             onInput={(e) => setEmail(e.currentTarget.value)}
           />
@@ -106,6 +106,7 @@ export default function AuthPanel(props: AuthPanelProps) {
             type="password"
             class="input input-bordered w-full pl-10"
             placeholder="••••••••"
+            aria-label={t("common.password")}
             value={password()}
             onInput={(e) => setPassword(e.currentTarget.value)}
           />

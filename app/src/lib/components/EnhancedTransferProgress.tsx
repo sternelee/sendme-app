@@ -37,7 +37,10 @@ const ProgressRing: Component<{
     circumference() - (props.percent / 100) * circumference();
 
   return (
-    <div class="relative inline-flex items-center justify-center" style={{ width: `${size()}px`, height: `${size()}px` }}>
+    <div
+      class="relative inline-flex items-center justify-center"
+      style={{ width: `${size()}px`, height: `${size()}px` }}
+    >
       <svg
         class="-rotate-90 transition-all duration-500"
         width={size()}
@@ -59,8 +62,14 @@ const ProgressRing: Component<{
           cy={size() / 2}
           r={radius()}
           fill="none"
-          stroke={props.isCompleted ? "#22c55e" : (props.color || "currentColor")}
-          class={props.isCompleted ? "" : (props.isReceiving ? "text-secondary" : "text-primary")}
+          stroke={props.isCompleted ? "#22c55e" : props.color || "currentColor"}
+          class={
+            props.isCompleted
+              ? ""
+              : props.isReceiving
+                ? "text-secondary"
+                : "text-primary"
+          }
           stroke-width={strokeWidth()}
           stroke-linecap="round"
           stroke-dasharray={circumference()}
@@ -72,7 +81,9 @@ const ProgressRing: Component<{
         <Show
           when={props.isCompleted}
           fallback={
-            <span class="text-xs font-semibold">{Math.round(props.percent)}%</span>
+            <span class="text-xs font-semibold">
+              {Math.round(props.percent)}%
+            </span>
           }
         >
           <FileCheck size={20} class="text-success" />
@@ -90,9 +101,9 @@ const SpeedBar: Component<{ speed: number; maxSpeed?: number }> = (props) => {
   return (
     <div class="flex items-center gap-2">
       <Zap size={12} class="text-warning shrink-0" />
-      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-base-300/40">
+      <div class="bg-base-300/40 h-1.5 flex-1 overflow-hidden rounded-full">
         <Motion.div
-          class="h-full rounded-full bg-warning"
+          class="bg-warning h-full rounded-full"
           animate={{ width: `${percent()}%` }}
           transition={{ duration: 0.3, easing: "ease-out" }}
         />
@@ -101,9 +112,9 @@ const SpeedBar: Component<{ speed: number; maxSpeed?: number }> = (props) => {
   );
 };
 
-export const EnhancedTransferProgress: Component<EnhancedTransferProgressProps> = (
-  props,
-) => {
+export const EnhancedTransferProgress: Component<
+  EnhancedTransferProgressProps
+> = (props) => {
   const percent = () =>
     props.total > 0 ? Math.round((props.transferred / props.total) * 100) : 0;
   const speedStr = () => formatFileSize(props.speed) + "/s";
@@ -124,7 +135,7 @@ export const EnhancedTransferProgress: Component<EnhancedTransferProgressProps> 
     >
       {/* 背景进度条装饰 */}
       <Show when={!props.isCompleted && !props.isPending}>
-        <div class="absolute inset-x-0 bottom-0 h-0.5 bg-base-300/20">
+        <div class="bg-base-300/20 absolute inset-x-0 bottom-0 h-0.5">
           <Motion.div
             class="h-full rounded-full"
             classList={{
@@ -205,7 +216,9 @@ export const EnhancedTransferProgress: Component<EnhancedTransferProgressProps> 
           </div>
 
           {/* 速度可视化 */}
-          <Show when={!props.isCompleted && !props.isPending && props.speed > 0}>
+          <Show
+            when={!props.isCompleted && !props.isPending && props.speed > 0}
+          >
             <div class="mt-3">
               <SpeedBar speed={props.speed} />
             </div>

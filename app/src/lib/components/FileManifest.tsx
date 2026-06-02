@@ -14,9 +14,7 @@ export const FileManifest: Component<FileManifestProps> = (props) => {
   return (
     <div class="bg-base-200 space-y-2 rounded-lg p-3">
       <div class="flex justify-between text-xs font-medium opacity-60">
-        <span>
-          {t("nearby.fileCount", { count: props.files.length })}
-        </span>
+        <span>{t("nearby.fileCount", { count: props.files.length })}</span>
         <span>{formatFileSize(props.totalSize)}</span>
       </div>
       <div

@@ -136,7 +136,9 @@ export default function MainPage() {
     try {
       const loaded = await get_transfers();
       setTransfers(loaded.sort((a, b) => b.created_at - a.created_at));
-    } catch (e) {}
+    } catch (e) {
+      console.warn("[init] loadTransfers failed:", e);
+    }
   }
 
   async function handleReshare(transfer: Transfer) {
@@ -266,12 +268,18 @@ export default function MainPage() {
 
   onMount(async () => {
     try {
-      const p = platform();
+      const p = await platform();
       setIsMobile(p === "android" || p === "ios");
-    } catch (e) {}
+    } catch (e) {
+      console.warn("[init] platform detection failed:", e);
+    }
 
-    const savedTheme = localStorage.getItem("theme") as Theme | null;
-    setThemeValue(savedTheme || "system");
+    const savedTheme = localStorage.getItem("theme");
+    const validTheme: Theme =
+      savedTheme === "light" || savedTheme === "dark" || savedTheme === "system"
+        ? savedTheme
+        : "system";
+    setThemeValue(validTheme);
 
     const savedOutputDir = localStorage.getItem("receive-output-dir");
     if (savedOutputDir) globalStore.receive.setOutputDir(savedOutputDir);
@@ -630,6 +638,7 @@ export default function MainPage() {
               <button
                 onClick={() => globalStore.send.setShowReshareModal(false)}
                 class="btn btn-ghost btn-sm btn-circle"
+                aria-label={t("common.close")}
               >
                 <X size={18} />
               </button>
@@ -646,7 +655,10 @@ export default function MainPage() {
             />
           </div>
           <form method="dialog" class="modal-backdrop">
-            <button onClick={() => globalStore.send.setShowReshareModal(false)}>
+            <button
+              onClick={() => globalStore.send.setShowReshareModal(false)}
+              aria-label={t("common.close")}
+            >
               close
             </button>
           </form>

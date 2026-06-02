@@ -6,13 +6,12 @@ import {
   createMemo,
   createSignal,
 } from "solid-js";
-import { Download, Copy, Shield, Scan, RefreshCw, Zap } from "lucide-solid";
+import { Download, Copy, Shield, Scan, RefreshCw } from "lucide-solid";
 
 import { i18n } from "@sendme/shared";
 import { useGlobalStore } from "~/lib/store";
 import { receive_file, cancel_transfer, pick_directory } from "~/bindings";
 import { toast } from "solid-sonner";
-import { Motion } from "solid-motionone";
 
 import {
   scan,
@@ -202,8 +201,11 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
   }
 
   createEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    let unlistenFn: (() => void) | undefined;
+
     listen<ProgressUpdate>("progress", (event) => {
+      if (cancelled) return;
       const { transfer_id, ...data } = event.payload.data;
       const now = Date.now();
 
@@ -217,7 +219,7 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
           data.progress.total > 0
         ) {
           const alpha = 0.3;
-          const offset = data.progress.offset as number;
+          const offset = data.progress.offset ?? 0;
           const lastOffset = prevData?.progress?.offset ?? offset;
           const lastTime = prevData?.lastTime ?? now;
           const dt = Math.max(now - lastTime, 1);
@@ -257,10 +259,17 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
         }, 2_000);
       }
     }).then((fn) => {
-      unlisten = fn;
+      if (!cancelled) {
+        unlistenFn = fn;
+      } else {
+        fn();
+      }
     });
 
-    return () => unlisten?.();
+    onCleanup(() => {
+      cancelled = true;
+      unlistenFn?.();
+    });
   });
 
   async function handleCancelById(id: string) {
@@ -408,7 +417,8 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
                     globalStore.nearbyReceive.removeIncomingRequest(card().id);
                     globalStore.nearbyReceive.setTransferProgress(null);
                     globalStore.nearbyReceive.setTransferState(
-                      globalStore.nearbyReceive.state().incomingRequests.length > 0
+                      globalStore.nearbyReceive.state().incomingRequests
+                        .length > 0
                         ? "review"
                         : "idle",
                     );

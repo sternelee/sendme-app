@@ -8,17 +8,17 @@ import { debugInfo } from "./debug-log";
 
 // 支持的触觉类型
 export type HapticType =
-  | "light"      // 轻微点击
-  | "medium"     // 中等点击
-  | "heavy"      // 强烈点击
-  | "success"    // 成功
-  | "warning"    // 警告
-  | "error"      // 错误
+  | "light" // 轻微点击
+  | "medium" // 中等点击
+  | "heavy" // 强烈点击
+  | "success" // 成功
+  | "warning" // 警告
+  | "error" // 错误
   | "selection"; // 选择变更
 
 let isMobile = false;
 try {
-  const p = platform();
+  const p = await platform();
   isMobile = p === "android" || p === "ios";
 } catch {
   // Not in Tauri environment
@@ -73,19 +73,21 @@ export async function triggerHaptic(type: HapticType = "light") {
   // 优先使用 Tauri 原生插件（移动端）
   if (isMobile) {
     try {
-      const impactStyle = type === "light" || type === "selection"
-        ? "light"
-        : type === "medium" || type === "success"
-        ? "medium"
-        : "heavy";
+      const impactStyle =
+        type === "light" || type === "selection"
+          ? "light"
+          : type === "medium" || type === "success"
+            ? "medium"
+            : "heavy";
 
-      const notificationType = type === "success"
-        ? "success"
-        : type === "warning"
-        ? "warning"
-        : type === "error"
-        ? "error"
-        : null;
+      const notificationType =
+        type === "success"
+          ? "success"
+          : type === "warning"
+            ? "warning"
+            : type === "error"
+              ? "error"
+              : null;
 
       if (notificationType) {
         await notificationFeedback(notificationType);
@@ -113,22 +115,12 @@ export function triggerHapticSync(type: HapticType = "light") {
 }
 
 // 触觉反馈包装器 - 用于事件处理
-export function withHaptic<T extends (...args: any[]) => any>(
+export function withHaptic<T extends (...args: unknown[]) => unknown>(
   fn: T,
   type: HapticType = "light",
 ): T {
-  return ((...args: any[]) => {
+  return ((...args: unknown[]) => {
     triggerHapticSync(type);
     return fn(...args);
   }) as T;
 }
-
-// 触觉反馈 Hook - 用于组件
-export function useHaptic() {
-  return {
-    trigger: triggerHapticSync,
-    withHaptic,
-  };
-}
-
-

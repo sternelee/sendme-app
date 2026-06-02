@@ -4170,17 +4170,6 @@ async fn receive_file(
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
 
-    // On Android, set_current_dir doesn't work with public directories due to sandboxing.
-    #[cfg(not(target_os = "android"))]
-    if let Some(ref output_dir) = request.output_dir {
-        std::env::set_current_dir(output_dir).map_err(|e| {
-            format!(
-                "Failed to change to output directory '{}': {}",
-                output_dir, e
-            )
-        })?;
-    }
-
     log_info!("Parsing ticket...");
     let ticket = request
         .ticket

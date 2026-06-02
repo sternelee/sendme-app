@@ -326,10 +326,13 @@ export default function FriendsPage(props: FriendsPageProps) {
       const ticketType = "relay_and_addresses";
       const ticket = props.isTextMode
         ? await send_text({
-            text: props.textContent!.trim(),
+            text: props.textContent?.trim() ?? "",
             ticket_type: ticketType,
           })
-        : await send_file({ path: props.sendPath!, ticket_type: ticketType });
+        : await send_file({
+            path: props.sendPath ?? "",
+            ticket_type: ticketType,
+          });
 
       const filename = props.isTextMode
         ? undefined

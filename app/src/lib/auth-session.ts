@@ -91,8 +91,19 @@ export function loadCachedUser(): UserInfo | null {
     const raw = localStorage.getItem(USER_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed.id === "string") {
-      return parsed as UserInfo;
+    if (
+      parsed &&
+      typeof parsed.id === "string" &&
+      typeof parsed.email === "string" &&
+      typeof parsed.name === "string"
+    ) {
+      return {
+        id: parsed.id,
+        email: parsed.email,
+        name: parsed.name,
+        imageUrl:
+          typeof parsed.imageUrl === "string" ? parsed.imageUrl : undefined,
+      };
     }
   } catch {
     // ignore malformed cache
@@ -151,15 +162,6 @@ export function saveCachedAuthSession(session: CachedAuthSession | null): void {
     }
   } catch {
     // ignore storage failures
-  }
-}
-
-export function loadCachedDevBrowserToken(): string | null {
-  try {
-    const token = localStorage.getItem(DEV_BROWSER_TOKEN_CACHE_KEY)?.trim();
-    return token ? token : null;
-  } catch {
-    return null;
   }
 }
 

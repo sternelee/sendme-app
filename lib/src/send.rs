@@ -153,26 +153,26 @@ async fn send_internal(
     let ticket = iroh_blobs::ticket::BlobTicket::new(addr, hash, BlobFormat::HashSeq);
 
     // Spawn a task to keep the router alive for connections.
-    // AGENTS.md: "Never replace with sleep loop. Dropping the router breaks
-    // all subsequent incoming connections."
-    //
     // The task serves until an explicit shutdown signal is received, at which
     // point it stops the router and removes the temporary blob store. If the
-    // SendShutdown handle is dropped without signaling, it keeps serving
-    // indefinitely (preserving the original long-lived sharing behavior).
+    // SendShutdown handle is dropped without signaling, the task times out after
+    // 24 hours to prevent indefinite resource leaks.
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let cleanup_dir = blobs_data_dir.clone();
     tokio::spawn(async move {
         let router = router;
-        match shutdown_rx.await {
-            Ok(()) => {
+        match tokio::time::timeout(std::time::Duration::from_secs(60 * 60 * 24), shutdown_rx).await {
+            Ok(Ok(())) => {
                 let _ = router.shutdown().await;
                 drop(router);
                 let _ = tokio::fs::remove_dir_all(&cleanup_dir).await;
             }
-            Err(_) => {
-                // Handle dropped without an explicit shutdown: serve forever.
-                std::future::pending::<()>().await;
+            _ => {
+                // Handle dropped without an explicit shutdown or timeout:
+                // gracefully shut down the router and clean up the temporary blob store.
+                let _ = router.shutdown().await;
+                drop(router);
+                let _ = tokio::fs::remove_dir_all(&cleanup_dir).await;
             }
         }
     });

@@ -21,7 +21,9 @@ interface IncomingRequestCardProps {
 
 function SenderIcon(props: { deviceType?: string }) {
   const Icon =
-    props.deviceType === "mobile" || props.deviceType === "android" || props.deviceType === "ios"
+    props.deviceType === "mobile" ||
+    props.deviceType === "android" ||
+    props.deviceType === "ios"
       ? Smartphone
       : Monitor;
   return <Icon size={22} />;

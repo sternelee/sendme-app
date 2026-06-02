@@ -13,22 +13,21 @@ export interface Transfer {
 
 export interface ProgressData {
   transfer_id: string;
-  [key: string]: any;
+  name?: string;
+  progress?: {
+    type?: string;
+    offset?: number;
+    total?: number;
+    speed?: number;
+  };
 }
 
 export interface ProgressUpdate {
   event_type: string;
-  data: ProgressData & { transfer_id: string };
+  data: ProgressData;
 }
 
 export type Theme = "light" | "dark" | "system";
 export type Tab = "transfer" | "history" | "settings";
 export type ShareSubTab = "nearby" | "devices" | "friends";
 export type TransferMode = "send" | "receive" | "text";
-
-export const ticketTypes = [
-  { value: "id", label: "ID Only" },
-  { value: "relay", label: "Relay" },
-  { value: "addresses", label: "Addresses" },
-  { value: "relay_and_addresses", label: "Relay + Addresses" },
-];

@@ -1,6 +1,6 @@
 import { Component, For, Show, createMemo } from "solid-js";
 import { formatFileSize } from "@sendme/ui";
-import { Cloud, Download, Radio, X, Check, Bell } from "lucide-solid";
+import { Cloud, Download, Radio, X, Check } from "lucide-solid";
 import { Motion, Presence } from "solid-motionone";
 import { i18n } from "@sendme/shared";
 import type { CloudTicket, IncomingRequest } from "~/bindings";
@@ -34,7 +34,9 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
   const stackedReminders = createMemo(() => reminders().visible.slice(1, 3));
 
   const topKindLabel = () =>
-    topReminder()?.kind === "nearby" ? t("nearby.title") : t("receive.cloudQueue");
+    topReminder()?.kind === "nearby"
+      ? t("nearby.title")
+      : t("receive.cloudQueue");
 
   const topMetaLabel = () => {
     const top = topReminder();
@@ -73,9 +75,16 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
           initial={{ opacity: 0, y: 50, scale: 0.9 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 50, scale: 0.9 }}
-          transition={{ duration: 0.4, type: "spring", stiffness: 400, damping: 30 }}
+          transition={{
+            duration: 0.4,
+            type: "spring",
+            stiffness: 400,
+            damping: 30,
+          }}
           class={`pointer-events-none fixed z-40 ${
-            props.isMobile ? "inset-x-3 bottom-24" : "bottom-6 right-6 w-[380px]"
+            props.isMobile
+              ? "inset-x-3 bottom-24"
+              : "right-6 bottom-6 w-[380px]"
           }`}
         >
           <div
@@ -91,14 +100,18 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
                   <Motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: `${1 - depth * 0.08}`, y: 0 }}
-                    class="pointer-events-none absolute inset-x-2 bottom-0 rounded-[26px] border border-base-300/70 bg-base-100/70 shadow-lg backdrop-blur"
+                    class="border-base-300/70 bg-base-100/70 pointer-events-none absolute inset-x-2 bottom-0 rounded-[26px] border shadow-lg backdrop-blur"
                     style={{
                       transform: `translateY(${depth * 14}px) scale(${1 - depth * 0.02})`,
                     }}
                   >
-                    <div class="flex items-center gap-2 px-4 py-3 text-xs text-base-content/70">
-                      <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-200 text-base-content/70">
-                        {item.kind === "nearby" ? <Radio size={14} /> : <Cloud size={14} />}
+                    <div class="text-base-content/70 flex items-center gap-2 px-4 py-3 text-xs">
+                      <span class="bg-base-200 text-base-content/70 flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
+                        {item.kind === "nearby" ? (
+                          <Radio size={14} />
+                        ) : (
+                          <Cloud size={14} />
+                        )}
                       </span>
                       <span class="truncate font-medium">{item.title}</span>
                       <span class="truncate opacity-60">{item.fileLabel}</span>
@@ -111,33 +124,43 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
             <Motion.div
               initial={{ scale: 0.95 }}
               animate={{ scale: 1 }}
-              class="pointer-events-auto relative rounded-[28px] border border-base-300/80 bg-base-100/95 p-4 shadow-2xl backdrop-blur-xl"
+              class="border-base-300/80 bg-base-100/95 pointer-events-auto relative rounded-[28px] border p-4 shadow-2xl backdrop-blur-xl"
             >
               {/* 顶部装饰线 */}
-              <div class="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-0.5 bg-gradient-to-r from-transparent via-primary/50 to-transparent rounded-full" />
+              <div class="via-primary/50 absolute top-0 left-1/2 h-0.5 w-12 -translate-x-1/2 rounded-full bg-gradient-to-r from-transparent to-transparent" />
 
               <div class="flex items-start gap-3">
                 <Motion.div
                   animate={{ rotate: [0, 10, -10, 0] }}
                   transition={{ duration: 0.5, delay: 0.2 }}
-                  class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-secondary/12 text-secondary"
+                  class="bg-secondary/12 text-secondary flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
                 >
-                  {topReminder()!.kind === "nearby" ? <Radio size={20} /> : <Cloud size={20} />}
+                  {topReminder()!.kind === "nearby" ? (
+                    <Radio size={20} />
+                  ) : (
+                    <Cloud size={20} />
+                  )}
                 </Motion.div>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
-                    <span class="badge badge-secondary badge-sm">{topKindLabel()}</span>
+                    <span class="badge badge-secondary badge-sm">
+                      {topKindLabel()}
+                    </span>
                     <Show when={reminders().hiddenCount > 0}>
                       <span class="badge badge-outline badge-sm">
                         +{reminders().hiddenCount} {t("receive.moreIncoming")}
                       </span>
                     </Show>
                   </div>
-                  <p class="mt-2 truncate text-sm font-semibold">{topReminder()!.title}</p>
-                  <p class="mt-1 text-xs text-base-content/65 line-clamp-2">
+                  <p class="mt-2 truncate text-sm font-semibold">
+                    {topReminder()!.title}
+                  </p>
+                  <p class="text-base-content/65 mt-1 line-clamp-2 text-xs">
                     {topReminder()!.fileLabel}
                   </p>
-                  <p class="mt-2 text-xs text-base-content/55">{topMetaLabel()}</p>
+                  <p class="text-base-content/55 mt-2 text-xs">
+                    {topMetaLabel()}
+                  </p>
                 </div>
                 <Motion.button
                   whileHover={{ scale: 1.1 }}
@@ -146,7 +169,9 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
                   class="btn btn-ghost btn-sm rounded-xl px-3"
                 >
                   <Download size={14} />
-                  <span class="hidden sm:inline">{t("nearby.openReceive")}</span>
+                  <span class="hidden sm:inline">
+                    {t("nearby.openReceive")}
+                  </span>
                 </Motion.button>
               </div>
 
@@ -155,7 +180,7 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={handleDecline}
-                  class="btn btn-outline btn-sm flex-1 rounded-2xl gap-1"
+                  class="btn btn-outline btn-sm flex-1 gap-1 rounded-2xl"
                 >
                   <X size={14} />
                   {t("nearby.decline")}
@@ -164,7 +189,7 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={handleAccept}
-                  class="btn btn-secondary btn-sm flex-1 rounded-2xl gap-1"
+                  class="btn btn-secondary btn-sm flex-1 gap-1 rounded-2xl"
                 >
                   <Check size={14} />
                   {t("nearby.accept")}
