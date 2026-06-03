@@ -45,7 +45,14 @@
       "noHistoryYet": "No history yet",
       "ticketNotFound": "Ticket not found",
       "done": "Done",
-      "tryAgain": "Try Again"
+      "tryAgain": "Try Again",
+      "transportScheme": "Transport scheme",
+      "airbridgeLocal": "AirBridge（Local network）",
+      "irohRemote": "iroh（Remote network）",
+      "routingPolicyAuto": "Auto",
+      "routingPolicyLocalOnly": "Local only",
+      "routingPolicyRemoteOnly": "Remote only",
+      "switchToIrohRemote": "Switch to iroh（Remote network）"
     },
     "landing": {
       "hero": {
@@ -399,7 +406,14 @@
       "noHistoryYet": "暂无历史记录",
       "ticketNotFound": "未找到票据",
       "done": "完成",
-      "tryAgain": "重试"
+      "tryAgain": "重试",
+      "transportScheme": "传输方案",
+      "airbridgeLocal": "AirBridge（本地网络）",
+      "irohRemote": "iroh（远程网络）",
+      "routingPolicyAuto": "自动",
+      "routingPolicyLocalOnly": "仅本地",
+      "routingPolicyRemoteOnly": "仅远程",
+      "switchToIrohRemote": "切换到 iroh（远程网络）"
     },
     "landing": {
       "hero": {

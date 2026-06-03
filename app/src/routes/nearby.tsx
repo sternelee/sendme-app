@@ -220,7 +220,7 @@ export default function NearbyPage(props: NearbyPageProps) {
     <div class="space-y-4">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-base-content/60 text-sm font-bold tracking-wider uppercase">
-          AirBridge（本地网络）
+          {t("common.airbridgeLocal")}
         </h2>
         <Show when={nearbyProfile()}>
           <div class="text-base-content/60 text-right text-xs">
@@ -295,7 +295,7 @@ export default function NearbyPage(props: NearbyPageProps) {
                 onClick={() => props.onFallbackToRemote?.()}
                 class="btn btn-outline btn-sm"
               >
-                切换到 iroh（远程网络）
+                {t("common.switchToIrohRemote")}
               </button>
             </Show>
           </div>

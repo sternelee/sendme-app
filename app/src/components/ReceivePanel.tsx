@@ -350,7 +350,7 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
           {receiveOutputDir() || t("common.defaultDownloads")}
         </div>
         <div class="text-base-content/55 mt-3 text-xs">
-          传输方案：iroh（远程网络）票据接收
+          {t("common.transportScheme")}: {t("common.irohRemote")}
         </div>
       </div>
 

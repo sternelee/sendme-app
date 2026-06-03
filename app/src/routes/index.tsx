@@ -285,11 +285,15 @@ export default function MainPage() {
     ) as TransferRoutingPolicy | null;
     if (savedRoutingPolicy) {
       setRoutingPolicy(savedRoutingPolicy);
-      set_transport_routing_policy(savedRoutingPolicy).catch(() => {});
+      set_transport_routing_policy(savedRoutingPolicy).catch((error) =>
+        debugError("routing-policy", "Failed to set saved routing policy", error),
+      );
     } else {
       get_transport_routing_policy()
         .then((policy) => setRoutingPolicy(policy))
-        .catch(() => {});
+        .catch((error) =>
+          debugError("routing-policy", "Failed to read backend routing policy", error),
+        );
     }
 
     setIsInitializing(false);
@@ -526,7 +530,9 @@ export default function MainPage() {
   createEffect(() => {
     const policy = routingPolicy();
     localStorage.setItem("transfer-routing-policy", policy);
-    set_transport_routing_policy(policy).catch(() => {});
+    set_transport_routing_policy(policy).catch((error) =>
+      debugError("routing-policy", "Failed to sync routing policy", error),
+    );
   });
 
   return (

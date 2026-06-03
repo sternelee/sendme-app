@@ -1221,10 +1221,10 @@ async fn send_to_device(
                     break;
                 }
                 Ok(Err(error)) => {
-                    last_error = format!("Failed to connect to nearby device: {error}");
+                    last_error = format!("Nearby connect attempt {} failed: {error}", attempt + 1);
                 }
                 Err(_) => {
-                    last_error = "Nearby connection timed out after 8s".to_string();
+                    last_error = format!("Nearby connect attempt {} timed out after 8s", attempt + 1);
                 }
             }
             if attempt == 0 {
@@ -1236,7 +1236,9 @@ async fn send_to_device(
                         state: "waiting".to_string(),
                         device_name: Some(fallback_name.clone()),
                         device_type: None,
-                        message: Some("Connection unstable, retrying locally...".to_string()),
+                        message: Some(
+                            "Connection unstable. Retrying on local network...".to_string(),
+                        ),
                         progress: None,
                     },
                 );
@@ -1399,6 +1401,7 @@ async fn send_to_device(
         .map_err(|e| format!("Failed to get temp directory: {e}"))?;
     let args = SendArgs {
         path: prepared.send_path.clone(),
+        // AirBridge traffic is restricted to local-network addresses only.
         ticket_type: AddrInfoOptions::Addresses,
         common: CommonConfig {
             temp_dir: Some(temp_dir),
@@ -2199,6 +2202,8 @@ fn emit_unified_transfer_state(app: &AppHandle, payload: UnifiedTransferStatePay
     let _ = app.emit("transfer_state", payload);
 }
 
+/// Maps existing nearby state names to the unified cross-transport transfer phases
+/// used by `transfer_state` so AirBridge and iroh can share one status vocabulary.
 fn normalize_nearby_state(state: &str) -> &'static str {
     match state {
         "waiting" | "accepted" => "waiting_confirmation",

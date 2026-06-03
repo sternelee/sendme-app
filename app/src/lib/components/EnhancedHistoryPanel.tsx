@@ -143,8 +143,8 @@ const HistoryItem: Component<HistoryItemProps> = (props) => {
   const isSend = () => props.transfer.transfer_type === 'send';
   const transportSchemeLabel = () =>
     props.transfer.transfer_type.startsWith("nearby-")
-      ? "AirBridge（本地网络）"
-      : "iroh（远程网络）";
+      ? t("common.airbridgeLocal")
+      : t("common.irohRemote");
 
   return (
     <Motion.div

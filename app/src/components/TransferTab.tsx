@@ -170,10 +170,10 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
               </span>
             </div>
             <div class="text-base-content/55 text-xs">
-              传输方案：
+              {t("common.transportScheme")}:
               {props.shareSubTab === "nearby"
-                ? " AirBridge（本地网络）"
-                : " iroh（远程网络）"}
+                ? ` ${t("common.airbridgeLocal")}`
+                : ` ${t("common.irohRemote")}`}
             </div>
           </Show>
 
@@ -241,7 +241,7 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
                   }`}
                   onClick={() => props.setRoutingPolicy("auto")}
                 >
-                  自动
+                  {t("common.routingPolicyAuto")}
                 </button>
                 <button
                   class={`join-item btn btn-xs rounded-lg ${
@@ -249,7 +249,7 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
                   }`}
                   onClick={() => props.setRoutingPolicy("local_only")}
                 >
-                  仅本地
+                  {t("common.routingPolicyLocalOnly")}
                 </button>
                 <button
                   class={`join-item btn btn-xs rounded-lg ${
@@ -257,7 +257,7 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
                   }`}
                   onClick={() => props.setRoutingPolicy("remote_only")}
                 >
-                  仅远程
+                  {t("common.routingPolicyRemoteOnly")}
                 </button>
               </div>
               <div class="tabs tabs-boxed bg-base-100/80 p-1">
@@ -269,7 +269,7 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
                   disabled={props.routingPolicy === "remote_only"}
                 >
                   <Radio size={16} />
-                  AirBridge（本地网络）
+                  {t("common.airbridgeLocal")}
                 </button>
                 <button
                   class={`tab gap-2 rounded-xl ${
@@ -279,27 +279,21 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
                   disabled={props.routingPolicy === "local_only"}
                 >
                   <Smartphone size={16} />
-                  iroh（远程网络）
+                  {t("common.irohRemote")}
                 </button>
               </div>
             </div>
+          </div>
 
+          <Show when={props.shareSubTab !== "nearby"}>
             <div class="tabs tabs-boxed bg-base-100/80 p-1">
-              <button
-                class={`tab gap-2 rounded-xl ${props.shareSubTab === "nearby" ? "tab-active" : ""}`}
-                onClick={() => props.setShareSubTab("nearby")}
-                disabled={props.routingPolicy === "remote_only"}
-              >
-                <Radio size={16} />
-                AirBridge
-              </button>
               <button
                 class={`tab gap-2 rounded-xl ${props.shareSubTab === "devices" ? "tab-active" : ""}`}
                 onClick={() => props.setShareSubTab("devices")}
                 disabled={props.routingPolicy === "local_only"}
               >
                 <Smartphone size={16} />
-                iroh · {t("devices.title")}
+                {t("devices.title")}
               </button>
               <button
                 class={`tab gap-2 rounded-xl ${props.shareSubTab === "friends" ? "tab-active" : ""}`}
@@ -307,10 +301,10 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
                 disabled={props.routingPolicy === "local_only"}
               >
                 <User size={16} />
-                iroh · {t("friends.title")}
+                {t("friends.title")}
               </button>
             </div>
-          </div>
+          </Show>
 
           <Show when={props.shareSubTab === "nearby"}>
             <NearbyPage
