@@ -38,6 +38,8 @@ import {
   type IncomingRequest,
   type NearbyTransferState,
   type CloudTicket,
+  get_transport_routing_policy,
+  set_transport_routing_policy,
 } from "~/bindings";
 import { copyToClipboard, nativeShare } from "~/lib/utils";
 import { triggerHaptic } from "~/lib/haptics";
@@ -48,6 +50,7 @@ import type {
   Theme,
   Transfer,
   TransferMode,
+  TransferRoutingPolicy,
 } from "~/lib/types";
 
 const t = i18n.t;
@@ -63,6 +66,8 @@ export default function MainPage() {
   const [activeTab, setActiveTab] = createSignal<Tab>("transfer");
   const [transferMode, setTransferMode] = createSignal<TransferMode>("send");
   const [shareSubTab, setShareSubTab] = createSignal<ShareSubTab>("nearby");
+  const [routingPolicy, setRoutingPolicy] =
+    createSignal<TransferRoutingPolicy>("auto");
   const [showQrCode, setShowQrCode] = createSignal(false);
   const [pendingReceiveCards, setPendingReceiveCards] = createSignal<
     PendingReceiveCard[]
@@ -275,6 +280,17 @@ export default function MainPage() {
 
     const savedOutputDir = localStorage.getItem("receive-output-dir");
     if (savedOutputDir) globalStore.receive.setOutputDir(savedOutputDir);
+    const savedRoutingPolicy = localStorage.getItem(
+      "transfer-routing-policy",
+    ) as TransferRoutingPolicy | null;
+    if (savedRoutingPolicy) {
+      setRoutingPolicy(savedRoutingPolicy);
+      set_transport_routing_policy(savedRoutingPolicy).catch(() => {});
+    } else {
+      get_transport_routing_policy()
+        .then((policy) => setRoutingPolicy(policy))
+        .catch(() => {});
+    }
 
     setIsInitializing(false);
 
@@ -507,6 +523,12 @@ export default function MainPage() {
     localStorage.setItem("receive-output-dir", outputDir);
   });
 
+  createEffect(() => {
+    const policy = routingPolicy();
+    localStorage.setItem("transfer-routing-policy", policy);
+    set_transport_routing_policy(policy).catch(() => {});
+  });
+
   return (
     <div class="app-shell text-base-content flex min-h-screen flex-col">
       <Toaster position="top-center" />
@@ -571,6 +593,8 @@ export default function MainPage() {
                   setTransferView={handleTransferView}
                   shareSubTab={shareSubTab()}
                   setShareSubTab={setShareSubTab}
+                  routingPolicy={routingPolicy()}
+                  setRoutingPolicy={setRoutingPolicy}
                   isMobile={isMobile()}
                   showQrCode={showQrCode()}
                   setShowQrCode={setShowQrCode}

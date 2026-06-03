@@ -141,6 +141,10 @@ interface HistoryItemProps {
 
 const HistoryItem: Component<HistoryItemProps> = (props) => {
   const isSend = () => props.transfer.transfer_type === 'send';
+  const transportSchemeLabel = () =>
+    props.transfer.transfer_type.startsWith("nearby-")
+      ? "AirBridge（本地网络）"
+      : "iroh（远程网络）";
 
   return (
     <Motion.div
@@ -185,6 +189,7 @@ const HistoryItem: Component<HistoryItemProps> = (props) => {
             >
               {isSend() ? t("history.sent") : t("history.received")}
             </span>
+            <span class="badge badge-outline badge-xs">{transportSchemeLabel()}</span>
             <span class="truncate text-sm font-medium cursor-pointer hover:text-primary transition-colors">
               {props.transfer.filename ?? getDisplayName(props.transfer.path)}
             </span>

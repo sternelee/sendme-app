@@ -216,6 +216,9 @@ export interface CloudPresenceState {
   tickets: CloudTicket[];
 }
 
+export type TransportScheme = "airbridge" | "iroh";
+export type TransportRoutingPolicy = "auto" | "local_only" | "remote_only";
+
 /**
  * Pick a file using the native mobile file picker
  *
@@ -358,6 +361,19 @@ export interface NearbyTransferState {
   progress?: TransferProgress;
 }
 
+export interface UnifiedTransferState {
+  scheme: TransportScheme;
+  direction: "send" | "receive";
+  state: string;
+  legacyState?: string;
+  requestId?: string;
+  transferId?: string;
+  deviceName?: string;
+  deviceType?: string;
+  message?: string;
+  progress?: TransferProgress;
+}
+
 export interface NearbySendItem {
   path: string;
   filename?: string;
@@ -418,6 +434,16 @@ export async function accept_cloud_ticket(
  */
 export async function decline_cloud_ticket(ticketId: string): Promise<void> {
   return await invoke("decline_cloud_ticket", { ticketId });
+}
+
+export async function get_transport_routing_policy(): Promise<TransportRoutingPolicy> {
+  return await invoke("get_transport_routing_policy");
+}
+
+export async function set_transport_routing_policy(
+  policy: TransportRoutingPolicy,
+): Promise<void> {
+  return await invoke("set_transport_routing_policy", { policy });
 }
 
 /**

@@ -294,7 +294,7 @@
       "declineFailed": "Failed to decline"
     },
     "nearby": {
-      "title": "Nearby",
+      "title": "AirBridge",
       "devices": "Nearby Devices",
       "devicesFound": "{{count}} devices ready",
       "scanning": "Scanning...",
@@ -324,7 +324,7 @@
       "dropFilesOrTap": "Drop files or tap to select",
       "tapToSelect": "Tap to select",
       "workspaceTitle": "More ways to share",
-      "workspaceSubtitle": "Use Nearby for devices on the same network, or Friends when you want a repeatable trusted path."
+      "workspaceSubtitle": "AirBridge is for local-network direct transfer. iroh is for remote transfer across the internet."
     },
     "apiKeys": {
       "title": "API Keys",
@@ -645,7 +645,7 @@
       "declineFailed": "拒绝失败"
     },
     "nearby": {
-      "title": "附近",
+      "title": "AirBridge",
       "devices": "附近设备",
       "devicesFound": "已发现 {{count}} 台设备",
       "scanning": "扫描中...",
@@ -675,7 +675,7 @@
       "dropFilesOrTap": "拖放文件或点击选择",
       "tapToSelect": "点击选择",
       "workspaceTitle": "更多分享方式",
-      "workspaceSubtitle": "同一网络下优先用附近分享;需要长期可信通道时用好友。"
+      "workspaceSubtitle": "AirBridge 用于本地网络直连传输；iroh 用于远程网络传输。"
     },
     "apiKeys": {
       "title": "API 密钥",

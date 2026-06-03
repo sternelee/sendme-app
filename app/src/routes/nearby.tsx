@@ -28,6 +28,8 @@ const RECONCILE_INTERVAL_MS = 20_000;
 interface NearbyPageProps {
   sendPath?: string;
   isFolder?: boolean;
+  allowAutoFallback?: boolean;
+  onFallbackToRemote?: () => void;
 }
 
 export default function NearbyPage(props: NearbyPageProps) {
@@ -218,7 +220,7 @@ export default function NearbyPage(props: NearbyPageProps) {
     <div class="space-y-4">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-base-content/60 text-sm font-bold tracking-wider uppercase">
-          {t("nearby.title")}
+          AirBridge（本地网络）
         </h2>
         <Show when={nearbyProfile()}>
           <div class="text-base-content/60 text-right text-xs">
@@ -284,9 +286,19 @@ export default function NearbyPage(props: NearbyPageProps) {
       <Show when={nearbyState().transferState === "error"}>
         <div                     class="alert alert-error text-center">
           <p class="text-error font-medium">{nearbyState().error}</p>
-          <button onClick={handleCancel} class="btn btn-error btn-sm mt-2">
-            {t("common.tryAgain")}
-          </button>
+          <div class="mt-2 flex items-center justify-center gap-2">
+            <button onClick={handleCancel} class="btn btn-error btn-sm">
+              {t("common.tryAgain")}
+            </button>
+            <Show when={props.allowAutoFallback}>
+              <button
+                onClick={() => props.onFallbackToRemote?.()}
+                class="btn btn-outline btn-sm"
+              >
+                切换到 iroh（远程网络）
+              </button>
+            </Show>
+          </div>
         </div>
       </Show>
     </div>

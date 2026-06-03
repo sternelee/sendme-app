@@ -10,6 +10,7 @@ export interface SendSelectionItem {
 export interface IncomingReminderItem {
   id: string;
   kind: "nearby" | "cloud";
+  scheme: "airbridge" | "iroh";
   title: string;
   subtitle: string;
   fileLabel: string;
@@ -57,8 +58,9 @@ export function buildIncomingReminders(options: {
     reminders.push({
       id: request.id,
       kind: "nearby",
+      scheme: "airbridge",
       title: request.senderName,
-      subtitle: request.senderDeviceType || "Nearby transfer",
+      subtitle: request.senderDeviceType || "AirBridge（本地网络）",
       fileLabel:
         firstFile?.name ??
         `${Math.max(request.files.length, 1)} file${request.files.length === 1 ? "" : "s"}`,
@@ -72,8 +74,9 @@ export function buildIncomingReminders(options: {
     reminders.push({
       id: ticket.id,
       kind: "cloud",
+      scheme: "iroh",
       title: ticket.senderName?.trim() || "Cloud transfer",
-      subtitle: "Cloud inbox",
+      subtitle: "iroh（远程网络）",
       fileLabel: ticket.filename?.trim() || "Unnamed file",
       fileCount: 1,
       totalSize: ticket.fileSize ?? 0,
