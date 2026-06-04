@@ -708,6 +708,7 @@ type Transfers = Arc<RwLock<HashMap<String, TransferState>>>;
 type NearbyState = Arc<RwLock<NearbyRuntime>>;
 type CloudPresenceState = Arc<RwLock<CloudPresenceRuntime>>;
 type AndroidForegroundState = Arc<RwLock<AndroidForegroundRuntime>>;
+type RoutingPolicyState = Arc<RwLock<TransportRoutingPolicyPayload>>;
 
 #[derive(Debug)]
 struct TransferState {
@@ -783,6 +784,37 @@ struct NearbyTransferStatePayload {
     request_id: Option<String>,
     transfer_id: Option<String>,
     state: String,
+    device_name: Option<String>,
+    device_type: Option<String>,
+    message: Option<String>,
+    progress: Option<NearbyTransferProgressPayload>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TransportSchemePayload {
+    Airbridge,
+    Iroh,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TransportRoutingPolicyPayload {
+    #[default]
+    Auto,
+    LocalOnly,
+    RemoteOnly,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UnifiedTransferStatePayload {
+    scheme: TransportSchemePayload,
+    direction: String,
+    state: String,
+    legacy_state: Option<String>,
+    request_id: Option<String>,
+    transfer_id: Option<String>,
     device_name: Option<String>,
     device_type: Option<String>,
     message: Option<String>,
@@ -1092,6 +1124,22 @@ async fn get_cloud_presence_state(
 }
 
 #[tauri::command]
+async fn get_transport_routing_policy(
+    routing_policy: tauri::State<'_, RoutingPolicyState>,
+) -> Result<TransportRoutingPolicyPayload, String> {
+    Ok(*routing_policy.read().await)
+}
+
+#[tauri::command]
+async fn set_transport_routing_policy(
+    routing_policy: tauri::State<'_, RoutingPolicyState>,
+    policy: TransportRoutingPolicyPayload,
+) -> Result<(), String> {
+    *routing_policy.write().await = policy;
+    Ok(())
+}
+
+#[tauri::command]
 async fn send_to_device(
     app: AppHandle,
     transfers: tauri::State<'_, Transfers>,
@@ -1102,24 +1150,6 @@ async fn send_to_device(
     ensure_nearby_runtime(&app, nearby.inner().clone()).await?;
 
     let prepared = prepare_nearby_source(&app, &file_items).await?;
-    let (peer_addr, fallback_name) = {
-        let guard = nearby.read().await;
-        let discovery = guard
-            .discovery
-            .as_ref()
-            .ok_or_else(|| "Nearby discovery is not running".to_string())?;
-        let peer_addr = discovery
-            .get_endpoint_addr(&device_id)
-            .ok_or_else(|| "Selected device is no longer available".to_string())?;
-        let device_name = discovery
-            .get_devices()
-            .into_iter()
-            .find(|device| device.id == device_id)
-            .map(|device| device.name)
-            .unwrap_or_else(|| "Nearby device".to_string());
-        (peer_addr, device_name)
-    };
-
     let endpoint = {
         let guard = nearby.read().await;
         guard
@@ -1157,10 +1187,65 @@ async fn send_to_device(
     }
 
     let current_profile = current_nearby_profile(&app)?;
-    let conn = endpoint
-        .connect(peer_addr, sendme_lib::nearby::ALPN)
-        .await
-        .map_err(|e| format!("Failed to connect to nearby device: {e}"))?;
+    let mut fallback_name = "Nearby device".to_string();
+    let conn = {
+        let mut connected = None;
+        let mut last_error = String::new();
+        for attempt in 0..2 {
+            let (peer_addr, device_name) = {
+                let guard = nearby.read().await;
+                let discovery = guard
+                    .discovery
+                    .as_ref()
+                    .ok_or_else(|| "Nearby discovery is not running".to_string())?;
+                let peer_addr = discovery
+                    .get_endpoint_addr(&device_id)
+                    .ok_or_else(|| "Selected device is no longer available".to_string())?;
+                let device_name = discovery
+                    .get_devices()
+                    .into_iter()
+                    .find(|device| device.id == device_id)
+                    .map(|device| device.name)
+                    .unwrap_or_else(|| "Nearby device".to_string());
+                (peer_addr, device_name)
+            };
+            fallback_name = device_name;
+            match tokio::time::timeout(
+                Duration::from_secs(8),
+                endpoint.connect(peer_addr, sendme_lib::nearby::ALPN),
+            )
+            .await
+            {
+                Ok(Ok(conn)) => {
+                    connected = Some(conn);
+                    break;
+                }
+                Ok(Err(error)) => {
+                    last_error = format!("Nearby connect attempt {} failed: {error}", attempt + 1);
+                }
+                Err(_) => {
+                    last_error = format!("Nearby connect attempt {} timed out after 8s", attempt + 1);
+                }
+            }
+            if attempt == 0 {
+                emit_nearby_send_state(
+                    &app,
+                    NearbyTransferStatePayload {
+                        request_id: None,
+                        transfer_id: Some(transfer_id.clone()),
+                        state: "waiting".to_string(),
+                        device_name: Some(fallback_name.clone()),
+                        device_type: None,
+                        message: Some(
+                            "Connection unstable. Retrying on local network...".to_string(),
+                        ),
+                        progress: None,
+                    },
+                );
+            }
+        }
+        connected.ok_or(last_error)?
+    };
     let (mut send, mut recv) = conn
         .open_bi()
         .await
@@ -1316,7 +1401,8 @@ async fn send_to_device(
         .map_err(|e| format!("Failed to get temp directory: {e}"))?;
     let args = SendArgs {
         path: prepared.send_path.clone(),
-        ticket_type: AddrInfoOptions::RelayAndAddresses,
+        // AirBridge traffic is restricted to local-network addresses only.
+        ticket_type: AddrInfoOptions::Addresses,
         common: CommonConfig {
             temp_dir: Some(temp_dir),
             ..Default::default()
@@ -2075,11 +2161,58 @@ fn resolve_nearby_output_dir(
 }
 
 fn emit_nearby_send_state(app: &AppHandle, payload: NearbyTransferStatePayload) {
-    let _ = app.emit("nearby_send_state", payload);
+    let _ = app.emit("nearby_send_state", payload.clone());
+    emit_unified_transfer_state(
+        app,
+        UnifiedTransferStatePayload {
+            scheme: TransportSchemePayload::Airbridge,
+            direction: "send".to_string(),
+            state: normalize_nearby_state(&payload.state).to_string(),
+            legacy_state: Some(payload.state),
+            request_id: payload.request_id,
+            transfer_id: payload.transfer_id,
+            device_name: payload.device_name,
+            device_type: payload.device_type,
+            message: payload.message,
+            progress: payload.progress,
+        },
+    );
 }
 
 fn emit_nearby_receive_state(app: &AppHandle, payload: NearbyTransferStatePayload) {
-    let _ = app.emit("nearby_receive_state", payload);
+    let _ = app.emit("nearby_receive_state", payload.clone());
+    emit_unified_transfer_state(
+        app,
+        UnifiedTransferStatePayload {
+            scheme: TransportSchemePayload::Airbridge,
+            direction: "receive".to_string(),
+            state: normalize_nearby_state(&payload.state).to_string(),
+            legacy_state: Some(payload.state),
+            request_id: payload.request_id,
+            transfer_id: payload.transfer_id,
+            device_name: payload.device_name,
+            device_type: payload.device_type,
+            message: payload.message,
+            progress: payload.progress,
+        },
+    );
+}
+
+fn emit_unified_transfer_state(app: &AppHandle, payload: UnifiedTransferStatePayload) {
+    let _ = app.emit("transfer_state", payload);
+}
+
+/// Maps existing nearby state names to the unified cross-transport transfer phases
+/// used by `transfer_state` so AirBridge and iroh can share one status vocabulary.
+fn normalize_nearby_state(state: &str) -> &'static str {
+    match state {
+        "waiting" | "accepted" => "waiting_confirmation",
+        "preparing" => "preparing",
+        "transferring" | "receiving" => "transferring",
+        "done" => "completed",
+        "declined" | "cancelled" | "error" => "failed",
+        _ => "preparing",
+    }
 }
 
 fn emit_nearby_devices_updated(app: &AppHandle, devices: Vec<sendme_lib::NearbyDevice>) {
@@ -3445,6 +3578,8 @@ pub fn run() {
     let cloud_presence: CloudPresenceState = Arc::new(RwLock::new(CloudPresenceRuntime::default()));
     let android_foreground: AndroidForegroundState =
         Arc::new(RwLock::new(AndroidForegroundRuntime::default()));
+    let routing_policy: RoutingPolicyState =
+        Arc::new(RwLock::new(TransportRoutingPolicyPayload::Auto));
     let receive_history: ReceiveHistory = Arc::new(RwLock::new(Vec::new()));
 
     // Windows/Linux: capture file path from CLI arguments (e.g. "Open With" / context menu).
@@ -3564,6 +3699,7 @@ pub fn run() {
             app.manage(nearby.clone());
             app.manage(cloud_presence.clone());
             app.manage(android_foreground.clone());
+            app.manage(routing_policy.clone());
             // Store pending CLI file path (Windows/Linux "Open With" / context menu)
             app.manage(pending_file.clone());
 
@@ -3720,6 +3856,8 @@ pub fn run() {
             update_cloud_state,
             stop_cloud_presence,
             get_cloud_presence_state,
+            get_transport_routing_policy,
+            set_transport_routing_policy,
             accept_cloud_ticket,
             decline_cloud_ticket,
             app_ready,
@@ -3801,12 +3939,64 @@ async fn accept_cloud_ticket(
             .clone()
     };
 
+    emit_unified_transfer_state(
+        &app,
+        UnifiedTransferStatePayload {
+            scheme: TransportSchemePayload::Iroh,
+            direction: "receive".to_string(),
+            state: "preparing".to_string(),
+            legacy_state: None,
+            request_id: None,
+            transfer_id: None,
+            device_name: None,
+            device_type: None,
+            message: Some("Preparing iroh ticket receive".to_string()),
+            progress: None,
+        },
+    );
+
     // Start the file receive using the existing receive_file logic
     let request = ReceiveFileRequest {
         ticket: ticket_str,
         output_dir,
     };
-    let transfer_id = receive_file(app.clone(), transfers, request).await?;
+    let transfer_id = match receive_file(app.clone(), transfers, request).await {
+        Ok(id) => id,
+        Err(error) => {
+            emit_unified_transfer_state(
+                &app,
+                UnifiedTransferStatePayload {
+                    scheme: TransportSchemePayload::Iroh,
+                    direction: "receive".to_string(),
+                    state: "failed".to_string(),
+                    legacy_state: None,
+                    request_id: None,
+                    transfer_id: None,
+                    device_name: None,
+                    device_type: None,
+                    message: Some(error.clone()),
+                    progress: None,
+                },
+            );
+            return Err(error);
+        }
+    };
+
+    emit_unified_transfer_state(
+        &app,
+        UnifiedTransferStatePayload {
+            scheme: TransportSchemePayload::Iroh,
+            direction: "receive".to_string(),
+            state: "transferring".to_string(),
+            legacy_state: None,
+            request_id: None,
+            transfer_id: Some(transfer_id.clone()),
+            device_name: None,
+            device_type: None,
+            message: Some("Receiving via iroh ticket".to_string()),
+            progress: None,
+        },
+    );
 
     Ok(transfer_id)
 }

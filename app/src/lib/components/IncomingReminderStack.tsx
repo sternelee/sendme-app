@@ -34,9 +34,9 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
   const stackedReminders = createMemo(() => reminders().visible.slice(1, 3));
 
   const topKindLabel = () =>
-    topReminder()?.kind === "nearby"
-      ? t("nearby.title")
-      : t("receive.cloudQueue");
+    topReminder()?.scheme === "airbridge"
+      ? t("common.airbridgeLocal")
+      : t("common.irohRemote");
 
   const topMetaLabel = () => {
     const top = topReminder();
@@ -105,13 +105,9 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
                       transform: `translateY(${depth * 14}px) scale(${1 - depth * 0.02})`,
                     }}
                   >
-                    <div class="text-base-content/70 flex items-center gap-2 px-4 py-3 text-xs">
-                      <span class="bg-base-200 text-base-content/70 flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
-                        {item.kind === "nearby" ? (
-                          <Radio size={14} />
-                        ) : (
-                          <Cloud size={14} />
-                        )}
+                    <div class="flex items-center gap-2 px-4 py-3 text-xs text-base-content/70">
+                      <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-200 text-base-content/70">
+                        {item.scheme === "airbridge" ? <Radio size={14} /> : <Cloud size={14} />}
                       </span>
                       <span class="truncate font-medium">{item.title}</span>
                       <span class="truncate opacity-60">{item.fileLabel}</span>
@@ -135,11 +131,7 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
                   transition={{ duration: 0.5, delay: 0.2 }}
                   class="bg-secondary/12 text-secondary flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
                 >
-                  {topReminder()!.kind === "nearby" ? (
-                    <Radio size={20} />
-                  ) : (
-                    <Cloud size={20} />
-                  )}
+                  {topReminder()!.scheme === "airbridge" ? <Radio size={20} /> : <Cloud size={20} />}
                 </Motion.div>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">

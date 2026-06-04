@@ -13,7 +13,9 @@
 
   void setWebView(io.sendme.app.RustWebView);
   java.lang.Class getAppClass(...);
+  int getId();
   java.lang.String getVersion();
+  int startActivity(...);
 }
 
 -keep class io.sendme.app.Ipc {

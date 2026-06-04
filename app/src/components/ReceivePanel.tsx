@@ -358,6 +358,9 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
         <div class="border-base-300/70 bg-base-100 text-base-content/75 max-w-full min-w-0 overflow-hidden rounded-xl border px-4 py-3 text-sm break-all">
           {receiveOutputDir() || t("common.defaultDownloads")}
         </div>
+        <div class="text-base-content/55 mt-3 text-xs">
+          {t("common.transportScheme")}: {t("common.irohRemote")}
+        </div>
       </div>
 
       <button

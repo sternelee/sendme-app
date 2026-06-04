@@ -31,3 +31,12 @@ export type Theme = "light" | "dark" | "system";
 export type Tab = "transfer" | "history" | "settings";
 export type ShareSubTab = "nearby" | "devices" | "friends";
 export type TransferMode = "send" | "receive" | "text";
+export type TransferRoutingPolicy = "auto" | "local_only" | "remote_only";
+export type TransportScheme = "airbridge" | "iroh";
+
+export const ticketTypes = [
+  { value: "id", label: "ID Only" },
+  { value: "relay", label: "Relay" },
+  { value: "addresses", label: "Addresses" },
+  { value: "relay_and_addresses", label: "Relay + Addresses" },
+];

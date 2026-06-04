@@ -1,4 +1,4 @@
-import { Component, Show, createMemo } from "solid-js";
+import { Component, Show, createEffect, createMemo } from "solid-js";
 import {
   Send,
   Download,
@@ -23,7 +23,11 @@ import {
   type PendingReceiveCard,
   shouldShowShareWorkspace,
 } from "~/lib/transfer-ui";
-import type { ShareSubTab, TransferMode } from "~/lib/types";
+import type {
+  ShareSubTab,
+  TransferMode,
+  TransferRoutingPolicy,
+} from "~/lib/types";
 
 const t = i18n.t;
 
@@ -32,6 +36,8 @@ interface TransferTabProps {
   setTransferView: (mode: TransferMode) => void;
   shareSubTab: ShareSubTab;
   setShareSubTab: (tab: ShareSubTab) => void;
+  routingPolicy: TransferRoutingPolicy;
+  setRoutingPolicy: (policy: TransferRoutingPolicy) => void;
   isMobile: boolean;
   showQrCode: boolean;
   setShowQrCode: (v: boolean) => void;
@@ -43,6 +49,18 @@ interface TransferTabProps {
 
 export const TransferTab: Component<TransferTabProps> = (props) => {
   const globalStore = useGlobalStore();
+
+  createEffect(() => {
+    if (props.routingPolicy === "local_only" && props.shareSubTab !== "nearby") {
+      props.setShareSubTab("nearby");
+    }
+    if (
+      props.routingPolicy === "remote_only" &&
+      props.shareSubTab === "nearby"
+    ) {
+      props.setShareSubTab("devices");
+    }
+  });
 
   const incomingReminderCount = createMemo(
     () =>
@@ -161,6 +179,12 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
                 {t("send.readyToShare")}
               </span>
             </div>
+            <div class="text-base-content/55 text-xs">
+              {t("common.transportScheme")}:
+              {props.shareSubTab === "nearby"
+                ? ` ${t("common.airbridgeLocal")}`
+                : ` ${t("common.irohRemote")}`}
+            </div>
           </Show>
 
           <Show when={props.transferMode === "receive"}>
@@ -219,17 +243,64 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
               </p>
             </div>
 
+            <div class="flex flex-col items-end gap-2">
+              <div class="join border-base-300/80 bg-base-100/70 rounded-xl border p-1">
+                <button
+                  class={`join-item btn btn-xs rounded-lg ${
+                    props.routingPolicy === "auto" ? "btn-primary" : "btn-ghost"
+                  }`}
+                  onClick={() => props.setRoutingPolicy("auto")}
+                >
+                  {t("common.routingPolicyAuto")}
+                </button>
+                <button
+                  class={`join-item btn btn-xs rounded-lg ${
+                    props.routingPolicy === "local_only" ? "btn-primary" : "btn-ghost"
+                  }`}
+                  onClick={() => props.setRoutingPolicy("local_only")}
+                >
+                  {t("common.routingPolicyLocalOnly")}
+                </button>
+                <button
+                  class={`join-item btn btn-xs rounded-lg ${
+                    props.routingPolicy === "remote_only" ? "btn-primary" : "btn-ghost"
+                  }`}
+                  onClick={() => props.setRoutingPolicy("remote_only")}
+                >
+                  {t("common.routingPolicyRemoteOnly")}
+                </button>
+              </div>
+              <div class="tabs tabs-boxed bg-base-100/80 p-1">
+                <button
+                  class={`tab gap-2 rounded-xl ${
+                    props.shareSubTab === "nearby" ? "tab-active" : ""
+                  }`}
+                  onClick={() => props.setShareSubTab("nearby")}
+                  disabled={props.routingPolicy === "remote_only"}
+                >
+                  <Radio size={16} />
+                  {t("common.airbridgeLocal")}
+                </button>
+                <button
+                  class={`tab gap-2 rounded-xl ${
+                    props.shareSubTab !== "nearby" ? "tab-active" : ""
+                  }`}
+                  onClick={() => props.setShareSubTab("devices")}
+                  disabled={props.routingPolicy === "local_only"}
+                >
+                  <Smartphone size={16} />
+                  {t("common.irohRemote")}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <Show when={props.shareSubTab !== "nearby"}>
             <div class="tabs tabs-boxed bg-base-100/80 p-1">
-              <button
-                class={`tab gap-2 rounded-xl ${props.shareSubTab === "nearby" ? "tab-active" : ""}`}
-                onClick={() => props.setShareSubTab("nearby")}
-              >
-                <Radio size={16} />
-                {t("nearby.title")}
-              </button>
               <button
                 class={`tab gap-2 rounded-xl ${props.shareSubTab === "devices" ? "tab-active" : ""}`}
                 onClick={() => props.setShareSubTab("devices")}
+                disabled={props.routingPolicy === "local_only"}
               >
                 <Smartphone size={16} />
                 {t("devices.title")}
@@ -237,17 +308,20 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
               <button
                 class={`tab gap-2 rounded-xl ${props.shareSubTab === "friends" ? "tab-active" : ""}`}
                 onClick={() => props.setShareSubTab("friends")}
+                disabled={props.routingPolicy === "local_only"}
               >
                 <User size={16} />
                 {t("friends.title")}
               </button>
             </div>
-          </div>
+          </Show>
 
           <Show when={props.shareSubTab === "nearby"}>
             <NearbyPage
               sendPath={globalStore.send.state().path || undefined}
               isFolder={globalStore.send.state().isFolder}
+              allowAutoFallback={props.routingPolicy === "auto"}
+              onFallbackToRemote={() => props.setShareSubTab("devices")}
             />
           </Show>
           <Show when={props.shareSubTab === "devices"}>
