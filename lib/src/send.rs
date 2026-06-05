@@ -161,7 +161,8 @@ async fn send_internal(
     let cleanup_dir = blobs_data_dir.clone();
     tokio::spawn(async move {
         let router = router;
-        match tokio::time::timeout(std::time::Duration::from_secs(60 * 60 * 24), shutdown_rx).await {
+        match tokio::time::timeout(std::time::Duration::from_secs(60 * 60 * 24), shutdown_rx).await
+        {
             Ok(Ok(())) => {
                 let _ = router.shutdown().await;
                 drop(router);

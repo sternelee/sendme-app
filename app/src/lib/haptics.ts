@@ -17,12 +17,22 @@ export type HapticType =
   | "selection"; // 选择变更
 
 let isMobile = false;
-try {
-  const p = await platform();
-  isMobile = p === "android" || p === "ios";
-} catch {
-  // Not in Tauri environment
+let platformDetection: Promise<void> | null = null;
+
+function ensurePlatformDetected() {
+  platformDetection ??= (async () => {
+    try {
+      const p = await platform();
+      isMobile = p === "android" || p === "ios";
+    } catch {
+      // Not in Tauri environment
+    }
+  })();
+
+  return platformDetection;
 }
+
+void ensurePlatformDetected();
 
 // 检查 Web Vibration API 是否可用
 function isWebVibrateSupported(): boolean {
@@ -66,6 +76,8 @@ function webVibrate(type: HapticType) {
 
 // 执行触觉反馈 - 优先 Tauri 插件，降级到 Web Vibration
 export async function triggerHaptic(type: HapticType = "light") {
+  await ensurePlatformDetected();
+
   if (!isMobile && !isWebVibrateSupported()) {
     return;
   }

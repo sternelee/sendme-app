@@ -1,5 +1,56 @@
 #![allow(unexpected_cfgs)]
 
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub unsafe extern "C" fn JNI_OnLoad(
+    vm: *mut jni::sys::JavaVM,
+    _reserved: *mut std::ffi::c_void,
+) -> jni::sys::jint {
+    if let Err(error) = init_iroh_android_jni_context(vm) {
+        eprintln!("Failed to initialize iroh Android JNI context: {error}");
+    }
+
+    jni::sys::JNI_VERSION_1_6
+}
+
+#[cfg(target_os = "android")]
+fn init_iroh_android_jni_context(vm: *mut jni::sys::JavaVM) -> Result<(), String> {
+    let java_vm = unsafe { jni::JavaVM::from_raw(vm) }
+        .map_err(|error| format!("Invalid JavaVM pointer: {error}"))?;
+    let mut env = java_vm
+        .attach_current_thread()
+        .map_err(|error| format!("Failed to attach JNI thread: {error}"))?;
+
+    let activity_thread = env
+        .find_class("android/app/ActivityThread")
+        .map_err(|error| format!("Failed to find ActivityThread: {error}"))?;
+    let application = env
+        .call_static_method(
+            activity_thread,
+            "currentApplication",
+            "()Landroid/app/Application;",
+            &[],
+        )
+        .and_then(|value| value.l())
+        .map_err(|error| format!("Failed to get current Application: {error}"))?;
+
+    if application.as_raw().is_null() {
+        return Err("ActivityThread.currentApplication returned null".to_string());
+    }
+
+    let application = env
+        .new_global_ref(application)
+        .map_err(|error| format!("Failed to create global Application ref: {error}"))?;
+    let application_context = application.as_obj().as_raw().cast();
+    Box::leak(Box::new(application));
+
+    unsafe {
+        iroh_dns::install_android_jni_context(vm.cast(), application_context);
+    }
+
+    Ok(())
+}
+
 use sendme_lib::{progress::*, types::*};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -1224,7 +1275,8 @@ async fn send_to_device(
                     last_error = format!("Nearby connect attempt {} failed: {error}", attempt + 1);
                 }
                 Err(_) => {
-                    last_error = format!("Nearby connect attempt {} timed out after 8s", attempt + 1);
+                    last_error =
+                        format!("Nearby connect attempt {} timed out after 8s", attempt + 1);
                 }
             }
             if attempt == 0 {
@@ -1616,7 +1668,7 @@ async fn ensure_nearby_runtime(app: &AppHandle, nearby: NearbyState) -> Result<(
     Ok(())
 }
 
-fn current_nearby_profile(_app: &AppHandle) -> Result<(String, sendme_lib::DeviceType), String> {
+fn current_nearby_profile(app: &AppHandle) -> Result<(String, sendme_lib::DeviceType), String> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let device_type = sendme_lib::DeviceType::Phone;
     #[cfg(all(
@@ -1634,9 +1686,9 @@ fn current_nearby_profile(_app: &AppHandle) -> Result<(String, sendme_lib::Devic
 
     let mut device_name = match device_type {
         sendme_lib::DeviceType::Phone | sendme_lib::DeviceType::Tablet => {
-            preferred_mobile_device_name()
+            preferred_mobile_device_name(app)
         }
-        _ => get_hostname().unwrap_or_else(|_| "Sendme".to_string()),
+        _ => get_hostname_value(Some(app)).unwrap_or_else(|_| "Sendme".to_string()),
     };
 
     device_name = sanitize_nearby_device_name(&device_name);
@@ -1648,8 +1700,8 @@ fn current_nearby_profile(_app: &AppHandle) -> Result<(String, sendme_lib::Devic
     Ok((device_name, device_type))
 }
 
-fn preferred_mobile_device_name() -> String {
-    match get_device_model() {
+fn preferred_mobile_device_name(app: &AppHandle) -> String {
+    match get_device_model_value(app) {
         Ok(device_name)
             if !is_loopback_device_name(&device_name) && !device_name.trim().is_empty() =>
         {
@@ -2447,7 +2499,7 @@ async fn refresh_android_foreground_notification(app: &AppHandle) {
     match payload {
         Some(payload) => match serde_json::to_string(&payload) {
             Ok(payload_json) => {
-                if let Err(error) = android::upsert_background_service(&payload_json) {
+                if let Err(error) = android::upsert_background_service(app, &payload_json) {
                     log_warn!("Failed to update Android foreground service: {}", error);
                 }
             }
@@ -2459,7 +2511,7 @@ async fn refresh_android_foreground_notification(app: &AppHandle) {
             }
         },
         None => {
-            if let Err(error) = android::stop_background_service() {
+            if let Err(error) = android::stop_background_service(app) {
                 log_warn!("Failed to stop Android foreground service: {}", error);
             }
         }
@@ -3611,7 +3663,9 @@ pub fn run() {
 
     #[cfg(target_os = "android")]
     {
-        builder = builder.plugin(tauri_plugin_android_fs::init());
+        builder = builder
+            .plugin(android::init())
+            .plugin(tauri_plugin_android_fs::init());
     }
 
     #[cfg(target_os = "ios")]
@@ -4391,7 +4445,7 @@ async fn receive_file(
         }
     } else {
         log_info!("No output_dir provided, getting public Downloads directory...");
-        match get_default_download_folder_impl() {
+        match get_default_download_folder_impl(&app) {
             Ok(dir) => {
                 log_info!("Using public Downloads directory: {:?}", dir);
                 (Some(std::path::PathBuf::from(dir)), None)
@@ -4997,7 +5051,11 @@ async fn clear_transfers(
 
 /// Get the local hostname
 #[tauri::command]
-fn get_hostname() -> Result<String, String> {
+fn get_hostname(app: AppHandle) -> Result<String, String> {
+    get_hostname_value(Some(&app))
+}
+
+fn get_hostname_value(_app: Option<&AppHandle>) -> Result<String, String> {
     // Get hostname using tauri-plugin-os for cross-platform compatibility
     use tauri_plugin_os::hostname;
 
@@ -5006,7 +5064,9 @@ fn get_hostname() -> Result<String, String> {
     if hostname.is_empty() || is_loopback_device_name(&hostname) {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
-            return Ok(preferred_mobile_device_name());
+            if let Some(app) = _app {
+                return Ok(preferred_mobile_device_name(app));
+            }
         }
 
         // Fallback to a default name
@@ -5018,120 +5078,17 @@ fn get_hostname() -> Result<String, String> {
 
 /// Get the device model (mobile-specific)
 #[tauri::command]
-fn get_device_model() -> Result<String, String> {
+fn get_device_model(app: AppHandle) -> Result<String, String> {
+    get_device_model_value(&app)
+}
+
+fn get_device_model_value(_app: &AppHandle) -> Result<String, String> {
     log_info!("📱 GET_DEVICE_MODEL called");
 
     #[cfg(target_os = "android")]
     {
-        use jni::objects::JObject;
-        use jni::signature::JavaType;
-
         log_info!("🤖 Android platform detected");
-        let ctx = ndk_context::android_context();
-        let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| {
-            let err_msg = format!("Failed to get VM: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?;
-        let mut env = vm.attach_current_thread().map_err(|e| {
-            let err_msg = format!("Failed to attach to VM: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?;
-        log_info!("✅ Attached to Java VM");
-
-        // Get Build.MODEL
-        log_info!("📋 Getting Build.MODEL...");
-        let build_class = env.find_class("android/os/Build").map_err(|e| {
-            let err_msg = format!("Failed to find Build class: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?;
-        let model_field = env
-            .get_static_field_id(&build_class, "MODEL", "Ljava/lang/String;")
-            .map_err(|e| {
-                let err_msg = format!("Failed to get MODEL field: {}", e);
-                log_error!("❌ {}", err_msg);
-                err_msg
-            })?;
-        let model_obj = env
-            .get_static_field_unchecked(
-                &build_class,
-                model_field,
-                JavaType::Object("java/lang/String".to_string()),
-            )
-            .map_err(|e| {
-                let err_msg = format!("Failed to get MODEL value: {}", e);
-                log_error!("❌ {}", err_msg);
-                err_msg
-            })?;
-
-        // Get Build.MANUFACTURER
-        log_info!("📋 Getting Build.MANUFACTURER...");
-        let manufacturer_field = env
-            .get_static_field_id(&build_class, "MANUFACTURER", "Ljava/lang/String;")
-            .map_err(|e| {
-                let err_msg = format!("Failed to get MANUFACTURER field: {}", e);
-                log_error!("❌ {}", err_msg);
-                err_msg
-            })?;
-        let manufacturer_obj = env
-            .get_static_field_unchecked(
-                &build_class,
-                manufacturer_field,
-                JavaType::Object("java/lang/String".to_string()),
-            )
-            .map_err(|e| {
-                let err_msg = format!("Failed to get MANUFACTURER value: {}", e);
-                log_error!("❌ {}", err_msg);
-                err_msg
-            })?;
-
-        // Get the JObject values
-        let model_jobj: JObject = model_obj.l().map_err(|e| {
-            let err_msg = format!("Failed to get model object: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?;
-        let manufacturer_jobj: JObject = manufacturer_obj.l().map_err(|e| {
-            let err_msg = format!("Failed to get manufacturer object: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?;
-
-        // Convert to JString and then to Rust String
-        let model_jstring = jni::objects::JString::from(model_jobj);
-        let manufacturer_jstring = jni::objects::JString::from(manufacturer_jobj);
-
-        let model_str: String = env
-            .get_string(&model_jstring)
-            .map_err(|e| {
-                let err_msg = format!("Failed to get model string: {}", e);
-                log_error!("❌ {}", err_msg);
-                err_msg
-            })?
-            .into();
-        let manufacturer_str: String = env
-            .get_string(&manufacturer_jstring)
-            .map_err(|e| {
-                let err_msg = format!("Failed to get manufacturer string: {}", e);
-                log_error!("❌ {}", err_msg);
-                err_msg
-            })?
-            .into();
-
-        log_info!(
-            "📋 Model: {}, Manufacturer: {}",
-            model_str,
-            manufacturer_str
-        );
-
-        // Format as "Manufacturer Model" or just "Model" if they start the same
-        let result = if model_str.starts_with(&manufacturer_str) {
-            model_str.clone()
-        } else {
-            format!("{} {}", manufacturer_str, model_str)
-        };
+        let result = android::get_device_model(_app)?;
         log_info!("✅ Device model: {}", result);
         Ok(result)
     }
@@ -5185,7 +5142,7 @@ fn get_device_model() -> Result<String, String> {
     {
         // Desktop: just return hostname
         log_info!("💻 Desktop platform detected");
-        let hostname = get_hostname()?;
+        let hostname = get_hostname_value(None)?;
         log_info!("✅ Using hostname: {}", hostname);
         Ok(hostname)
     }
@@ -5218,81 +5175,12 @@ mod tests {
 ///
 /// Internal implementation: Get the public Downloads directory on Android.
 #[cfg(target_os = "android")]
-fn get_default_download_folder_impl() -> Result<String, String> {
+fn get_default_download_folder_impl(app: &AppHandle) -> Result<String, String> {
     log_info!("═══════════════════════════════════════════════════");
     log_info!("📁 GET_DEFAULT_DOWNLOAD_FOLDER_IMPL (Android)");
     log_info!("═══════════════════════════════════════════════════");
 
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| {
-        let err_msg = format!("Failed to get VM: {}", e);
-        log_error!("❌ {}", err_msg);
-        err_msg
-    })?;
-    let mut env = vm.attach_current_thread().map_err(|e| {
-        let err_msg = format!("Failed to attach thread: {}", e);
-        log_error!("❌ {}", err_msg);
-        err_msg
-    })?;
-    log_info!("✅ Attached to Java VM");
-
-    // Get Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-    log_info!("📋 Getting Environment class...");
-    let environment_class = env.find_class("android/os/Environment").map_err(|e| {
-        let err_msg = format!("Failed to find Environment class: {}", e);
-        log_error!("❌ {}", err_msg);
-        err_msg
-    })?;
-
-    log_info!("📋 Calling Environment.getExternalStoragePublicDirectory...");
-    let downloads_string = env.new_string("Download").map_err(|e| {
-        let err_msg = format!("Failed to create Downloads string: {}", e);
-        log_error!("❌ {}", err_msg);
-        err_msg
-    })?;
-
-    let downloads_file = env
-        .call_static_method(
-            &environment_class,
-            "getExternalStoragePublicDirectory",
-            "(Ljava/lang/String;)Ljava/io/File;",
-            &[(&downloads_string).into()],
-        )
-        .and_then(|v| v.l())
-        .map_err(|e| {
-            let err_msg = format!("Failed to get Downloads directory: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?;
-    log_info!("✅ Got Downloads File object");
-
-    // Get the absolute path
-    log_info!("📋 Getting absolute path...");
-    let path_obj = env
-        .call_method(
-            &downloads_file,
-            "getAbsolutePath",
-            "()Ljava/lang/String;",
-            &[],
-        )
-        .and_then(|v| v.l())
-        .map_err(|e| {
-            let err_msg = format!("Failed to get absolute path: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?;
-
-    // Convert to Rust string
-    let path_jstring = jni::objects::JString::from(path_obj);
-    let path: String = env
-        .get_string(&path_jstring)
-        .map_err(|e| {
-            let err_msg = format!("Failed to convert path to string: {}", e);
-            log_error!("❌ {}", err_msg);
-            err_msg
-        })?
-        .into();
-
+    let path = android::get_default_download_folder(app)?;
     log_info!("✅ Download folder: {}", path);
     Ok(path)
 }
@@ -5302,8 +5190,8 @@ fn get_default_download_folder_impl() -> Result<String, String> {
 /// On desktop platforms, returns an error.
 #[tauri::command]
 #[cfg(target_os = "android")]
-fn get_default_download_folder() -> Result<String, String> {
-    get_default_download_folder_impl()
+fn get_default_download_folder(app: AppHandle) -> Result<String, String> {
+    get_default_download_folder_impl(&app)
 }
 
 #[tauri::command]
@@ -5382,7 +5270,7 @@ async fn open_received_file(
         log_info!("📱 Android platform detected, using JNI");
 
         // Get public Downloads directory where files are stored
-        let downloads_dir = get_default_download_folder_impl()
+        let downloads_dir = get_default_download_folder_impl(&app)
             .map_err(|e| format!("Failed to get Downloads directory: {}", e))?;
 
         log_info!("Downloads directory: {:?}", downloads_dir);
@@ -5419,7 +5307,7 @@ async fn open_received_file(
         log_info!("Filename: {}", file_name);
 
         // Use JNI to open the file
-        android::open_file_with_intent(file_path_str, file_name)
+        android::open_file_with_intent(&app, file_path_str)
             .map_err(|e| format!("Failed to open file: {:?}", e))?;
 
         log_info!("✅ File opened successfully");
@@ -5567,7 +5455,7 @@ async fn list_received_files(app: AppHandle) -> Result<Vec<String>, String> {
     #[cfg(target_os = "android")]
     {
         // Use public Downloads directory on Android
-        let downloads_dir = get_default_download_folder_impl()?;
+        let downloads_dir = get_default_download_folder_impl(&app)?;
         log_info!("Downloads directory: {:?}", downloads_dir);
         let files = android::find_received_files(&downloads_dir);
         log_info!("Found {} files", files.len());

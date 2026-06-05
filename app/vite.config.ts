@@ -8,9 +8,10 @@ const host = process.env.TAURI_DEV_HOST;
 function inlineTauriEntryAssets() {
   return {
     name: "inline-tauri-entry-assets",
+    enforce: "post" as const,
     apply: "build" as const,
-    closeBundle() {
-      const distDir = resolve(__dirname, "dist");
+    writeBundle(outputOptions) {
+      const distDir = resolve(__dirname, outputOptions.dir || "dist");
       const htmlPath = resolve(distDir, "index.html");
       let html = readFileSync(htmlPath, "utf8");
 

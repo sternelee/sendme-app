@@ -14,7 +14,9 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 use zeroconf::prelude::*;
-use zeroconf::{MdnsBrowser, MdnsService, ServiceDiscovery, ServiceType as BonjourServiceType, TxtRecord};
+use zeroconf::{
+    MdnsBrowser, MdnsService, ServiceDiscovery, ServiceType as BonjourServiceType, TxtRecord,
+};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NearbyDevice {

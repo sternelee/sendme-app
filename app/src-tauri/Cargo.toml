@@ -47,10 +47,10 @@ tauri-build = { version = "2", features = [] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-android-fs = "24"
-jni = "0.21"
-ndk-context = "0.1"
 android_logger = "0.15"
 urlencoding = "2"
+jni = "0.21"
+iroh-dns = "1.0.0-rc.1"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 tauri-plugin-fs-ios = "0.4"
