@@ -23,8 +23,8 @@ export const FileManifest: Component<FileManifestProps> = (props) => {
       >
         <For each={props.files}>
           {(file) => (
-            <div class="flex justify-between text-sm">
-              <span class="truncate">{file.name}</span>
+            <div class="flex min-w-0 justify-between text-sm">
+              <span class="min-w-0 truncate">{file.name}</span>
               <span class="ml-2 text-xs opacity-60">
                 {formatFileSize(file.size)}
               </span>

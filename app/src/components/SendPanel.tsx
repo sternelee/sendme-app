@@ -157,7 +157,7 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
       </Show>
 
       <Show when={!isTextMode() && sendPath()}>
-        <div class="border-base-300/50 bg-base-200/40 flex items-center gap-3 rounded-xl border px-4 py-3">
+        <div class="border-base-300/50 bg-base-200/40 flex min-w-0 items-center gap-3 rounded-xl border px-4 py-3">
           <div class="bg-primary/10 text-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
             <FileText size={18} />
           </div>

@@ -171,7 +171,7 @@ export const DropZone: Component<DropZoneProps> = (props) => {
           <div class="space-y-1">
             <For each={props.files}>
               {(file, index) => (
-                <div class="bg-base-200 flex items-center gap-2 overflow-hidden rounded-lg px-3 py-2">
+                <div class="bg-base-200 flex min-w-0 items-center gap-2 overflow-hidden rounded-lg px-3 py-2">
                   <span class="min-w-0 flex-1 truncate text-sm">
                     {file.name}
                   </span>

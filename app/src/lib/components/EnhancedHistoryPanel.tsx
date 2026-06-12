@@ -85,7 +85,7 @@ const FilePreviewModal: Component<FilePreviewModalProps> = (props) => {
                   {props.transfer &&
                     getFileIconComponent(props.transfer.path)({ size: 20 })}
                 </div>
-                <div>
+                <div class="min-w-0">
                   <p class="max-w-[200px] truncate text-sm font-medium">
                     {props.transfer?.filename ||
                       getDisplayName(props.transfer?.path || "")}
@@ -224,7 +224,7 @@ const HistoryItem: Component<HistoryItemProps> = (props) => {
               {isSend() ? t("history.sent") : t("history.received")}
             </span>
             <span class="badge badge-outline badge-xs">{transportSchemeLabel()}</span>
-            <span class="truncate text-sm font-medium cursor-pointer hover:text-primary transition-colors">
+            <span class="min-w-0 truncate text-sm font-medium cursor-pointer hover:text-primary transition-colors">
               {props.transfer.filename ?? getDisplayName(props.transfer.path)}
             </span>
           </div>
@@ -242,7 +242,7 @@ const HistoryItem: Component<HistoryItemProps> = (props) => {
             </Show>
           </div>
           <p
-            class="text-base-content/40 mt-0.5 truncate text-xs"
+            class="text-base-content/40 mt-0.5 min-w-0 truncate text-xs"
             title={props.transfer.path}
           >
             {props.transfer.path}

@@ -168,9 +168,9 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
                 globalStore.send.state().textContent?.trim())
             }
           >
-            <div class="border-primary/15 bg-primary/5 flex items-center gap-3 rounded-xl border px-4 py-3">
+            <div class="border-primary/15 bg-primary/5 flex min-w-0 items-center gap-3 rounded-xl border px-4 py-3">
               <FileText size={16} class="text-primary shrink-0" />
-              <span class="truncate text-sm font-medium">
+              <span class="min-w-0 truncate text-sm font-medium">
                 {globalStore.send.state().isTextMode
                   ? t("text.title")
                   : getDisplayName(globalStore.send.state().path)}
