@@ -360,6 +360,7 @@ The Tauri app uses system-browser OAuth instead of an in-app WebView:
 ## Environment Variables
 
 - **`IROH_SECRET`**: Hex-encoded 32-byte secret key (optional, generates random if not set)
+- **`SENDME_RELAY_URL`**: Custom iroh relay URL. When set, overrides the default n0 relay for CLI, Tauri remote transfers, and the browser WASM node
 - **`IROH_FORCE_STAGING_RELAYS`**: Set to `1` to use staging relays (CI tests)
 - **`RUST_LOG`**: Tracing level (debug, info, warn, error)
 - **`RUSTFLAGS=-Dwarnings`**: Treat all warnings as errors (CI)

@@ -6,13 +6,14 @@
 use anyhow::Result;
 use bytes::Bytes;
 use futures_lite::StreamExt;
-use iroh::{protocol::Router, Endpoint};
+use iroh::{protocol::Router, Endpoint, RelayMode, RelayUrl};
 use iroh_blobs::{
     api::{blobs::BlobStatus, Store},
     format::collection::Collection,
     ticket::BlobTicket,
     BlobFormat, Hash,
 };
+use std::str::FromStr;
 
 /// Sendme node for browser/WebAssembly environments
 ///
@@ -26,7 +27,13 @@ pub struct SendmeNode {
 impl SendmeNode {
     /// Spawn a new sendme node
     pub async fn spawn() -> Result<Self> {
-        let endpoint = Endpoint::bind(iroh::endpoint::presets::N0).await?;
+        let relay_mode = resolve_relay_url()
+            .map(|url| RelayMode::Custom(url.into()))
+            .unwrap_or(RelayMode::Default);
+        let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
+            .relay_mode(relay_mode)
+            .bind()
+            .await?;
 
         // Use in-memory store for WebAssembly
         let store = iroh_blobs::store::mem::MemStore::default();
@@ -315,6 +322,20 @@ impl SendmeNode {
         let addr = endpoint.addr();
         Ok(addr.relay_urls().next().is_some() || addr.ip_addrs().next().is_some())
     }
+}
+
+/// Environment variable used to override the default relay URL.
+const SENDME_RELAY_URL_ENV: &str = "SENDME_RELAY_URL";
+
+/// Resolve a custom relay URL from the environment.
+///
+/// On WASM this will typically return `None` at runtime, but the build-time
+/// environment can still be used to inject a custom relay when needed.
+fn resolve_relay_url() -> Option<RelayUrl> {
+    std::env::var(SENDME_RELAY_URL_ENV)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| RelayUrl::from_str(&s).ok())
 }
 
 /// WASM-compatible sleep using JavaScript setTimeout

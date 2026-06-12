@@ -78,12 +78,37 @@ pub fn apply_options(addr: &mut iroh::EndpointAddr, opts: AddrInfoOptions) {
     }
 }
 
+/// Environment variable used to override the default relay URL.
+pub const SENDME_RELAY_URL_ENV: &str = "SENDME_RELAY_URL";
+
+/// Resolve a custom relay URL from the environment.
+///
+/// Reads [`SENDME_RELAY_URL_ENV`]. If it is set to a non-empty value, the value
+/// is parsed as an [`iroh::RelayUrl`]. Invalid values are logged and ignored so
+/// that a typo in the environment does not break transfers.
+pub fn resolve_relay_url() -> Option<RelayUrl> {
+    std::env::var(SENDME_RELAY_URL_ENV)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| match RelayUrl::from_str(&s) {
+            Ok(url) => Some(url),
+            Err(e) => {
+                tracing::warn!(
+                    value = %s,
+                    error = %e,
+                    "ignoring invalid {SENDME_RELAY_URL_ENV} env var"
+                );
+                None
+            }
+        })
+}
+
 /// Relay mode configuration.
 #[derive(Clone, Debug)]
 pub enum RelayModeOption {
     /// Disables relays altogether.
     Disabled,
-    /// Uses the default relay servers.
+    /// Uses the default relay servers, or the URL in [`SENDME_RELAY_URL_ENV`].
     Default,
     /// Uses a single, custom relay server by URL.
     Custom(RelayUrl),
@@ -115,7 +140,9 @@ impl From<RelayModeOption> for RelayMode {
     fn from(value: RelayModeOption) -> Self {
         match value {
             RelayModeOption::Disabled => RelayMode::Disabled,
-            RelayModeOption::Default => RelayMode::Default,
+            RelayModeOption::Default => resolve_relay_url()
+                .map(|url| RelayMode::Custom(url.into()))
+                .unwrap_or(RelayMode::Default),
             RelayModeOption::Custom(url) => RelayMode::Custom(url.into()),
         }
     }
