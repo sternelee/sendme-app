@@ -27,7 +27,15 @@ export interface ProgressUpdate {
   data: ProgressData;
 }
 
-export type Theme = "light" | "dark" | "system";
+export type Theme =
+  | "light"
+  | "dark"
+  | "system"
+  | "sunset"
+  | "black"
+  | "synthwave"
+  | "abyss"
+  | "luxury";
 export type Tab = "transfer" | "history" | "settings";
 export type ShareSubTab = "nearby" | "devices" | "friends";
 export type TransferMode = "send" | "receive" | "text";

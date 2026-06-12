@@ -12,12 +12,14 @@ There are four distinct products in this repo:
 - `app/` + `app/src-tauri/` — Tauri desktop/mobile app with a SolidJS frontend
 - `browser/` + `browser-lib/` — browser app plus WASM bindings
 
-Additional crates:
+Additional crates/packages:
 - `app/src-tauri/plugins/tauri-plugin-media-picker/` — custom Tauri plugin for iOS photo/video picking
+- `packages/shared/` — shared i18n string exports used by the Tauri UI
+- `packages/ui/` — shared display helpers (file-size formatting, display names) and small components
 
 `browser-lib/` is intentionally a separate Cargo workspace from the root workspace because the native workspace dependencies are not WASM-compatible.
 
-Use `pnpm` for all JavaScript/TypeScript work.
+The JS/TS side is a pnpm workspace (`pnpm-workspace.yaml`) covering `app/`, `browser/`, and `packages/*`. Use `pnpm` for all JavaScript/TypeScript work.
 
 ## Common Commands
 
@@ -56,11 +58,6 @@ pnpm run test         # vitest
 pnpm test -- <path-or-pattern>  # single test file/name
 
 pnpm run tauri android build
-cd src-tauri/gen/apple
-xcodegen generate
-nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 build > /tmp/xcodebuild.log 2>&1 &
-xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
-xcrun devicectl device process launch --terminate-existing --device <device-id> io.sendme.app
 ```
 
 ### Browser app (`browser/`)
@@ -119,11 +116,7 @@ The TUI lives under `cli/src/tui/` and uses background async tasks plus `sendme-
 
 ### Tauri app (`app/` + `app/src-tauri/`)
 
-This is split cleanly between a Solid frontend and a Rust backend:
-- `app/src/bindings.ts` is the typed wrapper layer for Tauri commands
-- `app/src/lib/store.tsx` holds the shared client-side transfer and nearby UI state
-- `app/src/routes/index.tsx` is the main transfer UI
-- `app/src/routes/nearby.tsx` and `app/src/routes/friends.tsx` layer extra workflows on top of the same backend
+This is split cleanly between a Solid frontend and a Rust backend.
 
 Most backend logic lives in one large file: `app/src-tauri/src/lib.rs`.
 That file contains:
@@ -174,16 +167,57 @@ Real-time state is managed on the client by `browser/src/lib/composables/useWebS
 
 If you change the WASM API or Rust browser logic, rebuild the generated artifacts in `browser/src/wasm` with `pnpm run build:wasm` from `browser/`.
 
-## Critical Repo-Specific Details
+## Tauri App Frontend
 
-- Use `CommonConfig.temp_dir` on sandboxed platforms instead of assuming the current directory. This matters for Android/macOS temp storage and file import/export flows.
-- Android file picking is URI-based, not normal-path-based. The Tauri backend copies `content://` URIs into temp files before sending and writes received files back through the Android FS plugin.
-- Do not add `browser-lib` to the root Cargo workspace.
-- The two Solid frontends serve different runtimes: `app/` is the Tauri UI, `browser/` is the Cloudflare web app. Similar-looking UI code in one does not imply shared state or shared build configuration with the other.
-- For Tauri commands, convert Rust errors to `String` for the frontend (for example, `map_err(|e| format!("Failed to send: {}", e))?`).
-- **iOS mDNS limitation**: iOS cannot publish mDNS services without the `com.apple.developer.networking.multicast` entitlement, which requires an Apple Developer Program membership. On personal-team signing, iOS can receive nearby broadcasts but other devices may not see it. This is a platform limit, not a code bug.
+### State ownership
 
-### Async Patterns
+| Owner | What it holds |
+| --- | --- |
+| `app/src/lib/store.tsx` | Send/receive/nearby/cloud UI state |
+| `app/src/lib/auth.tsx` | Auth/session state |
+| `app/src/bindings.ts` | Typed boundary to the Rust backend (use this, not raw `invoke()`) |
+| `app/src-tauri/src/lib.rs` | Transfer registry, event emission, nearby runtime, cloud state, mobile file handling |
+
+### Important files
+
+| File | Role |
+| --- | --- |
+| `app/src/routes/index.tsx` | Main app shell: tabs, nav, persistence, nearby/cloud modals, event wiring |
+| `app/src/components/TransferTab.tsx` | Transfer workspace; primary mode switch (send/receive/text) and alternate channels (nearby/devices/friends) |
+| `app/src/components/SendPanel.tsx` | File/text share flow, auto ticket generation, QR/copy/share card |
+| `app/src/components/ReceivePanel.tsx` | Ticket paste/scan flow, destination selection, progress display |
+| `app/src/lib/components/DropZone.tsx` | Desktop drag/drop + picker; mobile picker bridge |
+| `app/src/lib/components/TransferProgress.tsx` | Shared progress card (speed, ETA, cancel) |
+| `app/src/lib/components/IncomingRequestCard.tsx` | Accept/decline UI for nearby/cloud inbound transfers |
+| `app/src-tauri/src/lib.rs` | All Tauri commands + backend runtime |
+| `app/src-tauri/src/menubar.rs` | Desktop system tray (Show/Exit) |
+| `lib/src/send.rs` | Core send logic; router keep-alive lives here |
+| `lib/src/receive.rs` | Core receive/download logic |
+| `lib/src/nearby/` | mDNS discovery primitives |
+| `browser/src/worker/durable-objects/user.ts` | Cloudflare Durable Object: real-time device presence and ticket hub |
+| `browser/app.config.ts` | Custom Rollup plugins required for DO exports and WebSocket handshakes |
+| `browser/src/lib/commands.ts` | JS bridge for the WASM node |
+| `packages/shared/` | Shared i18n string exports used in UI text |
+| `packages/ui/` | Shared display helpers (file-size formatting, display names) |
+| `translations.json` | Source of all user-facing labels |
+
+### UX principles
+
+The send/receive UX has two intentional, non-obvious behaviors — preserve them unless a task explicitly changes them:
+
+- **Send is auto-generate-first**: ticket generation fires immediately on file selection (or ~800ms debounce for text). There is no "Send" button — the share card with QR/copy/native-share appears automatically.
+- **Receive is paste-and-go**: receive is optimized for clipboard paste or QR scan → explicit CTA → immediate progress. Clipboard import, QR scan, remembered output path, and incremental progress are all part of the intended flow.
+
+Incoming nearby/cloud transfers surface in two places simultaneously: an inline cue inside `TransferTab` and a blocking modal in `app/src/routes/index.tsx`.
+
+### Styling
+
+- Stack: SolidJS + DaisyUI + Tailwind CSS v4.
+- Transfer surfaces use `rounded-2xl` / `rounded-3xl`, soft borders, compact action rows.
+- Feedback primitives: toast (`solid-sonner`) + inline status card + blocking modal. Don't introduce new notification systems.
+- Icons: `lucide-solid`.
+
+## Async & Concurrency Patterns
 
 ```rust
 // Progress channels
@@ -205,7 +239,7 @@ tokio::select! {
 }
 ```
 
-### TypeScript/SolidJS
+## TypeScript/SolidJS Conventions
 
 ```typescript
 // External packages first, then local imports
@@ -218,6 +252,15 @@ const [devices, setDevices] = createSignal<NearbyDevice[]>([]);
 
 // Path aliases use ~/* for src/
 ```
+
+## Repo-Specific Conventions
+
+- Use `CommonConfig.temp_dir` on sandboxed platforms instead of assuming the current directory. This matters for Android/macOS temp storage and file import/export flows.
+- Android file picking is URI-based, not normal-path-based. The Tauri backend copies `content://` URIs into temp files before sending and writes received files back through the Android FS plugin.
+- Do not add `browser-lib` to the root Cargo workspace.
+- The two Solid frontends serve different runtimes: `app/` is the Tauri UI, `browser/` is the Cloudflare web app. Similar-looking UI code in one does not imply shared state or shared build configuration with the other.
+- For Tauri commands, convert Rust errors to `String` for the frontend (for example, `map_err(|e| format!("Failed to send: {}", e))?`).
+- **iOS mDNS limitation**: iOS cannot publish mDNS services without the `com.apple.developer.networking.multicast` entitlement, which requires an Apple Developer Program membership. On personal-team signing, iOS can receive nearby broadcasts but other devices may not see it. This is a platform limit, not a code bug.
 
 ## Important Implementation Details
 
@@ -278,15 +321,14 @@ If you encounter "recursion limit reached" compilation errors, add to `app/src-t
 
 The Tauri app authenticates via the browser app's better-auth instance using system-browser OAuth + deep links. No compile-time keys are required in the Tauri app.
 
+iOS release build and install:
+
 ```bash
-# Android
-pnpm run tauri android build
-# iOS — see docs/ios-build-install.md for full guide
-cd app
-cd src-tauri/gen/apple
+cd app/src-tauri/gen/apple
 xcodegen generate
 nohup xcodebuild -project app.xcodeproj -scheme app_iOS -sdk iphoneos -configuration release -derivedDataPath build-ios -allowProvisioningUpdates -allowProvisioningDeviceRegistration CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=UJ8NW4N779 build > /tmp/xcodebuild.log 2>&1 &
 xcrun devicectl device install app --device <device-id> "$PWD/build-ios/Build/Products/release-iphoneos/Sendme.app"
+xcrun devicectl device process launch --terminate-existing --device <device-id> io.sendme.app
 ```
 
 - Prefer direct `xcodebuild` over `pnpm run tauri ios build` in this repo; the latter can fail during archive/export by reintroducing unsupported entitlements for personal-team signing.
@@ -321,6 +363,7 @@ The Tauri app uses system-browser OAuth instead of an in-app WebView:
 - **`IROH_FORCE_STAGING_RELAYS`**: Set to `1` to use staging relays (CI tests)
 - **`RUST_LOG`**: Tracing level (debug, info, warn, error)
 - **`RUSTFLAGS=-Dwarnings`**: Treat all warnings as errors (CI)
+- **`SENDME_IOS_INSPECTOR=1`**: Enable Safari Web Inspector on the iOS WebView
 - **`BETTER_AUTH_SECRET`**: better-auth secret for session signing (browser backend)
 - **`GITHUB_CLIENT_ID`** / **`GITHUB_CLIENT_SECRET`**: GitHub OAuth credentials (browser backend)
 - **`GOOGLE_CLIENT_ID`** / **`GOOGLE_CLIENT_SECRET`**: Google OAuth credentials (browser backend)

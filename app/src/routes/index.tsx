@@ -79,18 +79,28 @@ export default function MainPage() {
     globalStore.send.setIsTextMode(mode === "text");
   }
 
-  function applyTheme(newTheme: Theme) {
-    const root = window.document.documentElement;
-    root.removeAttribute("data-theme");
+  const EXPLICIT_THEMES = [
+    "light",
+    "dark",
+    "sunset",
+    "black",
+    "synthwave",
+    "abyss",
+    "luxury",
+  ] as const;
+
+  function resolveTheme(newTheme: Theme) {
     if (newTheme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
         ? "dark"
         : "light";
-      root.setAttribute("data-theme", systemTheme);
-    } else {
-      root.setAttribute("data-theme", newTheme);
     }
+    return newTheme;
+  }
+
+  function applyTheme(newTheme: Theme) {
+    const root = window.document.documentElement;
+    root.setAttribute("data-theme", resolveTheme(newTheme));
   }
 
   function setThemeValue(newTheme: Theme) {
@@ -281,8 +291,10 @@ export default function MainPage() {
 
     const savedTheme = localStorage.getItem("theme");
     const validTheme: Theme =
-      savedTheme === "light" || savedTheme === "dark" || savedTheme === "system"
-        ? savedTheme
+      savedTheme &&
+      (savedTheme === "system" ||
+        (EXPLICIT_THEMES as readonly string[]).includes(savedTheme))
+        ? (savedTheme as Theme)
         : "system";
     setThemeValue(validTheme);
 

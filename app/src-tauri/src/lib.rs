@@ -2521,26 +2521,49 @@ async fn refresh_android_foreground_notification(app: &AppHandle) {
 #[cfg(not(target_os = "android"))]
 async fn refresh_android_foreground_notification(_app: &AppHandle) {}
 
+fn is_nearby_transfer_active(status: &str) -> bool {
+    status != "completed" && !status.starts_with("error:") && !status.starts_with("cancelled")
+}
+
 async fn sync_android_nearby_foreground(app: &AppHandle) {
     let nearby = app.state::<NearbyState>().inner().clone();
+    let transfers = app.state::<Transfers>().inner().clone();
     let payload = {
         let guard = nearby.read().await;
-        if guard.discovery.is_some() {
-            Some(AndroidForegroundTransfer {
-                title: "Nearby sharing active".to_string(),
-                message: if guard.device_name.trim().is_empty() {
-                    "Visible to nearby devices".to_string()
-                } else {
-                    format!("{} is visible to nearby devices", guard.device_name)
-                },
-                detail: "Keep Sendme open to discover, send, and receive nearby transfers."
-                    .to_string(),
-                progress_current: 0,
-                progress_total: 0,
-                indeterminate: true,
-            })
-        } else {
+        if guard.discovery.is_none() {
             None
+        } else {
+            let has_pending_requests = !guard.pending_requests.is_empty();
+            drop(guard);
+
+            let has_active_nearby_transfer = {
+                let guard = transfers.read().await;
+                guard.values().any(|state| {
+                    matches!(
+                        state.info.transfer_type.as_str(),
+                        "nearby-send" | "nearby-receive"
+                    ) && is_nearby_transfer_active(&state.info.status)
+                })
+            };
+
+            if !has_pending_requests && !has_active_nearby_transfer {
+                None
+            } else {
+                let guard = nearby.read().await;
+                Some(AndroidForegroundTransfer {
+                    title: "Nearby sharing active".to_string(),
+                    message: if guard.device_name.trim().is_empty() {
+                        "Visible to nearby devices".to_string()
+                    } else {
+                        format!("{} is visible to nearby devices", guard.device_name)
+                    },
+                    detail: "Keep Sendme open to discover, send, and receive nearby transfers."
+                        .to_string(),
+                    progress_current: 0,
+                    progress_total: 0,
+                    indeterminate: true,
+                })
+            }
         }
     };
 

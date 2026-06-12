@@ -15,6 +15,7 @@ interface ThemeSwitcherProps {
 }
 
 const themes = [
+  { id: "system", name: "System" },
   { id: "light", name: "Light" },
   { id: "dark", name: "Dark" },
   { id: "sunset", name: "Sunset" },
@@ -24,31 +25,43 @@ const themes = [
   { id: "luxury", name: "Luxury" },
 ];
 
-type Theme = string;
+type Theme = (typeof themes)[number]["id"];
+
+function resolveTheme(theme: Theme): Exclude<Theme, "system"> {
+  if (theme === "system") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+  return theme;
+}
 
 export function ThemeSwitcher(props: ThemeSwitcherProps) {
-  const [currentTheme, setCurrentTheme] = createSignal<Theme>("dark");
+  const [currentTheme, setCurrentTheme] = createSignal<Theme>("system");
   const [isOpen, setIsOpen] = createSignal(false);
   const [menuStyle, setMenuStyle] = createSignal<Record<string, string>>({});
   let buttonRef: HTMLButtonElement | undefined;
   let menuRef: HTMLDivElement | undefined;
 
   const currentThemeInfo = () =>
-    themes.find((t) => t.id === currentTheme()) || themes[1];
+    themes.find((t) => t.id === currentTheme()) || themes[0];
 
   onMount(() => {
-    const savedTheme = localStorage.getItem("theme") || "dark";
-    setCurrentTheme(savedTheme);
-    document.documentElement.setAttribute("data-theme", savedTheme);
+    const savedTheme = localStorage.getItem("theme") || "system";
+    const validTheme = themes.some((t) => t.id === savedTheme)
+      ? (savedTheme as Theme)
+      : "system";
+    setCurrentTheme(validTheme);
+    document.documentElement.setAttribute("data-theme", resolveTheme(validTheme));
   });
 
   createEffect(() => {
     const theme = currentTheme();
     localStorage.setItem("theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.setAttribute("data-theme", resolveTheme(theme));
   });
 
-  const handleThemeChange = (themeId: string) => {
+  const handleThemeChange = (themeId: Theme) => {
     setCurrentTheme(themeId);
     setIsOpen(false);
   };
