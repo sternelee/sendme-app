@@ -3706,11 +3706,6 @@ pub fn run() {
             .plugin(tauri_plugin_haptics::init());
     }
 
-    #[cfg(desktop)]
-    {
-        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
-    }
-
     // Windows/Linux: single-instance ensures only one app window runs.
     // When "Send with Sendme" or "Open With" launches a second process, the callback
     // forwards the file path to the already-running instance and the new process exits.
