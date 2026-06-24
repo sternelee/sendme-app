@@ -10,8 +10,12 @@ use ratatui::{
 };
 
 use crate::tui::{
-    app::Tab, tabs::cloud::render_cloud_tab, tabs::receive::render_receive_tab,
-    tabs::send::render_send_tab, tabs::transfers::render_transfers_tab, App,
+    app::Tab,
+    tabs::{
+        cloud::render_cloud_tab, peersync::render_peer_sync_tab, receive::render_receive_tab,
+        send::render_send_tab, transfers::render_transfers_tab,
+    },
+    App,
 };
 
 /// Main UI rendering function.
@@ -84,6 +88,7 @@ fn render_current_tab(f: &mut Frame, app: &App, area: Rect) {
         Tab::Receive => render_receive_tab(f, app, area),
         Tab::Transfers => render_transfers_tab(f, app, area),
         Tab::Cloud => render_cloud_tab(f, app, area),
+        Tab::PeerSync => render_peer_sync_tab(f, app, area),
     }
 }
 
@@ -91,14 +96,17 @@ fn render_current_tab(f: &mut Frame, app: &App, area: Rect) {
 fn render_footer(f: &mut Frame, current_tab: Tab, area: Rect) {
     let help_text = match current_tab {
         Tab::Send => {
-            " [1-4] Tab | [q] Quit | [Enter] Send | [@] Search | [D] To Device | [F] To Friend "
+            " [1-5] Tab | [q] Quit | [Enter] Send | [@] Search | [D] To Device | [F] To Friend "
         }
-        Tab::Receive => " [1-4] Tab | [q] Quit | [Enter] Receive | Type to paste ticket ",
+        Tab::Receive => " [1-5] Tab | [q] Quit | [Enter] Receive | Type to paste ticket ",
         Tab::Transfers => {
-            " [1-4] Tab | [q] Quit | [↑↓] Navigate | [Enter] View | [d] Delete | [c] Clean up "
+            " [1-5] Tab | [q] Quit | [↑↓] Navigate | [Enter] View | [d] Delete | [c] Clean up "
         }
         Tab::Cloud => {
-            " [1-4] Tab | [q] Quit | [d] Devices | [f] Friends | [i] Incoming | [↑↓] Navigate | [Enter] Receive "
+            " [1-5] Tab | [q] Quit | [d] Devices | [f] Friends | [i] Incoming | [↑↓] Navigate | [Enter] Receive "
+        }
+        Tab::PeerSync => {
+            " [1-5] Tab | [q] Quit | [s/t/l/g] Sections | [@] Search | [o] Link | [r] Refresh | [Enter] Start/Stop/Add | [c] Copy ticket "
         }
     };
 

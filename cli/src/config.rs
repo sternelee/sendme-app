@@ -83,6 +83,31 @@ fn config_path() -> PathBuf {
         .join("config.toml")
 }
 
+/// Directory where PeerSync configuration lives.
+/// `~/.config/sendme/peersync`
+pub fn peersync_config_dir() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("sendme")
+        .join("peersync")
+}
+
+/// Directory where PeerSync data (SQLite DB, iroh blobs/docs) lives.
+/// `~/.local/share/sendme/peersync`
+pub fn peersync_data_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("sendme")
+        .join("peersync")
+}
+
+/// Ensure PeerSync directories exist.
+pub fn ensure_peersync_dirs() -> Result<()> {
+    std::fs::create_dir_all(peersync_config_dir())?;
+    std::fs::create_dir_all(peersync_data_dir())?;
+    Ok(())
+}
+
 fn gethostname() -> Option<String> {
     hostname::get().ok()?.into_string().ok()
 }

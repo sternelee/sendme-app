@@ -13,12 +13,19 @@ pub enum Tab {
     Receive,
     Transfers,
     Cloud,
+    PeerSync,
 }
 
 impl Tab {
     /// Get all tabs in order.
     pub fn all() -> &'static [Tab] {
-        &[Tab::Send, Tab::Receive, Tab::Transfers, Tab::Cloud]
+        &[
+            Tab::Send,
+            Tab::Receive,
+            Tab::Transfers,
+            Tab::Cloud,
+            Tab::PeerSync,
+        ]
     }
 
     /// Get tab index.
@@ -28,6 +35,7 @@ impl Tab {
             Tab::Receive => 1,
             Tab::Transfers => 2,
             Tab::Cloud => 3,
+            Tab::PeerSync => 4,
         }
     }
 
@@ -38,6 +46,7 @@ impl Tab {
             1 => Some(Tab::Receive),
             2 => Some(Tab::Transfers),
             3 => Some(Tab::Cloud),
+            4 => Some(Tab::PeerSync),
             _ => None,
         }
     }
@@ -49,6 +58,7 @@ impl Tab {
             Tab::Receive => "Receive",
             Tab::Transfers => "Transfers",
             Tab::Cloud => "Cloud",
+            Tab::PeerSync => "PeerSync",
         }
     }
 }
@@ -83,6 +93,15 @@ pub enum CloudSection {
     Devices,
     Friends,
     Incoming,
+}
+
+/// Which section of the PeerSync tab is active.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerSyncSection {
+    Status,
+    Targets,
+    Log,
+    Gc,
 }
 
 /// Cloud-send overlay state in the Send tab success view.
@@ -356,6 +375,36 @@ pub struct App {
     /// Selection index within the cloud send popup.
     pub send_cloud_selected_index: usize,
 
+    // PeerSync tab state
+    /// Current section of the PeerSync tab.
+    pub peer_sync_section: PeerSyncSection,
+    /// Latest collected status info.
+    pub peer_sync_status: Option<peersync::status::StatusInfo>,
+    /// Configured sync targets (key, target).
+    pub peer_sync_targets: Vec<(String, peersync::config::TargetConfig)>,
+    /// Cached log records for display.
+    pub peer_sync_log: Vec<peersync::history::SyncRecord>,
+    /// Shareable doc ticket generated when the engine starts.
+    pub peer_sync_ticket: Option<String>,
+    /// Whether the sync engine is currently running.
+    pub peer_sync_engine_running: bool,
+    /// Whether a refresh/gc/engine action is in progress.
+    pub peer_sync_busy: bool,
+    /// Whether the next GC run should be a dry-run.
+    pub peer_sync_gc_dry_run: bool,
+    /// Input buffer for adding a new sync target path.
+    pub peer_sync_target_input: String,
+    /// File search popup for adding targets.
+    pub peer_sync_file_search: Option<crate::tui::file_search::FileSearchPopup>,
+    /// Whether the PeerSync status is showing the link ticket input.
+    pub peer_sync_link_mode: bool,
+    /// Input buffer for linking an existing sync doc ticket.
+    pub peer_sync_link_input: String,
+    /// Selected index in PeerSync lists.
+    pub peer_sync_selected_index: usize,
+    /// Short-lived notification/message in PeerSync tab.
+    pub peer_sync_message: String,
+
     /// Application running flag.
     pub running: bool,
 }
@@ -387,6 +436,20 @@ impl App {
             cloud_notification: None,
             send_cloud_state: SendCloudState::None,
             send_cloud_selected_index: 0,
+            peer_sync_section: PeerSyncSection::Status,
+            peer_sync_status: None,
+            peer_sync_targets: Vec::new(),
+            peer_sync_log: Vec::new(),
+            peer_sync_ticket: None,
+            peer_sync_engine_running: false,
+            peer_sync_busy: false,
+            peer_sync_gc_dry_run: false,
+            peer_sync_target_input: String::new(),
+            peer_sync_file_search: None,
+            peer_sync_link_mode: false,
+            peer_sync_link_input: String::new(),
+            peer_sync_selected_index: 0,
+            peer_sync_message: String::new(),
             running: true,
         }
     }
@@ -402,6 +465,9 @@ impl App {
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         if let Some(index) = crate::tui::event::get_tab_switch(&key) {
             if let Some(tab) = Tab::from_index(index) {
+                if tab == Tab::PeerSync {
+                    self.load_peer_sync_targets_from_disk();
+                }
                 self.current_tab = tab;
                 return;
             }
@@ -433,6 +499,14 @@ impl App {
                         self.transfers_tab_state = TransfersTabState::List;
                     }
                 }
+                Tab::PeerSync => {
+                    if self.peer_sync_file_search.is_some() {
+                        self.close_peer_sync_file_search();
+                    } else if self.peer_sync_link_mode {
+                        self.peer_sync_link_mode = false;
+                        self.peer_sync_link_input.clear();
+                    }
+                }
                 _ => {}
             }
             return;
@@ -444,6 +518,7 @@ impl App {
             Tab::Receive => self.handle_receive_tab_key(key),
             Tab::Transfers => self.handle_transfers_tab_key(key),
             Tab::Cloud => self.handle_cloud_tab_key(key),
+            Tab::PeerSync => self.handle_peer_sync_tab_key(key),
         }
     }
 
@@ -786,6 +861,236 @@ impl App {
             CloudSection::Devices => self.cloud_devices.len(),
             CloudSection::Friends => self.cloud_friends.len(),
             CloudSection::Incoming => self.cloud_pending_tickets.len(),
+        }
+    }
+
+    /// Handle key events in the PeerSync tab.
+    pub fn handle_peer_sync_tab_key(&mut self, key: crossterm::event::KeyEvent) {
+        // File search popup takes precedence.
+        if self.peer_sync_file_search.is_some() {
+            self.handle_peer_sync_file_search_key(key);
+            return;
+        }
+
+        // Link input mode takes precedence over status navigation.
+        if self.peer_sync_link_mode {
+            self.handle_peer_sync_link_key(key);
+            return;
+        }
+
+        match key.code {
+            crossterm::event::KeyCode::Char('s') | crossterm::event::KeyCode::Char('S') => {
+                self.peer_sync_section = PeerSyncSection::Status;
+                self.peer_sync_selected_index = 0;
+            }
+            crossterm::event::KeyCode::Char('t') | crossterm::event::KeyCode::Char('T') => {
+                self.peer_sync_section = PeerSyncSection::Targets;
+                self.peer_sync_selected_index = 0;
+            }
+            crossterm::event::KeyCode::Char('l') | crossterm::event::KeyCode::Char('L') => {
+                self.peer_sync_section = PeerSyncSection::Log;
+                self.peer_sync_selected_index = 0;
+            }
+            crossterm::event::KeyCode::Char('g') | crossterm::event::KeyCode::Char('G') => {
+                self.peer_sync_section = PeerSyncSection::Gc;
+                self.peer_sync_selected_index = 0;
+            }
+            crossterm::event::KeyCode::Char('r') | crossterm::event::KeyCode::Char('R') => {
+                // Refresh is handled by the main event loop.
+            }
+            crossterm::event::KeyCode::Char('c') | crossterm::event::KeyCode::Char('C') => {
+                if self.peer_sync_section == PeerSyncSection::Status {
+                    if let Some(ticket) = self.peer_sync_ticket.clone() {
+                        self.copy_to_clipboard(&ticket);
+                        self.peer_sync_message = "Ticket copied to clipboard".to_string();
+                    }
+                }
+            }
+            crossterm::event::KeyCode::Char('o') | crossterm::event::KeyCode::Char('O') => {
+                if self.peer_sync_section == PeerSyncSection::Status {
+                    self.peer_sync_link_mode = true;
+                    self.peer_sync_link_input.clear();
+                }
+            }
+            crossterm::event::KeyCode::Char('d') | crossterm::event::KeyCode::Char('D') => {
+                if self.peer_sync_section == PeerSyncSection::Gc {
+                    self.peer_sync_gc_dry_run = !self.peer_sync_gc_dry_run;
+                } else if self.peer_sync_section == PeerSyncSection::Targets {
+                    self.remove_peer_sync_target();
+                }
+            }
+            crossterm::event::KeyCode::Up => {
+                if self.peer_sync_selected_index > 0 {
+                    self.peer_sync_selected_index -= 1;
+                }
+            }
+            crossterm::event::KeyCode::Down => {
+                let max = self.peer_sync_list_len();
+                if self.peer_sync_selected_index + 1 < max {
+                    self.peer_sync_selected_index += 1;
+                }
+            }
+            _ => {
+                // Targets section accepts typed paths (also supports terminal paste / OS drag-drop).
+                if self.peer_sync_section == PeerSyncSection::Targets {
+                    self.handle_peer_sync_target_input_key(key);
+                }
+            }
+        }
+    }
+
+    /// Handle key events while the PeerSync link input is active.
+    fn handle_peer_sync_link_key(&mut self, key: crossterm::event::KeyEvent) {
+        match key.code {
+            crossterm::event::KeyCode::Char(c) => self.peer_sync_link_input.push(c),
+            crossterm::event::KeyCode::Backspace => {
+                self.peer_sync_link_input.pop();
+            }
+            crossterm::event::KeyCode::Esc => {
+                self.peer_sync_link_mode = false;
+                self.peer_sync_link_input.clear();
+            }
+            // Enter is handled by the main loop because it needs async network IO.
+            _ => {}
+        }
+    }
+
+    /// Handle key events while the PeerSync file search popup is open.
+    fn handle_peer_sync_file_search_key(&mut self, key: crossterm::event::KeyEvent) {
+        let Some(popup) = &mut self.peer_sync_file_search else {
+            return;
+        };
+
+        match key.code {
+            crossterm::event::KeyCode::Char(c) => popup.update_query(c),
+            crossterm::event::KeyCode::Backspace => popup.remove_char(),
+            crossterm::event::KeyCode::Up => popup.move_selection(-1),
+            crossterm::event::KeyCode::Down => popup.move_selection(1),
+            crossterm::event::KeyCode::Enter => {
+                if let Some(path) = popup.selected_path() {
+                    self.add_peer_sync_target(path.to_string_lossy().as_ref());
+                }
+                self.close_peer_sync_file_search();
+            }
+            crossterm::event::KeyCode::Esc => self.close_peer_sync_file_search(),
+            _ => {}
+        }
+    }
+
+    /// Handle key events in the PeerSync target path input.
+    fn handle_peer_sync_target_input_key(&mut self, key: crossterm::event::KeyEvent) {
+        match key.code {
+            crossterm::event::KeyCode::Char('@') => self.open_peer_sync_file_search(),
+            crossterm::event::KeyCode::Char(c) => self.peer_sync_target_input.push(c),
+            crossterm::event::KeyCode::Backspace => {
+                self.peer_sync_target_input.pop();
+            }
+            crossterm::event::KeyCode::Enter => {
+                let path = self.peer_sync_target_input.clone();
+                if !path.is_empty() {
+                    self.add_peer_sync_target(&path);
+                    self.peer_sync_target_input.clear();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Open the file search popup for adding a sync target.
+    pub fn open_peer_sync_file_search(&mut self) {
+        use std::env;
+
+        let base_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let mut popup = crate::tui::file_search::FileSearchPopup::new(base_dir);
+        popup.refresh_files_sync();
+        self.peer_sync_file_search = Some(popup);
+    }
+
+    /// Close the file search popup.
+    pub fn close_peer_sync_file_search(&mut self) {
+        self.peer_sync_file_search = None;
+    }
+
+    /// Add a path as a new sync target.
+    pub fn add_peer_sync_target(&mut self, path: &str) {
+        let expanded = peersync::config::expand_path(path)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| path.to_string());
+        let key = std::path::Path::new(&expanded)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("target")
+            .to_string();
+        let target = peersync::config::TargetConfig {
+            src: expanded,
+            ignore: Vec::new(),
+        };
+        self.peer_sync_targets.push((key, target));
+        if let Err(e) = self.save_peer_sync_config() {
+            self.peer_sync_message = format!("Failed to save config: {}", e);
+        } else {
+            self.peer_sync_message = format!("Added target: {}", path);
+        }
+    }
+
+    /// Remove the currently selected sync target.
+    pub fn remove_peer_sync_target(&mut self) {
+        if self.peer_sync_section != PeerSyncSection::Targets || self.peer_sync_targets.is_empty() {
+            return;
+        }
+        if self.peer_sync_selected_index < self.peer_sync_targets.len() {
+            let removed = self.peer_sync_targets.remove(self.peer_sync_selected_index);
+            if self.peer_sync_selected_index >= self.peer_sync_targets.len()
+                && !self.peer_sync_targets.is_empty()
+            {
+                self.peer_sync_selected_index = self.peer_sync_targets.len() - 1;
+            }
+            if let Err(e) = self.save_peer_sync_config() {
+                self.peer_sync_message = format!("Failed to save config: {}", e);
+            } else {
+                self.peer_sync_message = format!("Removed target: {}", removed.0);
+            }
+        }
+    }
+
+    /// Load targets from a peersync config.
+    pub fn load_peer_sync_targets(&mut self, config: &peersync::config::Config) {
+        self.peer_sync_targets = config
+            .targets
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+    }
+
+    /// Load targets from disk.
+    pub fn load_peer_sync_targets_from_disk(&mut self) {
+        let config_dir = crate::config::peersync_config_dir();
+        let _ = crate::config::ensure_peersync_dirs();
+        let config = peersync::config::load_config(Some(&config_dir)).unwrap_or_default();
+        self.load_peer_sync_targets(&config);
+    }
+
+    /// Persist the current PeerSync targets to disk.
+    pub fn save_peer_sync_config(&self) -> anyhow::Result<()> {
+        let config_dir = crate::config::peersync_config_dir();
+        let mut config = peersync::config::load_config(Some(&config_dir)).unwrap_or_default();
+        config.targets.clear();
+        for (key, target) in &self.peer_sync_targets {
+            config.targets.insert(key.clone(), target.clone());
+        }
+        peersync::config::save_config(Some(&config_dir), &config)?;
+        Ok(())
+    }
+
+    /// Number of selectable items in the current PeerSync section.
+    pub fn peer_sync_list_len(&self) -> usize {
+        match self.peer_sync_section {
+            PeerSyncSection::Status => self.peer_sync_status.as_ref().map_or(0, |s| {
+                s.online_peers.len() + s.targets.len() + s.conflict_files.len()
+            }),
+            PeerSyncSection::Targets => self.peer_sync_targets.len(),
+            PeerSyncSection::Log => self.peer_sync_log.len(),
+            PeerSyncSection::Gc => 0,
         }
     }
 }

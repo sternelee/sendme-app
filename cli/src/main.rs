@@ -550,6 +550,7 @@ async fn run_tui() -> Result<()> {
     // Run the event loop in a blocking task, then restore terminal
     tokio::task::spawn_blocking(move || {
         let mut terminal = Terminal::new(backend)?;
+        let mut peer_sync_engine_handle: Option<tokio::task::AbortHandle> = None;
 
         loop {
             // Render UI
@@ -723,6 +724,88 @@ async fn run_tui() -> Result<()> {
                                 app.cleanup_finished_transfers();
                             }
                         }
+
+                        // Handle PeerSync tab actions
+                        if app.current_tab == tui::app::Tab::PeerSync {
+                            match key.code {
+                                crossterm::event::KeyCode::Char('r')
+                                | crossterm::event::KeyCode::Char('R') => {
+                                    if !app.peer_sync_busy {
+                                        app.peer_sync_busy = true;
+                                        app.peer_sync_message.clear();
+                                        // Load targets synchronously so the UI is immediately
+                                        // up to date; status/log refresh runs async.
+                                        let config_dir = config::peersync_config_dir();
+                                        let _ = config::ensure_peersync_dirs();
+                                        let config =
+                                            peersync::config::load_config(Some(&config_dir))
+                                                .unwrap_or_default();
+                                        app.load_peer_sync_targets(&config);
+                                        let eh = event_handler.clone();
+                                        tokio::spawn(async move {
+                                            refresh_peer_sync(eh).await;
+                                        });
+                                    }
+                                }
+                                crossterm::event::KeyCode::Enter if !app.peer_sync_busy => {
+                                    if app.peer_sync_link_mode {
+                                        let ticket = app.peer_sync_link_input.trim().to_string();
+                                        if !ticket.is_empty() {
+                                            app.peer_sync_busy = true;
+                                            app.peer_sync_message =
+                                                "Linking to existing sync doc...".to_string();
+                                            let eh = event_handler.clone();
+                                            tokio::spawn(async move {
+                                                link_peer_sync(eh, ticket).await;
+                                            });
+                                        }
+                                    } else {
+                                        match app.peer_sync_section {
+                                            tui::app::PeerSyncSection::Status
+                                            | tui::app::PeerSyncSection::Log => {
+                                                if app.peer_sync_engine_running {
+                                                    if let Some(handle) =
+                                                        peer_sync_engine_handle.take()
+                                                    {
+                                                        handle.abort();
+                                                        app.peer_sync_engine_running = false;
+                                                        app.peer_sync_message =
+                                                            "Sync engine stopping...".to_string();
+                                                    }
+                                                } else {
+                                                    app.peer_sync_busy = true;
+                                                    app.peer_sync_message =
+                                                        "Starting sync engine...".to_string();
+                                                    let eh = event_handler.clone();
+                                                    let handle = tokio::spawn(async move {
+                                                        run_peer_sync_engine(eh).await;
+                                                    });
+                                                    peer_sync_engine_handle =
+                                                        Some(handle.abort_handle());
+                                                }
+                                            }
+                                            tui::app::PeerSyncSection::Targets => {
+                                                let path = app.peer_sync_target_input.clone();
+                                                if !path.is_empty() {
+                                                    app.add_peer_sync_target(&path);
+                                                    app.peer_sync_target_input.clear();
+                                                }
+                                            }
+                                            tui::app::PeerSyncSection::Gc => {
+                                                app.peer_sync_busy = true;
+                                                app.peer_sync_message.clear();
+                                                let dry_run = app.peer_sync_gc_dry_run;
+                                                let eh = event_handler.clone();
+                                                tokio::spawn(async move {
+                                                    run_peer_sync_gc(eh, dry_run).await;
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                     Ok(tui::event::AppEvent::Tick) => {
                         // Periodic updates
@@ -776,6 +859,44 @@ async fn run_tui() -> Result<()> {
                     Ok(tui::event::AppEvent::CloudDeviceRegistered(id)) => {
                         app.cloud_my_device_db_id = Some(id);
                     }
+                    // --- PeerSync events ---
+                    Ok(tui::event::AppEvent::PeerSyncStatusUpdated(info)) => {
+                        app.peer_sync_status = Some(info);
+                        app.peer_sync_busy = false;
+                    }
+                    Ok(tui::event::AppEvent::PeerSyncLogUpdated(records)) => {
+                        app.peer_sync_log = records;
+                        app.peer_sync_busy = false;
+                    }
+                    Ok(tui::event::AppEvent::PeerSyncEngineStarted) => {
+                        app.peer_sync_engine_running = true;
+                        app.peer_sync_busy = false;
+                    }
+                    Ok(tui::event::AppEvent::PeerSyncEngineStopped) => {
+                        app.peer_sync_engine_running = false;
+                        app.peer_sync_busy = false;
+                    }
+                    Ok(tui::event::AppEvent::PeerSyncNotification(msg)) => {
+                        app.peer_sync_message = msg;
+                        app.peer_sync_busy = false;
+                    }
+                    Ok(tui::event::AppEvent::PeerSyncTicket(ticket)) => {
+                        app.peer_sync_ticket = Some(ticket);
+                    }
+                    Ok(tui::event::AppEvent::PeerSyncLinkCompleted { success }) => {
+                        app.peer_sync_link_mode = false;
+                        app.peer_sync_link_input.clear();
+                        app.peer_sync_busy = false;
+                        if success && !app.peer_sync_engine_running {
+                            app.peer_sync_busy = true;
+                            app.peer_sync_message = "Starting sync engine...".to_string();
+                            let eh = event_handler.clone();
+                            let handle = tokio::spawn(async move {
+                                run_peer_sync_engine(eh).await;
+                            });
+                            peer_sync_engine_handle = Some(handle.abort_handle());
+                        }
+                    }
                     Err(std::sync::mpsc::TryRecvError::Empty) => {
                         // No more events, break inner loop
                         break;
@@ -809,6 +930,198 @@ async fn run_tui() -> Result<()> {
     .await??;
 
     Ok(())
+}
+
+/// Refresh PeerSync status and log in the background.
+async fn refresh_peer_sync(event_handler: tui::EventHandler) {
+    if let Err(e) = do_refresh_peer_sync(event_handler.clone()).await {
+        event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+            "Refresh failed: {}",
+            e
+        )));
+    }
+}
+
+async fn do_refresh_peer_sync(event_handler: tui::EventHandler) -> anyhow::Result<()> {
+    let config_dir = config::peersync_config_dir();
+    let data_dir = config::peersync_data_dir();
+    config::ensure_peersync_dirs()?;
+
+    let (config, state, history) = tokio::task::spawn_blocking(move || {
+        let config = peersync::config::load_config(Some(&config_dir)).unwrap_or_default();
+        let state = peersync::state::load_state(&config, Some(&config_dir)).unwrap_or_default();
+        let history = peersync::history::History::open(Some(&config_dir), Some(&data_dir))?;
+        anyhow::Ok((config, state, history))
+    })
+    .await??;
+
+    let history = std::sync::Arc::new(history);
+
+    let info = peersync::status::collect_status(&config, &state, &history, None).await?;
+    event_handler.emit(tui::event::AppEvent::PeerSyncStatusUpdated(info));
+
+    let history2 = history.clone();
+    let records =
+        tokio::task::spawn_blocking(move || history2.query(None, None, None, 100)).await??;
+    event_handler.emit(tui::event::AppEvent::PeerSyncLogUpdated(records));
+
+    Ok(())
+}
+
+/// Run the PeerSync engine in the background.
+async fn run_peer_sync_engine(event_handler: tui::EventHandler) {
+    let config_dir = config::peersync_config_dir();
+    let data_dir = config::peersync_data_dir();
+
+    let result = tokio::task::spawn_blocking({
+        let config_dir = config_dir.clone();
+        move || {
+            let config = peersync::config::load_config(Some(&config_dir)).unwrap_or_default();
+            let state = peersync::state::load_state(&config, Some(&config_dir)).unwrap_or_default();
+            anyhow::Ok((config, state))
+        }
+    })
+    .await;
+
+    let (config, state) = match result {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "Failed to load PeerSync state: {}",
+                e
+            )));
+            event_handler.emit(tui::event::AppEvent::PeerSyncEngineStopped);
+            return;
+        }
+        Err(e) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "Failed to load PeerSync state: {}",
+                e
+            )));
+            event_handler.emit(tui::event::AppEvent::PeerSyncEngineStopped);
+            return;
+        }
+    };
+
+    let engine =
+        match peersync::engine::SyncEngine::start(config, Some(config_dir), Some(data_dir), state)
+            .await
+        {
+            Ok(e) => e,
+            Err(e) => {
+                event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                    "Failed to start sync engine: {}",
+                    e
+                )));
+                event_handler.emit(tui::event::AppEvent::PeerSyncEngineStopped);
+                return;
+            }
+        };
+
+    event_handler.emit(tui::event::AppEvent::PeerSyncEngineStarted);
+
+    // Surface the persisted doc ticket so the user can link other devices.
+    if let Some(ticket) = engine.ticket() {
+        event_handler.emit(tui::event::AppEvent::PeerSyncTicket(ticket));
+    }
+
+    if let Err(e) = engine.run().await {
+        event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+            "Sync engine error: {}",
+            e
+        )));
+    }
+
+    event_handler.emit(tui::event::AppEvent::PeerSyncEngineStopped);
+}
+
+/// Run PeerSync garbage collection in the background.
+async fn run_peer_sync_gc(event_handler: tui::EventHandler, dry_run: bool) {
+    let config_dir = config::peersync_config_dir();
+    let data_dir = config::peersync_data_dir();
+    let retention_days = 30;
+
+    match tokio::task::spawn_blocking(move || {
+        let config = peersync::config::load_config(Some(&config_dir)).unwrap_or_default();
+        let history = peersync::history::History::open(Some(&config_dir), Some(&data_dir))?;
+        peersync::gc::run_gc(&config, &history, retention_days, dry_run)
+    })
+    .await
+    {
+        Ok(Ok(report)) => {
+            let prefix = if dry_run { "Would remove" } else { "Removed" };
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "{} {} conflict(s), {} tombstone(s), {} history record(s)",
+                prefix,
+                report.conflict_backups_removed.len(),
+                report.tombstones_pruned,
+                report.history_records_pruned
+            )));
+        }
+        Ok(Err(e)) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "GC failed: {}",
+                e
+            )));
+        }
+        Err(e) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "GC task panicked: {}",
+                e
+            )));
+        }
+    }
+}
+
+/// Link this device to an existing PeerSync doc using the provided ticket.
+async fn link_peer_sync(event_handler: tui::EventHandler, ticket: String) {
+    let config_dir = config::peersync_config_dir();
+    let data_dir = config::peersync_data_dir();
+    let _ = config::ensure_peersync_dirs();
+
+    let result = async {
+        let config = tokio::task::spawn_blocking({
+            let config_dir = config_dir.clone();
+            move || peersync::config::load_config(Some(&config_dir)).unwrap_or_default()
+        })
+        .await?;
+
+        let mut state = tokio::task::spawn_blocking({
+            let config_dir = config_dir.clone();
+            move || peersync::state::load_state(&config, Some(&config_dir))
+        })
+        .await??;
+
+        let network =
+            peersync::network::Network::start(Some(&config_dir), Some(&data_dir), &state).await?;
+        let namespace = network.import_ticket(&ticket).await?;
+        state.namespace_id = Some(namespace.to_string());
+        let author = network.default_author().await?;
+        state.author_id = Some(author.to_string());
+
+        tokio::task::spawn_blocking(move || peersync::state::save_state(Some(&config_dir), &state))
+            .await??;
+
+        anyhow::Ok(namespace.to_string())
+    }
+    .await;
+
+    match result {
+        Ok(ns) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "Linked to sync doc: {}",
+                ns
+            )));
+            event_handler.emit(tui::event::AppEvent::PeerSyncLinkCompleted { success: true });
+        }
+        Err(e) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "Failed to link: {}",
+                e
+            )));
+            event_handler.emit(tui::event::AppEvent::PeerSyncLinkCompleted { success: false });
+        }
+    }
 }
 
 /// Parse a ticket string, handling various formats.

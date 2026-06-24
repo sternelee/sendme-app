@@ -10,8 +10,8 @@ repository.workspace = true
 description = "Library for sending files over the network with NAT hole punching"
 
 [dependencies]
-iroh = { version = "1.0.0-rc.1", default-features = false, features = ["tls-ring"] }
-iroh-blobs = { version = "0.102.0", default-features = false, features = ["fs-store"] }
+iroh.workspace = true
+iroh-blobs.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 futures-buffered = "0.2.11"

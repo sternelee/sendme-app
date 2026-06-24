@@ -38,6 +38,21 @@ pub enum AppEvent {
     CloudNotification(String),
     /// This device's database ID returned after registration.
     CloudDeviceRegistered(String),
+    // --- PeerSync events ---
+    /// PeerSync status collected.
+    PeerSyncStatusUpdated(peersync::status::StatusInfo),
+    /// PeerSync log records refreshed.
+    PeerSyncLogUpdated(Vec<peersync::history::SyncRecord>),
+    /// PeerSync engine started.
+    PeerSyncEngineStarted,
+    /// PeerSync engine stopped.
+    PeerSyncEngineStopped,
+    /// PeerSync notification message.
+    PeerSyncNotification(String),
+    /// PeerSync doc ticket generated at startup.
+    PeerSyncTicket(String),
+    /// PeerSync link operation completed.
+    PeerSyncLinkCompleted { success: bool },
 }
 
 /// Event handler for the application.
@@ -120,6 +135,7 @@ pub fn get_tab_switch(key: &KeyEvent) -> Option<usize> {
         KeyCode::Char('2') => Some(1),
         KeyCode::Char('3') => Some(2),
         KeyCode::Char('4') => Some(3),
+        KeyCode::Char('5') => Some(4),
         _ => None,
     }
 }

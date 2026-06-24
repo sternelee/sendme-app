@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 sendme-lib = { path = "../lib" }
+peersync = { path = "../peersync" }
 
 # CLI argument parsing
 clap = { version = "4.4", features = ["derive"] }

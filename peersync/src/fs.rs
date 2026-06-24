@@ -1,0 +1,139 @@
+use anyhow::{Context, Result};
+use blake3::Hasher;
+use std::fs;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Compute the BLAKE3 hash of a file's contents.
+pub fn compute_file_hash(path: &Path) -> Result<String> {
+    let mut file = fs::File::open(path)
+        .with_context(|| format!("opening file for hashing {}", path.display()))?;
+    let mut hasher = Hasher::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = file.read(&mut buf).context("reading file for hash")?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("b3_{}", hasher.finalize().to_hex()))
+}
+
+/// Compute hash from bytes.
+pub fn compute_hash_bytes(bytes: &[u8]) -> String {
+    format!("b3_{}", blake3::hash(bytes).to_hex())
+}
+
+/// Convert a BLAKE3 hex string (with `b3_` prefix) to an `iroh_blobs::Hash`.
+pub fn parse_hash(hash: &str) -> Result<iroh_blobs::Hash> {
+    let hex = hash.strip_prefix("b3_").unwrap_or(hash);
+    let bytes = hex::decode(hex).context("decoding hash hex")?;
+    let bytes: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("hash must be 32 bytes"))?;
+    Ok(iroh_blobs::Hash::from_bytes(bytes))
+}
+
+/// Get the last modification time of a file as milliseconds since UNIX epoch.
+pub fn file_mtime_ms(path: &Path) -> Result<u64> {
+    let meta =
+        fs::metadata(path).with_context(|| format!("getting metadata {}", path.display()))?;
+    let mtime = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+    let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
+    Ok(duration.as_millis() as u64)
+}
+
+/// Current timestamp in milliseconds.
+pub fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+/// Read an entire file into memory.
+pub fn read_file(path: &Path) -> Result<Vec<u8>> {
+    fs::read(path).with_context(|| format!("reading file {}", path.display()))
+}
+
+/// Atomically write data to a file.
+pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("creating parent dir {}", parent.display()))?;
+    }
+    let tmp = path.with_extension("peersync_tmp");
+    {
+        let mut file = fs::File::create(&tmp)
+            .with_context(|| format!("creating temp file {}", tmp.display()))?;
+        file.write_all(data)
+            .with_context(|| format!("writing temp file {}", tmp.display()))?;
+        file.sync_all().context("syncing temp file")?;
+    }
+    fs::rename(&tmp, path)
+        .with_context(|| format!("renaming {} to {}", tmp.display(), path.display()))?;
+    Ok(())
+}
+
+/// Backup an existing file before overwriting.
+/// Returns the backup path if a backup was created.
+pub fn backup_existing_file(path: &Path, device_name: &str) -> Result<Option<PathBuf>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let timestamp = now_ms();
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let backup_name = format!(
+        "{}.peersync_conflict.{}.{}",
+        file_name, device_name, timestamp
+    );
+    let backup_path = path.with_file_name(backup_name);
+    fs::copy(path, &backup_path)
+        .with_context(|| format!("backing up {} to {}", path.display(), backup_path.display()))?;
+    Ok(Some(backup_path))
+}
+
+/// Check whether a path should be ignored based on glob-like patterns.
+pub fn is_ignored(relative: &str, patterns: &[String]) -> bool {
+    for pat in patterns {
+        // Very simple suffix / directory matching.
+        if relative.starts_with(pat.trim_end_matches('/')) {
+            return true;
+        }
+        if relative.contains(&format!("{}/", pat.trim_end_matches('/'))) {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_and_parse() {
+        let data = b"hello world";
+        let hash = compute_hash_bytes(data);
+        assert!(hash.starts_with("b3_"));
+        let parsed = parse_hash(&hash).unwrap();
+        assert_eq!(
+            parsed.to_hex().to_string(),
+            hash.strip_prefix("b3_").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_atomic_write_and_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("test.txt");
+        atomic_write(&path, b"v1").unwrap();
+        let backup = backup_existing_file(&path, "dev1").unwrap();
+        assert!(backup.is_some());
+        atomic_write(&path, b"v2").unwrap();
+        assert_eq!(read_file(&path).unwrap(), b"v2");
+        assert_eq!(read_file(&backup.unwrap()).unwrap(), b"v1");
+    }
+}

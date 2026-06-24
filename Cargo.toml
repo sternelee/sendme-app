@@ -1,5 +1,5 @@
 [workspace]
-members = ["lib", "cli", "app/src-tauri"]
+members = ["lib", "cli", "app/src-tauri", "peersync"]
 resolver = "2"
 
 # Note: browser-lib crate is a separate workspace to avoid WASM-incompatible
@@ -14,12 +14,14 @@ edition = "2021"
 authors = ["Rüdiger Klaehn <rklaehn@protonmail.com>", "n0 team"]
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/n0-computer/sendme"
-rust-version = "1.81"
+rust-version = "1.91"
 
 [workspace.dependencies]
 anyhow = "1.0.75"
-iroh = { version = "1.0.0-rc.1", default-features = false, features = ["tls-ring"] }
-iroh-blobs = { version = "0.102.0", default-features = false, features = ["fs-store"] }
+iroh = { version = "1", default-features = false, features = ["tls-ring"] }
+iroh-blobs = { version = "0.103", default-features = false, features = ["fs-store"] }
+iroh-docs = "0.101.0"
+iroh-gossip = { version = "0.101.0", features = ["net"], default-features = false }
 tokio = { version = "1.34.0", features = ["full"] }
 
 [profile.release]
@@ -30,6 +32,4 @@ lto = true
 debug = "none"
 strip = true
 
-# Patch n0-snafu to fix color-backtrace incompatibility
-[patch.crates-io]
-n0-snafu = { path = "patches/n0-snafu" }
+
