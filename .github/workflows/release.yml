@@ -237,7 +237,7 @@ jobs:
         run: |
           sdkmanager --install "ndk;27.0.12077973"
           NDK_DIR="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
-          echo "NDK_HOME=$NDK_DIR" >> "$GITHUB_OUTPUT"
+          echo "NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
 
       - name: Verify Android toolchain
