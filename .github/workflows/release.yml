@@ -273,10 +273,10 @@ jobs:
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         shell: bash
         run: |
-          # The android project is committed under app/src-tauri/gen/android/
-          # (not app/gen/android/), so this step can run before the tauri
-          # build generates anything. Drop keystore.properties + the keystore
-          # file where gradle will pick them up.
+          # The android project is committed under app/src-tauri/gen/android/.
+          # Write keystore.properties where gradle will pick it up. This step
+          # runs before the tauri build, so we drop the file directly without
+          # depending on `pnpm tauri android build` regenerating the dir.
           cd app/src-tauri/gen/android
           {
             printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
@@ -287,7 +287,11 @@ jobs:
 
       - name: Build Android app (APK + AAB)
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
-        run: pnpm tauri android build --config app/src-tauri/tauri.conf.json --target aarch64 armv7 i686 --apk --aab --split-per-abi
+        run: |
+          # The `tauri` script lives in app/package.json (not the root),
+          # so the android build must run from app/.
+          cd app
+          pnpm tauri android build --config src-tauri/tauri.conf.json --target aarch64 armv7 i686 --apk --aab --split-per-abi
 
       - name: Prepare Android ABI artifacts
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
@@ -311,6 +315,8 @@ jobs:
           done < <(find app/src-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk" -print0)
 
           find app/src-tauri/gen/android/app/build/outputs/bundle -type f -name "*.aab" -exec cp {} dist/android/aab/ \;
+
+          ls -lahR dist/android
 
           ls -lahR dist/android
 
