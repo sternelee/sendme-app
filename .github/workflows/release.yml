@@ -62,6 +62,15 @@ jobs:
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release
+          # Stage a renamed copy that the upload step's path resolves to.
+          # The artifact_name is what cargo built; the asset_name is what we
+          # want the GitHub artifact (and any download from `install.sh`)
+          # to be named. Without this copy the upload path doesn't exist.
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "${{ matrix.artifact_name }}" "${{ matrix.asset_name }}.exe"
+          else
+            cp "${{ matrix.artifact_name }}" "${{ matrix.asset_name }}"
+          fi
           # Create properly named archive for install.sh
           if [ "${{ runner.os }}" = "Windows" ]; then
             7z a -tzip "../../../dist/sendme-cli-${{ github.ref_name }}-${{ matrix.target }}.zip" "${{ matrix.artifact_name }}" 2>/dev/null || zip -j "../../../dist/sendme-cli-${{ github.ref_name }}-${{ matrix.target }}.zip" "${{ matrix.artifact_name }}"
