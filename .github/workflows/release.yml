@@ -273,11 +273,11 @@ jobs:
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         shell: bash
         run: |
-          # The directory is created later by `pnpm tauri android build`,
-          # but keystore.properties must live there before gradle runs. Create
-          # it here so this step doesn't depend on build-ordering.
-          mkdir -p app/gen/android
-          cd app/gen/android
+          # The android project is committed under app/src-tauri/gen/android/
+          # (not app/gen/android/), so this step can run before the tauri
+          # build generates anything. Drop keystore.properties + the keystore
+          # file where gradle will pick them up.
+          cd app/src-tauri/gen/android
           {
             printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
             printf 'password=%s\n' "$ANDROID_KEY_PASSWORD"
@@ -287,7 +287,7 @@ jobs:
 
       - name: Build Android app (APK + AAB)
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
-        run: pnpm tauri android build --config app/tauri.conf.json --target aarch64 armv7 i686 --apk --aab --split-per-abi
+        run: pnpm tauri android build --config app/src-tauri/tauri.conf.json --target aarch64 armv7 i686 --apk --aab --split-per-abi
 
       - name: Prepare Android ABI artifacts
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
@@ -308,9 +308,11 @@ jobs:
             elif [[ "$lower_name" == *"x86"* || "$lower_name" == *"i686"* ]]; then
               cp "$apk" "dist/android/i686/sendme_android-i686.apk"
             fi
-          done < <(find app/gen/android/app/build/outputs/apk -type f -name "*.apk" -print0)
+          done < <(find app/src-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk" -print0)
 
-          find app/gen/android/app/build/outputs/bundle -type f -name "*.aab" -exec cp {} dist/android/aab/ \;
+          find app/src-tauri/gen/android/app/build/outputs/bundle -type f -name "*.aab" -exec cp {} dist/android/aab/ \;
+
+          ls -lahR dist/android
 
           ls -lahR dist/android
 
