@@ -46,6 +46,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}-${{ github.ref }}
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -111,6 +116,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}-${{ github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -200,6 +210,12 @@ jobs:
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: actions/checkout@v4
 
+      - name: Cache cargo dependencies
+        if: steps.check-secrets.outputs.has_android_secrets == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ github.workflow }}-${{ github.ref }}
+
       - name: Setup pnpm
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: pnpm/action-setup@v4
@@ -257,6 +273,10 @@ jobs:
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         shell: bash
         run: |
+          # The directory is created later by `pnpm tauri android build`,
+          # but keystore.properties must live there before gradle runs. Create
+          # it here so this step doesn't depend on build-ordering.
+          mkdir -p app/gen/android
           cd app/gen/android
           {
             printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
