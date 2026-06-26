@@ -8,6 +8,7 @@ categories = ["network-programming"]
 license.workspace = true
 repository.workspace = true
 description = "Library for sending files over the network with NAT hole punching"
+build = "build.rs"
 
 [dependencies]
 iroh.workspace = true

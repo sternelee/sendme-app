@@ -3437,7 +3437,7 @@ fn linux_desktop_integration_path() -> Result<std::path::PathBuf, String> {
 /// Write HKCU registry keys for "Send with Sendme" on Windows.
 #[cfg(target_os = "windows")]
 fn windows_register_context_menu(exe_path: &str) -> Result<(), String> {
-    use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ};
+    use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let base = r"Software\Classes";

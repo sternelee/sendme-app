@@ -81,26 +81,60 @@ pub fn apply_options(addr: &mut iroh::EndpointAddr, opts: AddrInfoOptions) {
 /// Environment variable used to override the default relay URL.
 pub const SENDME_RELAY_URL_ENV: &str = "SENDME_RELAY_URL";
 
-/// Resolve a custom relay URL from the environment.
+/// Build-time companion to [`SENDME_RELAY_URL_ENV`]. Populated by
+/// `lib/build.rs` when the same env var is set during compilation, so a
+/// packaged binary can ship with a non-default relay baked in. Runtime
+/// `SENDME_RELAY_URL` still wins if both are present.
+pub const SENDME_BUILTIN_RELAY_URL_ENV: &str = "SENDME_BUILTIN_RELAY_URL";
+
+/// Resolve a custom relay URL.
 ///
-/// Reads [`SENDME_RELAY_URL_ENV`]. If it is set to a non-empty value, the value
-/// is parsed as an [`iroh::RelayUrl`]. Invalid values are logged and ignored so
-/// that a typo in the environment does not break transfers.
+/// Priority: runtime [`SENDME_RELAY_URL_ENV`] > build-time
+/// `SENDME_BUILTIN_RELAY_URL` (set via `lib/build.rs` from
+/// [`SENDME_RELAY_URL_ENV`] at compile time) > `None` (caller falls back to
+/// iroh's official relay set). Invalid values at either tier are logged and
+/// skipped — a typo in the environment never breaks transfers.
 pub fn resolve_relay_url() -> Option<RelayUrl> {
-    std::env::var(SENDME_RELAY_URL_ENV)
+    runtime_relay_url().or_else(build_time_relay_url)
+}
+
+fn runtime_relay_url() -> Option<RelayUrl> {
+    let raw = std::env::var(SENDME_RELAY_URL_ENV)
         .ok()
-        .filter(|s| !s.trim().is_empty())
-        .and_then(|s| match RelayUrl::from_str(&s) {
-            Ok(url) => Some(url),
-            Err(e) => {
-                tracing::warn!(
-                    value = %s,
-                    error = %e,
-                    "ignoring invalid {SENDME_RELAY_URL_ENV} env var"
-                );
-                None
-            }
-        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())?;
+    match RelayUrl::from_str(&raw) {
+        Ok(url) => Some(url),
+        Err(e) => {
+            tracing::warn!(
+                value = %raw,
+                error = %e,
+                "ignoring invalid {SENDME_RELAY_URL_ENV} env var"
+            );
+            None
+        }
+    }
+}
+
+fn build_time_relay_url() -> Option<RelayUrl> {
+    // `option_env!` requires a string literal — the env-var name is hard-coded
+    // here even though `SENDME_BUILTIN_RELAY_URL_ENV` is the documented name.
+    // Keep the two in sync if either ever changes.
+    let raw = option_env!("SENDME_BUILTIN_RELAY_URL")?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    match RelayUrl::from_str(raw) {
+        Ok(url) => Some(url),
+        Err(e) => {
+            tracing::warn!(
+                value = %raw,
+                error = %e,
+                "ignoring invalid {SENDME_BUILTIN_RELAY_URL_ENV} (set at build time)"
+            );
+            None
+        }
+    }
 }
 
 /// Relay mode configuration.
@@ -258,4 +292,42 @@ pub struct ReceiveResult {
     pub payload_size: u64,
     /// Statistics about the transfer.
     pub stats: iroh_blobs::get::Stats,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Runtime env var with a valid URL wins. Build-time fallback is only
+    /// reachable when no runtime value is set, which requires a build with
+    /// SENDME_RELAY_URL set — covered by manual `cargo build` smoke.
+    #[test]
+    fn resolve_uses_runtime_over_default() {
+        // SAFETY: test-only mutation of process env.
+        let prior = std::env::var(SENDME_RELAY_URL_ENV).ok();
+        let url = "https://relay.test.example.com";
+        // SAFETY: test-only mutation of process env.
+        std::env::set_var(SENDME_RELAY_URL_ENV, url);
+        let resolved = resolve_relay_url().expect("valid URL should resolve");
+        // RelayUrl normalizes (e.g. trailing slash), compare parsed form.
+        let expected: RelayUrl = url.parse().unwrap();
+        assert_eq!(resolved, expected);
+        match prior {
+            Some(v) => std::env::set_var(SENDME_RELAY_URL_ENV, v),
+            None => std::env::remove_var(SENDME_RELAY_URL_ENV),
+        }
+    }
+
+    #[test]
+    fn resolve_ignores_empty_and_invalid_runtime() {
+        let prior = std::env::var(SENDME_RELAY_URL_ENV).ok();
+        std::env::set_var(SENDME_RELAY_URL_ENV, "");
+        assert!(resolve_relay_url().is_none());
+        std::env::set_var(SENDME_RELAY_URL_ENV, "not a url at all");
+        assert!(resolve_relay_url().is_none());
+        match prior {
+            Some(v) => std::env::set_var(SENDME_RELAY_URL_ENV, v),
+            None => std::env::remove_var(SENDME_RELAY_URL_ENV),
+        }
+    }
 }

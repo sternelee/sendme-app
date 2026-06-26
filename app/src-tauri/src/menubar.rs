@@ -1,4 +1,9 @@
-//! System tray functionality for desktop platforms
+//! System tray functionality for desktop platforms.
+//!
+//! The tray itself works on macOS, Linux, and Windows. The Dock
+//! activation-policy tweaks (`set_activation_policy` + `ActivationPolicy::*`)
+//! are macOS-only — they fall through as no-ops on other platforms via the
+//! `#[cfg(target_os = "macos")]` gates below.
 
 use tauri::{
     image::Image,
@@ -24,12 +29,14 @@ pub fn create_tray(app_handle: &AppHandle) -> tauri::Result<TrayIcon> {
         .on_menu_event(|app_handle, event| match event.id.as_ref() {
             "show" => {
                 if let Some(window) = app_handle.get_webview_window("main") {
+                    #[cfg(target_os = "macos")]
                     let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
             }
             "hide" => {
+                #[cfg(target_os = "macos")]
                 let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
                 if let Some(window) = app_handle.get_webview_window("main") {
                     let _ = window.hide();
@@ -46,6 +53,7 @@ pub fn create_tray(app_handle: &AppHandle) -> tauri::Result<TrayIcon> {
             if let TrayIconEvent::Click { button_state, .. } = event {
                 if button_state == MouseButtonState::Up {
                     if let Some(window) = app_handle.get_webview_window("main") {
+                        #[cfg(target_os = "macos")]
                         let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
                         let _ = window.show();
                         let _ = window.set_focus();
