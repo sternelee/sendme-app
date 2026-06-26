@@ -36,7 +36,7 @@ export type Theme =
   | "synthwave"
   | "abyss"
   | "luxury";
-export type Tab = "transfer" | "history" | "settings";
+export type Tab = "transfer" | "history" | "settings" | "peersync";
 export type ShareSubTab = "nearby" | "devices" | "friends";
 export type TransferMode = "send" | "receive" | "text";
 export type TransferRoutingPolicy = "auto" | "local_only" | "remote_only";

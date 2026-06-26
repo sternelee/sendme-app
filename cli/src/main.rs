@@ -1004,7 +1004,7 @@ async fn run_peer_sync_engine(event_handler: tui::EventHandler) {
     };
 
     let engine =
-        match peersync::engine::SyncEngine::start(config, Some(config_dir), Some(data_dir), state)
+        match peersync::engine::SyncEngine::start(config, Some(config_dir), Some(data_dir), state, None)
             .await
         {
             Ok(e) => e,
@@ -1041,14 +1041,23 @@ async fn run_peer_sync_gc(event_handler: tui::EventHandler, dry_run: bool) {
     let data_dir = config::peersync_data_dir();
     let retention_days = 30;
 
-    match tokio::task::spawn_blocking(move || {
-        let config = peersync::config::load_config(Some(&config_dir)).unwrap_or_default();
-        let history = peersync::history::History::open(Some(&config_dir), Some(&data_dir))?;
-        peersync::gc::run_gc(&config, &history, retention_days, dry_run)
-    })
-    .await
-    {
-        Ok(Ok(report)) => {
+    // Config + History open are sync (small file reads + sqlite open).
+    // GC is rare and user-triggered, so brief blocking is acceptable.
+    let config = peersync::config::load_config(Some(&config_dir)).unwrap_or_default();
+    let history = match peersync::history::History::open(Some(&config_dir), Some(&data_dir)) {
+        Ok(h) => h,
+        Err(e) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "GC failed: {}",
+                e
+            )));
+            return;
+        }
+    };
+    let result = peersync::gc::run_gc(&config, &history, retention_days, dry_run).await;
+
+    match result {
+        Ok(report) => {
             let prefix = if dry_run { "Would remove" } else { "Removed" };
             event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
                 "{} {} conflict(s), {} tombstone(s), {} history record(s)",
@@ -1058,7 +1067,7 @@ async fn run_peer_sync_gc(event_handler: tui::EventHandler, dry_run: bool) {
                 report.history_records_pruned
             )));
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
                 "GC failed: {}",
                 e

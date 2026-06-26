@@ -480,3 +480,162 @@ export async function set_context_menu_enabled(
 export async function get_context_menu_diagnostics(): Promise<string> {
   return await invoke("get_context_menu_diagnostics");
 }
+
+// ---------------------------------------------------------------------------
+// PeerSync types + commands
+// ---------------------------------------------------------------------------
+
+export interface PeerSyncTargetConfig {
+  src: string;
+  ignore: string[];
+}
+
+export interface PeerSyncConfig {
+  device_name: string;
+  sync_targets: Record<string, PeerSyncTargetConfig>;
+}
+
+export type PeerSyncAction =
+  | "local_upload"
+  | "remote_apply"
+  | "remote_delete"
+  | "conflict_backup"
+  | "tombstone_published"
+  | "sync_completed"
+  | "neighbor_up"
+  | "neighbor_down";
+
+export interface PeerSyncSyncRecord {
+  timestamp_ms: number;
+  device_name: string;
+  node_id: string;
+  target_key: string;
+  relative_path: string;
+  action: PeerSyncAction;
+  file_hash: string | null;
+  size: number | null;
+  updated_at_ms: number | null;
+  details: string | null;
+}
+
+export interface PeerSyncPeerDisplay {
+  node_id: string;
+  online: boolean;
+  first_seen_ms: number;
+  last_seen_ms: number;
+}
+
+export interface PeerSyncTargetStatus {
+  key: string;
+  src: string;
+  file_count: number;
+  last_sync_ms: number | null;
+  has_conflicts: boolean;
+}
+
+export interface PeerSyncEventDisplay {
+  timestamp_ms: number;
+  action: string;
+  target_key: string;
+  relative_path: string;
+  device_name: string;
+  details: string | null;
+}
+
+export interface PeerSyncConflictFile {
+  target_key: string;
+  relative_path: string;
+  path: string;
+}
+
+export interface PeerSyncStatusInfo {
+  device_name: string;
+  namespace_id: string | null;
+  author_id: string | null;
+  online_peers: PeerSyncPeerDisplay[];
+  targets: PeerSyncTargetStatus[];
+  recent_events: PeerSyncEventDisplay[];
+  conflict_files: PeerSyncConflictFile[];
+}
+
+export interface PeerSyncStatusPayload {
+  engineRunning: boolean;
+  ticket: string | null;
+  status: PeerSyncStatusInfo;
+}
+
+export interface PeerSyncGcReport {
+  conflict_backups_removed: string[];
+  tombstones_pruned: number;
+  history_records_pruned: number;
+}
+
+export async function peersync_get_config(): Promise<PeerSyncConfig> {
+  return await invoke("peersync_get_config");
+}
+
+export async function peersync_save_config(config: PeerSyncConfig): Promise<void> {
+  return await invoke("peersync_save_config", { config });
+}
+
+export async function peersync_add_target(
+  label: string,
+  src: string,
+): Promise<PeerSyncConfig> {
+  return await invoke("peersync_add_target", { label, src });
+}
+
+export async function peersync_start(): Promise<void> {
+  return await invoke("peersync_start");
+}
+
+export async function peersync_stop(): Promise<void> {
+  return await invoke("peersync_stop");
+}
+
+export async function peersync_get_ticket(): Promise<string | null> {
+  return await invoke("peersync_get_ticket");
+}
+
+export async function peersync_link_device(ticket: string): Promise<string> {
+  return await invoke("peersync_link_device", { ticket });
+}
+
+export async function peersync_get_status(): Promise<PeerSyncStatusPayload> {
+  return await invoke("peersync_get_status");
+}
+
+export async function peersync_get_history(
+  limit?: number,
+): Promise<PeerSyncSyncRecord[]> {
+  return await invoke("peersync_get_history", { limit });
+}
+
+export async function peersync_run_gc(
+  retentionDays: number,
+  dryRun: boolean,
+): Promise<PeerSyncGcReport> {
+  return await invoke("peersync_run_gc", { retentionDays, dryRun });
+}
+
+export type PeerSyncConflictAction = "delete_backup" | "restore_from_backup";
+
+export async function peersync_resolve_conflict(
+  targetKey: string,
+  relativePath: string,
+  action: PeerSyncConflictAction,
+): Promise<void> {
+  return await invoke("peersync_resolve_conflict", {
+    targetKey,
+    relativePath,
+    action,
+  });
+}
+
+// Tagged union for events emitted on the "peersync-event" tauri channel.
+// The backend's peersync::events::EngineEvent serializes with #[serde(tag = "type", rename_all = "snake_case")].
+export type PeerSyncEngineEvent =
+  | { type: "logged"; record: PeerSyncSyncRecord }
+  | { type: "stopped" }
+  | { type: "warning"; message: string }
+  | { type: "status_refresh" };

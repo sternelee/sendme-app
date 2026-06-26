@@ -28,6 +28,9 @@ dirs = "6"
 notify = "6.1"
 notify-debouncer-mini = "0.4"
 
+# Glob matching for ignore patterns
+globset = "0.4"
+
 # Serialization / config
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }

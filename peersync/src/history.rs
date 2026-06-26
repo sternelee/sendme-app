@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::store::{db_path, Store};
 
 /// Action type for a sync history record.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SyncAction {
     LocalUpload,
     RemoteApply,
@@ -46,7 +47,7 @@ impl SyncAction {
 }
 
 /// A single audit log record.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncRecord {
     pub timestamp_ms: u64,
     pub device_name: String,

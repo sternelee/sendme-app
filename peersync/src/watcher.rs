@@ -7,6 +7,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::config::{expand_path, TargetConfig};
+use crate::fs::IgnoreSet;
 
 /// A filesystem change event relevant to sync.
 #[derive(Debug, Clone)]
@@ -32,12 +33,23 @@ pub struct TargetWatcher {
 
 impl TargetWatcher {
     /// Start watching all configured targets.
-    pub fn start(targets: &HashMap<String, TargetConfig>) -> Result<Self> {
+    ///
+    /// `ignore_sets` must contain a compiled [`IgnoreSet`] for every target
+    /// in `targets`; pass [`IgnoreSet::empty`] for targets without ignore
+    /// patterns. Missing keys are treated as "no ignore" — the file is
+    /// always considered for sync.
+    pub fn start(
+        targets: &HashMap<String, TargetConfig>,
+        ignore_sets: &HashMap<String, IgnoreSet>,
+    ) -> Result<Self> {
         let (tx, rx) = mpsc::channel(256);
         let targets_for_closure = targets.clone();
+        let ignore_sets_for_closure = ignore_sets.clone();
 
         let mut debouncer = new_debouncer(Duration::from_millis(300), move |result| {
-            if let Err(e) = handle_debounced_events(result, &targets_for_closure, &tx) {
+            if let Err(e) =
+                handle_debounced_events(result, &targets_for_closure, &ignore_sets_for_closure, &tx)
+            {
                 tracing::warn!(error = %e, "watcher event handling failed");
             }
         })
@@ -76,6 +88,7 @@ impl TargetWatcher {
 fn handle_debounced_events(
     result: notify_debouncer_mini::DebounceEventResult,
     targets: &HashMap<String, TargetConfig>,
+    ignore_sets: &HashMap<String, IgnoreSet>,
     tx: &mpsc::Sender<Vec<FsEvent>>,
 ) -> Result<()> {
     let events = result.context("debouncer error")?;
@@ -87,7 +100,10 @@ fn handle_debounced_events(
             let src = expand_path(&target.src)?;
             if let Some(rel) = path.strip_prefix(&src).ok().and_then(|p| p.to_str()) {
                 let rel = rel.replace('\\', "/");
-                if crate::fs::is_ignored(&rel, &target.ignore) {
+                if ignore_sets
+                    .get(target_key)
+                    .map_or(false, |s| s.matches(&rel))
+                {
                     continue;
                 }
                 let kind = match event.kind {

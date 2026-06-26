@@ -11,7 +11,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { listen } from "@tauri-apps/api/event";
 
 import { Motion, Presence } from "solid-motionone";
-import { Send, History, Settings, X } from "lucide-solid";
+import { Send, History, Settings, X, RefreshCw } from "lucide-solid";
 import { Toaster, toast } from "solid-sonner";
 import { i18n } from "@sendme/shared";
 
@@ -25,6 +25,7 @@ import type { PendingReceiveCard } from "~/lib/transfer-ui";
 import { SplashScreen } from "~/lib/components/SplashScreen";
 import { TransferTab } from "~/components/TransferTab";
 import { SettingsPanel } from "~/components/SettingsPanel";
+import { PeerSyncTab } from "~/components/PeerSyncTab";
 import {
   get_file_size,
   get_transfers,
@@ -38,6 +39,8 @@ import {
   type IncomingRequest,
   type NearbyTransferState,
   type CloudTicket,
+  type PeerSyncSyncRecord,
+  peersync_get_status,
   get_transport_routing_policy,
   set_transport_routing_policy,
 } from "~/bindings";
@@ -495,6 +498,37 @@ export default function MainPage() {
       setActiveTab("settings");
     });
 
+    // PeerSync engine events from the backend broadcast channel. Keep the
+    // store in sync without a full refetch on every tick.
+    const unlistenPeerSync = await listen<{
+      type: "logged" | "stopped" | "warning" | "status_refresh";
+      record?: PeerSyncSyncRecord;
+      message?: string;
+    }>("peersync-event", (event) => {
+      const ev = event.payload;
+      if (ev.type === "logged" && ev.record) {
+        globalStore.peerSync.appendLog(ev.record);
+      } else if (ev.type === "stopped") {
+        globalStore.peerSync.setEngineRunning(false);
+      } else if (ev.type === "warning" && ev.message) {
+        globalStore.peerSync.setLastError(ev.message);
+        toast.warning(`PeerSync: ${ev.message}`);
+      }
+      // status_refresh is also emitted as a no-payload signal on a
+      // separate event name so the frontend can re-fetch status without
+      // parsing the full event envelope.
+    });
+
+    const unlistenPeerSyncRefresh = await listen("peersync-status-refresh", () => {
+      peersync_get_status()
+        .then((s) => {
+          globalStore.peerSync.setStatus(s.status);
+          globalStore.peerSync.setEngineRunning(s.engineRunning);
+          if (s.ticket) globalStore.peerSync.setTicket(s.ticket);
+        })
+        .catch((e) => debugError("peersync-refresh", "status refresh failed", e));
+    });
+
     const unlistenDockFile = await listen<string>(
       "dock-file-opened",
       async (event) => {
@@ -534,6 +568,8 @@ export default function MainPage() {
       unlistenProgress();
       unlistenShowSettings();
       unlistenDockFile();
+      unlistenPeerSync();
+      unlistenPeerSyncRefresh();
       stop_nearby_discovery().catch(() => {});
     });
   });
@@ -597,6 +633,15 @@ export default function MainPage() {
               >
                 {t("common.settings")}
               </Motion.button>
+              <Motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                class={`btn btn-sm rounded-md ${activeTab() === "peersync" ? "btn-primary" : "btn-ghost"}`}
+                onClick={() => handleTabChange("peersync")}
+              >
+                <RefreshCw size={12} />
+                {t("common.peersync")}
+              </Motion.button>
             </div>
           </div>
         </header>
@@ -655,6 +700,17 @@ export default function MainPage() {
                 class="space-y-4"
               >
                 <SettingsPanel />
+              </Motion.div>
+            </Match>
+
+            <Match when={activeTab() === "peersync"}>
+              <Motion.div
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                class="space-y-4"
+              >
+                <PeerSyncTab />
               </Motion.div>
             </Match>
           </Switch>
@@ -732,6 +788,14 @@ export default function MainPage() {
           >
             <Settings size={24} />
             <span>{t("common.settings")}</span>
+          </Motion.button>
+          <Motion.button
+            whileTap={{ scale: 0.9 }}
+            class={`dock-label ${activeTab() === "peersync" ? "active" : ""}`}
+            onClick={() => handleTabChange("peersync")}
+          >
+            <RefreshCw size={24} />
+            <span>{t("common.peersync")}</span>
           </Motion.button>
         </nav>
       </Show>

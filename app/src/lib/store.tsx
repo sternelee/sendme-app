@@ -11,6 +11,9 @@ import type {
   IncomingRequest,
   TransferProgress,
   CloudTicket,
+  PeerSyncConfig,
+  PeerSyncStatusInfo,
+  PeerSyncSyncRecord,
 } from "~/bindings";
 
 export interface SendState {
@@ -145,6 +148,18 @@ interface GlobalStore {
     setError: (error: string | null) => void;
     reset: () => void;
   };
+  peerSync: {
+    state: Accessor<PeerSyncState>;
+    setStatus: (status: PeerSyncStatusInfo | null) => void;
+    setTicket: (ticket: string | null) => void;
+    setEngineRunning: (running: boolean) => void;
+    setBusy: (busy: boolean) => void;
+    setLastError: (error: string | null) => void;
+    setConfig: (config: PeerSyncConfig | null) => void;
+    appendLog: (record: PeerSyncSyncRecord) => void;
+    clearLog: () => void;
+    reset: () => void;
+  };
 }
 
 const defaultSendState: SendState = {
@@ -186,6 +201,29 @@ const defaultNearbyReceiveState: NearbyReceiveState = {
   error: null,
 };
 
+/** Cap on how many recent log records we keep in memory for the UI. */
+export const LOG_TAIL_LIMIT = 50;
+
+export interface PeerSyncState {
+  status: PeerSyncStatusInfo | null;
+  ticket: string | null;
+  engineRunning: boolean;
+  log: PeerSyncSyncRecord[];
+  lastError: string | null;
+  busy: boolean;
+  config: PeerSyncConfig | null;
+}
+
+const defaultPeerSyncState: PeerSyncState = {
+  status: null,
+  ticket: null,
+  engineRunning: false,
+  log: [],
+  lastError: null,
+  busy: false,
+  config: null,
+};
+
 const defaultCloudReceiveState: CloudReceiveState = {
   tickets: [],
   currentTicket: null,
@@ -214,6 +252,9 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
     createStore<CloudReceiveState>({
       ...defaultCloudReceiveState,
     });
+  const [peerSyncState, setPeerSyncState] = createStore<PeerSyncState>({
+    ...defaultPeerSyncState,
+  });
 
   const store: GlobalStore = {
     send: {
@@ -323,6 +364,24 @@ export const GlobalStoreProvider: ParentComponent = (props) => {
         setCloudReceiveState("transferProgress", progress),
       setError: (error) => setCloudReceiveState("error", error),
       reset: () => setCloudReceiveState(defaultCloudReceiveState),
+    },
+    peerSync: {
+      state: () => peerSyncState,
+      setStatus: (status) => setPeerSyncState("status", status),
+      setTicket: (ticket) => setPeerSyncState("ticket", ticket),
+      setEngineRunning: (running) => setPeerSyncState("engineRunning", running),
+      setBusy: (busy) => setPeerSyncState("busy", busy),
+      setLastError: (error) => setPeerSyncState("lastError", error),
+      setConfig: (config) => setPeerSyncState("config", config),
+      appendLog: (record) =>
+        setPeerSyncState("log", (prev) => {
+          const next = [...prev, record];
+          return next.length > LOG_TAIL_LIMIT
+            ? next.slice(next.length - LOG_TAIL_LIMIT)
+            : next;
+        }),
+      clearLog: () => setPeerSyncState("log", []),
+      reset: () => setPeerSyncState(defaultPeerSyncState),
     },
   };
 

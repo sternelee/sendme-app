@@ -1,5 +1,6 @@
 pub mod config;
 pub mod engine;
+pub mod events;
 pub mod fs;
 pub mod gc;
 pub mod history;

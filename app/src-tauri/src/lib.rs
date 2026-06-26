@@ -61,6 +61,8 @@ use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_fs::FsExt;
 use tauri_plugin_notification::NotificationExt;
+
+mod peersync;
 use tauri_plugin_opener::OpenerExt;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -3764,6 +3766,13 @@ pub fn run() {
             });
         })
         .setup(move |app| {
+            // Initialize peersync runtime once the app handle is available.
+            // The forwarder join handle lives for the app lifetime; drop it.
+            let (peersync_state, _peersync_forwarder): (
+                peersync::PeerSyncState,
+                tauri::async_runtime::JoinHandle<()>,
+            ) = peersync::new_state(&app.app_handle().clone())?;
+
             // Store transfers in app state
             app.manage(transfers.clone());
             app.manage(receive_history.clone());
@@ -3772,6 +3781,7 @@ pub fn run() {
             app.manage(cloud_presence.clone());
             app.manage(android_foreground.clone());
             app.manage(routing_policy.clone());
+            app.manage(peersync_state.clone());
             // Store pending CLI file path (Windows/Linux "Open With" / context menu)
             app.manage(pending_file.clone());
 
@@ -3945,6 +3955,18 @@ pub fn run() {
             menubar_cmd::show_menubar_panel,
             #[cfg(target_os = "macos")]
             menubar_cmd::hide_menubar_panel,
+            // PeerSync commands
+            peersync::peersync_get_config,
+            peersync::peersync_save_config,
+            peersync::peersync_add_target,
+            peersync::peersync_start,
+            peersync::peersync_stop,
+            peersync::peersync_get_ticket,
+            peersync::peersync_link_device,
+            peersync::peersync_get_status,
+            peersync::peersync_get_history,
+            peersync::peersync_run_gc,
+            peersync::peersync_resolve_conflict,
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application");
