@@ -137,8 +137,9 @@ pub async fn peersync_save_config(
 /// Add a single target to the config. Validates that `src` expands to an
 /// existing directory, generates a unique label if the supplied one
 /// collides, and persists the resulting config. Returns the updated config.
-///
-/// Used by the drag-and-drop flow on the frontend.
+/// Add a single target to the config. Validates that `src` expands to an
+/// existing directory, generates a unique label if the supplied one
+/// collides, and persists the resulting config. Returns the updated config.
 #[tauri::command]
 pub async fn peersync_add_target(
     state: tauri::State<'_, PeerSyncState>,
@@ -167,16 +168,18 @@ pub async fn peersync_add_target(
             .to_string();
     }
     let mut final_label = candidate.clone();
-    for n in 2..=1000 {
-        if !guard.config.targets.contains_key(&final_label) {
-            break;
-        }
-        final_label = format!("{candidate}-{n}");
-        if n == 1000 {
-            return Err(format!(
-                "could not find a free label based on '{}' after 1000 tries",
-                candidate
-            ));
+    if guard.config.targets.contains_key(&final_label) {
+        for n in 2..=1000 {
+            final_label = format!("{candidate}-{n}");
+            if !guard.config.targets.contains_key(&final_label) {
+                break;
+            }
+            if n == 1000 {
+                return Err(format!(
+                    "could not find a free label based on '{}' after {} tries",
+                    candidate, n
+                ));
+            }
         }
     }
 

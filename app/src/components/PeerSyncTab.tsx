@@ -249,29 +249,42 @@ export function PeerSyncTab() {
   async function handleDropPaths(paths: string[]) {
     if (paths.length === 0) return;
     triggerHaptic("light");
-    globalStore.peerSync.setBusy(true);
     const added: string[] = [];
     const failed: { path: string; error: string }[] = [];
+    let finalCfg: PeerSyncConfig | null = null;
     try {
-      // Optimistically use the path's basename as the label; the backend
-      // resolves collisions by appending -2, -3, ...
-      for (const path of paths) {
-        const basename = path.split(/[\\/]/).pop() || path;
-        try {
-          const cfg = await peersync_add_target(basename, path);
-          globalStore.peerSync.setConfig(cfg);
-          added.push(basename);
-        } catch (e) {
-          failed.push({ path, error: String(e) });
+      globalStore.peerSync.setBusy(true);
+      // Backend resolves label collisions by appending -2, -3, ... so each
+      // call's returned cfg contains the cumulative state. Parallelize to
+      // pipeline disk writes; per-call try/catch isolates one bad path.
+      const results = await Promise.all(
+        paths.map(async (path) => {
+          const basename = path.split(/[\\/]/).pop() || path;
+          try {
+            const cfg = await peersync_add_target(basename, path);
+            return { ok: true, basename, cfg } as const;
+          } catch (e) {
+            return { ok: false, path, basename, error: String(e) } as const;
+          }
+        }),
+      );
+      for (const r of results) {
+        if (r.ok) {
+          added.push(r.basename);
+          finalCfg = r.cfg;
+        } else {
+          failed.push({ path: r.path, error: r.error });
         }
       }
+      if (finalCfg) globalStore.peerSync.setConfig(finalCfg);
       if (added.length > 0) {
         toast.success(
           `Added ${added.length} target${added.length === 1 ? "" : "s"}`,
         );
       }
       for (const f of failed) {
-        toast.error(`Skipped ${f.path}: ${f.error}`);
+        const name = f.path.split(/[\\/]/).pop() || f.path;
+        toast.error(`Skipped ${name}: ${f.error}`);
       }
     } finally {
       globalStore.peerSync.setBusy(false);
@@ -282,15 +295,24 @@ export function PeerSyncTab() {
   // into the targets list — non-directory paths are rejected by the backend.
   onMount(() => {
     let unlisten: (() => void) | undefined;
+    let unmounted = false;
     void (async () => {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const win = getCurrentWindow();
+        // If the component unmounted before the dynamic import + listener
+        // registration resolved, bail without keeping a dangling subscription.
+        if (unmounted) return;
         unlisten = await win.onDragDropEvent(
           (event: { payload: { type: string; paths?: string[] } }) => {
+            if (unmounted) return;
             const { type, paths } = event.payload;
-            if (type === "enter" || type === "over") {
+            // `over` events have no `paths` — only update dragging state, keep
+            // the count from `enter` so the overlay's "N items ready" stays put.
+            if (type === "enter") {
               setDragCount(paths?.length ?? 0);
+              setIsDragging(true);
+            } else if (type === "over") {
               setIsDragging(true);
             } else if (type === "leave") {
               setIsDragging(false);
@@ -307,7 +329,10 @@ export function PeerSyncTab() {
         // drag-drop. The rest of the UI still works via the manual form.
       }
     })();
-    onCleanup(() => unlisten?.());
+    onCleanup(() => {
+      unmounted = true;
+      unlisten?.();
+    });
   });
 
   return (
@@ -655,7 +680,7 @@ function TargetsCard(props: {
   return (
     <div class="card border-base-300 bg-base-100 relative border">
       <Show when={props.isDragging}>
-        <div class="bg-primary/10 border-primary absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg border-2 border-dashed backdrop-blur-sm">
+        <div class="bg-primary/10 border-primary pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg border-2 border-dashed backdrop-blur-sm">
           <FolderPlus size={40} class="text-primary mb-2" />
           <p class="text-primary text-sm font-semibold">
             Drop to add as sync targets

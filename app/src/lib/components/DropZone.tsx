@@ -28,6 +28,10 @@ export const DropZone: Component<DropZoneProps> = (props) => {
   const [isDragover, setIsDragover] = createSignal(false);
   const [isDesktop, setIsDesktop] = createSignal(false);
   let unlisten: (() => void) | undefined;
+  // Set by onCleanup; checked in the async listener registration below to
+  // bail if the component unmounted before the dynamic import + listener
+  // registration resolved, and in the listener callback to drop late events.
+  let unmounted = false;
 
   onMount(() => {
     // Detect platform and only enable drag-drop on desktop
@@ -42,8 +46,12 @@ export const DropZone: Component<DropZoneProps> = (props) => {
         // Tauri v2 window-level drag-drop events (desktop only)
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const window = getCurrentWindow();
+        // Bail if the component unmounted before the dynamic import + listener
+        // registration resolved; otherwise the closure leaks past the cleanup.
+        if (unmounted) return;
         unlisten = await window.onDragDropEvent(
           async (event: { payload: { type: string; paths?: string[] } }) => {
+            if (unmounted) return;
             const { type, paths } = event.payload;
             if (type === "over" || type === "enter") {
               setIsDragover(true);
@@ -77,6 +85,7 @@ export const DropZone: Component<DropZoneProps> = (props) => {
   });
 
   onCleanup(() => {
+    unmounted = true;
     unlisten?.();
   });
 
