@@ -522,6 +522,35 @@ impl App {
         }
     }
 
+    /// Handle a bracketed paste event — inject text into the active input field.
+    pub fn handle_paste(&mut self, text: &str) {
+        // Sanitize: collapse newlines/tabs into spaces, then trim.
+        let cleaned: String = text
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect();
+        let cleaned = cleaned.trim();
+        if cleaned.is_empty() {
+            return;
+        }
+
+        match self.current_tab {
+            Tab::Send if self.send_tab_state == SendTabState::Input => {
+                self.send_input_path.push_str(cleaned);
+            }
+            Tab::Receive => {
+                self.receive_input_ticket.push_str(cleaned);
+            }
+            Tab::PeerSync if self.peer_sync_link_mode => {
+                self.peer_sync_link_input.push_str(cleaned);
+            }
+            Tab::PeerSync if self.peer_sync_section == PeerSyncSection::Targets => {
+                self.peer_sync_target_input.push_str(cleaned);
+            }
+            _ => {}
+        }
+    }
+
     /// Handle key events in the send tab.
     fn handle_send_tab_key(&mut self, key: crossterm::event::KeyEvent) {
         match self.send_tab_state {

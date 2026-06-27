@@ -7,7 +7,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{
+        DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -445,7 +447,12 @@ async fn run_tui() -> Result<()> {
     let backend = tokio::task::spawn_blocking(|| {
         enable_raw_mode()?;
         let mut stdout = std::io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            EnableBracketedPaste
+        )?;
         Ok::<_, anyhow::Error>(CrosstermBackend::new(stdout))
     })
     .await??;
@@ -559,6 +566,9 @@ async fn run_tui() -> Result<()> {
             // Process all pending events (non-blocking)
             loop {
                 match event_rx.try_recv() {
+                    Ok(tui::event::AppEvent::Paste(text)) => {
+                        app.handle_paste(&text);
+                    }
                     Ok(tui::event::AppEvent::Input(key)) => {
                         app.handle_key(key);
 
@@ -921,7 +931,8 @@ async fn run_tui() -> Result<()> {
         execute!(
             terminal.backend_mut(),
             LeaveAlternateScreen,
-            DisableMouseCapture
+            DisableMouseCapture,
+            DisableBracketedPaste
         )?;
         terminal.show_cursor()?;
 

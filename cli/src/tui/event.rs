@@ -10,6 +10,8 @@ use std::time::Duration;
 pub enum AppEvent {
     /// Input event.
     Input(KeyEvent),
+    /// Bracketed paste from the terminal (Ctrl+V / Cmd+V).
+    Paste(String),
     /// Tick event for periodic updates.
     Tick,
     /// Transfer progress update (includes transfer ID to avoid updating all transfers).
@@ -79,6 +81,9 @@ impl EventHandler {
                                 sender_clone.send(AppEvent::Input(key)).unwrap();
                             }
                         }
+                        Ok(CrosstermEvent::Paste(text)) => {
+                            sender_clone.send(AppEvent::Paste(text)).unwrap();
+                        }
                         Ok(CrosstermEvent::Resize(_, _)) => {
                             // Terminal resize - the next render will handle it
                         }
@@ -124,7 +129,8 @@ impl EventHandler {
 pub fn should_quit(key: &KeyEvent) -> bool {
     matches!(
         (key.code, key.modifiers),
-        (KeyCode::Char('q'), _) | (KeyCode::Char('c'), KeyModifiers::CONTROL)
+        (KeyCode::Char('q'), KeyModifiers::NONE | KeyModifiers::SHIFT)
+            | (KeyCode::Char('c'), KeyModifiers::CONTROL)
     )
 }
 

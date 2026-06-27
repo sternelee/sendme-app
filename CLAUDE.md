@@ -6,11 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Sendme is a cross-platform P2P file transfer system built on `iroh`.
 
-There are four distinct products in this repo:
+There are five distinct products/crates in this repo:
 - `lib/` — shared Rust transfer engine (`sendme-lib`)
 - `cli/` — `sendme` terminal app and TUI
 - `app/` + `app/src-tauri/` — Tauri desktop/mobile app with a SolidJS frontend
 - `browser/` + `browser-lib/` — browser app plus WASM bindings
+- `peersync/` — P2P config/dotfile sync engine (iroh-docs + iroh-blobs)
 
 Additional crates/packages:
 - `app/src-tauri/plugins/tauri-plugin-media-picker/` — custom Tauri plugin for iOS photo/video picking
@@ -31,9 +32,11 @@ cargo build --release
 cargo build -p sendme-lib
 cargo build -p cli            # builds the sendme binary
 cargo build -p app            # builds the Tauri Rust backend
+cargo build -p peersync       # builds the peersync library
 
 cargo test --locked --workspace --all-features
 cargo test -p sendme-lib
+cargo test -p peersync
 cargo test send_recv_file
 cargo test --test cli
 cargo test send_recv_file -- --nocapture
@@ -108,11 +111,24 @@ Key modules:
 
 The main send/receive contract across products is an `iroh_blobs::ticket::BlobTicket` using collection/`HashSeq` data, so filenames and directory structure survive across CLI, Tauri, and browser flows.
 
+### PeerSync (`peersync/`)
+
+PeerSync is a P2P config/dotfile synchronization engine. It keeps dotfiles, editor configs, and personal documents in sync across machines without a central server.
+
+Key characteristics:
+- Uses `iroh-docs` for metadata replication and `iroh-blobs` for file content transfer
+- BLAKE3 content hashing with echo suppression to prevent sync loops
+- Last-writer-wins conflict resolution with `.peersync_conflict.*` backup files
+- File watching via `notify` crate with debounced change detection
+- Configuration stored in `~/.config/sendme/peersync/config.toml`
+
+PeerSync is integrated into the CLI TUI (tab `[5]`) and the Tauri app. The standalone binary has been removed.
+
 ### CLI (`cli/`)
 
 `cli/src/main.rs` supports both explicit `send`/`receive` subcommands and the default ratatui TUI.
 
-The TUI lives under `cli/src/tui/` and uses background async tasks plus `sendme-lib` progress channels rather than implementing transfer logic itself.
+The TUI lives under `cli/src/tui/` and uses background async tasks plus `sendme-lib` progress channels rather than implementing transfer logic itself. PeerSync is available as tab `[5]` in the TUI.
 
 ### Tauri app (`app/` + `app/src-tauri/`)
 
@@ -371,7 +387,7 @@ The Tauri app uses system-browser OAuth instead of an in-app WebView:
 
 ## MSRV
 
-Minimum Supported Rust Version: **1.81**
+Minimum Supported Rust Version: **1.91**
 
 ## Additional Documentation
 
@@ -379,3 +395,4 @@ Minimum Supported Rust Version: **1.81**
 - **`ANDROID_DEBUG_GUIDE.md`**: Step-by-step Android debugging workflow and the `libsodium` cross-compile fix
 - **`ANDROID_FIX_SUMMARY.md`**: Details on Android temp directory fixes
 - **`docs/nearby-discovery.md`**: mDNS service naming and iOS multicast entitlement limitations
+- **`peersync/README.md`**: PeerSync configuration and usage guide
