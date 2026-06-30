@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use futures_lite::StreamExt;
 use iroh_blobs::protocol::ChunkRanges;
+use iroh_blobs::HashAndFormat;
 use iroh_docs::engine::LiveEvent;
 use iroh_docs::{AuthorId, DocTicket, NamespaceId};
 use std::collections::HashMap;
@@ -36,6 +37,10 @@ struct PendingDownload {
     target_key: String,
     relative_path: String,
     meta: FileMetadata,
+    /// Node that sent the metadata entry; used as the content blob provider.
+    from: Option<iroh::PublicKey>,
+    /// File content hash (the actual blob to download).
+    content_hash: iroh_blobs::Hash,
     queued_at: Instant,
 }
 
@@ -469,7 +474,7 @@ impl SyncEngine {
                 // Ignore our own local writes to avoid double-processing.
                 return Ok(());
             }
-            LiveEvent::InsertRemote { entry, .. } => {
+            LiveEvent::InsertRemote { entry, from, .. } => {
                 let key = String::from_utf8_lossy(entry.key());
                 let (target_key, relative) =
                     parse_doc_key(&key).with_context(|| format!("parsing doc key {}", key))?;
@@ -492,14 +497,40 @@ impl SyncEngine {
                     FileMetadata::from_bytes(&meta_bytes)?
                 };
 
+                // The content hash embedded in the metadata is the actual file
+                // bytes; the doc entry's content hash is the metadata JSON. Keep
+                // both so we can queue the file content for download once the
+                // metadata arrives.
+                let content_hash = parse_hash(&meta.file_hash).unwrap_or_else(|_| hash);
+                let from = Some(from);
+
                 if self.network.blobs.has(hash).await? {
-                    // Content already available locally.
+                    // Metadata already available locally. For tombstones we can
+                    // apply immediately; for files we still need the content blob.
                     if meta.is_deleted {
                         self.apply_remote_delete(&target_key, &relative, meta.updated_at)
                             .await?;
-                    } else {
+                    } else if self.network.blobs.has(content_hash).await? {
                         self.apply_remote_file(&target_key, &relative, &meta)
                             .await?;
+                    } else {
+                        let mut pending = self.pending.write().await;
+                        if pending.len() >= PENDING_MAX {
+                            tracing::warn!(
+                                pending_len = pending.len(),
+                                max = PENDING_MAX,
+                                "pending download queue full, evicting oldest entry"
+                            );
+                            pending.remove(0);
+                        }
+                        pending.push(PendingDownload {
+                            target_key,
+                            relative_path: relative,
+                            meta,
+                            from,
+                            content_hash,
+                            queued_at: Instant::now(),
+                        });
                     }
                 } else {
                     // Wait for ContentReady. Drop oldest entry if the queue
@@ -517,6 +548,8 @@ impl SyncEngine {
                         target_key,
                         relative_path: relative,
                         meta,
+                        from,
+                        content_hash,
                         queued_at: Instant::now(),
                     });
                 }
@@ -590,18 +623,23 @@ impl SyncEngine {
     }
 
     /// Process any pending downloads whose metadata or content hash matches.
+    /// When metadata becomes ready, download the actual file content blob from
+    /// the peer that sent the metadata before applying the file.
     async fn process_pending(self: &Arc<Self>, hash: iroh_blobs::Hash) -> Result<()> {
         let mut pending = self.pending.write().await;
         // Drop entries that have been waiting too long — the peer that owned
         // the content is probably gone. 5 minutes is generous for a single
         // iroh-blobs round trip on a healthy connection.
         pending.retain(|p| p.queued_at.elapsed() < Duration::from_secs(300));
+
+        // Collect all pending entries that match the hash (metadata or content).
+        let mut matched = Vec::new();
         let mut i = 0;
         while i < pending.len() {
-            let should_apply = {
+            let is_match = {
                 let p = &pending[i];
-                if parse_hash(&p.meta.file_hash).ok() == Some(hash) {
-                    // Content blob ready.
+                if p.content_hash == hash {
+                    // Content blob ready locally.
                     true
                 } else {
                     // Could be metadata blob ready; try reading metadata.
@@ -619,21 +657,68 @@ impl SyncEngine {
                 }
             };
 
-            if should_apply {
-                let p = pending.remove(i);
-                drop(pending);
-                if p.meta.is_deleted {
-                    self.apply_remote_delete(&p.target_key, &p.relative_path, p.meta.updated_at)
-                        .await?;
-                } else {
-                    self.apply_remote_file(&p.target_key, &p.relative_path, &p.meta)
-                        .await?;
-                }
-                pending = self.pending.write().await;
+            if is_match {
+                matched.push(pending.remove(i));
             } else {
                 i += 1;
             }
         }
+        drop(pending);
+
+        for p in matched {
+            if p.meta.is_deleted {
+                self.apply_remote_delete(&p.target_key, &p.relative_path, p.meta.updated_at)
+                    .await?;
+                continue;
+            }
+
+            // Make sure the actual file content blob is available locally. The
+            // iroh-docs sync protocol only replicates metadata entries; the file
+            // bytes live in iroh-blobs and must be fetched separately from the
+            // peer that uploaded them.
+            if let Err(e) = self.ensure_content_blob(p.content_hash, p.from.as_ref()).await {
+                tracing::warn!(
+                    error = %e,
+                    target = %p.target_key,
+                    path = %p.relative_path,
+                    hash = %p.content_hash.to_hex(),
+                    "failed to download file content blob"
+                );
+                self.emit(EngineEvent::Warning {
+                    message: format!("Download failed for {}: {}", p.relative_path, e),
+                });
+                continue;
+            }
+
+            self.apply_remote_file(&p.target_key, &p.relative_path, &p.meta)
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Ensure a file content blob exists in the local blob store, downloading
+    /// it from the provided peer if necessary.
+    async fn ensure_content_blob(
+        self: &Arc<Self>,
+        hash: iroh_blobs::Hash,
+        provider: Option<&iroh::PublicKey>,
+    ) -> Result<()> {
+        if self.network.blobs.has(hash).await? {
+            return Ok(());
+        }
+        let Some(provider) = provider else {
+            anyhow::bail!("no known provider for content blob");
+        };
+
+        let downloader = self.network.blobs.downloader(&self.network.endpoint);
+        let providers = vec![provider.clone()];
+        let request = HashAndFormat::raw(hash);
+        downloader
+            .download(request, providers)
+            .await
+            .map_err(|e| anyhow::anyhow!("download failed: {}", e))?;
+
         Ok(())
     }
 
