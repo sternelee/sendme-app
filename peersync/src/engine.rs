@@ -230,6 +230,27 @@ impl SyncEngine {
             }
         }
 
+        // Health check: if we haven't successfully synced with any peer after
+        // a short grace period, warn the user. This catches the common case
+        // where the host ticket is unreachable (relay blocked, NAT, etc.) or
+        // the receiver was linked with an old build that never persisted
+        // peer_ticket.
+        let health_engine = engine.clone();
+        let health_doc = doc.clone();
+        let health_handle = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            let msg = match health_doc.get_sync_peers().await {
+                Ok(Some(peers)) if !peers.is_empty() => {
+                    format!("Known {} sync peer(s); waiting for updates.", peers.len())
+                }
+                Ok(_) => {
+                    "Still no sync peers after 30s — check that the host is online and reachable, or re-link with its current ticket.".to_string()
+                }
+                Err(e) => format!("Could not check sync peers: {}", e),
+            };
+            health_engine.emit(EngineEvent::Warning { message: msg });
+        });
+
         // Start periodic GC task.
         let gc_engine = engine.clone();
         let gc_handle = tokio::spawn(async move {
@@ -267,6 +288,7 @@ impl SyncEngine {
         }
 
         gc_handle.abort();
+        health_handle.abort();
         engine.emit(EngineEvent::Stopped);
         Ok(())
     }

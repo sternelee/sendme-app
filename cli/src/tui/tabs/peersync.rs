@@ -15,7 +15,7 @@ pub fn render_peer_sync_tab(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // status / engine control
+            Constraint::Length(4), // status / engine control + message
             Constraint::Length(3), // section tabs
             Constraint::Min(0),    // content
         ])
@@ -61,7 +61,7 @@ fn render_engine_status(f: &mut Frame, app: &App, area: Rect) {
         ""
     };
 
-    let line = Line::from(vec![
+    let mut lines = vec![Line::from(vec![
         Span::styled(
             status_text,
             Style::default()
@@ -74,14 +74,23 @@ fn render_engine_status(f: &mut Frame, app: &App, area: Rect) {
             section_hint(),
             busy_hint
         )),
-    ]);
+    ])];
+
+    // Surface transient messages (warnings, progress, results) in the header
+    // so they are visible regardless of which section is selected.
+    if !app.peer_sync_message.is_empty() {
+        lines.push(Line::from(vec![Span::styled(
+            format!("  {}", app.peer_sync_message),
+            Style::default().fg(Color::Yellow),
+        )]));
+    }
 
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" PeerSync ")
         .border_style(Style::default().fg(Color::DarkGray));
 
-    let para = Paragraph::new(line).block(block);
+    let para = Paragraph::new(lines).block(block);
     f.render_widget(para, area);
 }
 
