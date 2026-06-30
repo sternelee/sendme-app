@@ -978,6 +978,11 @@ impl App {
             crossterm::event::KeyCode::Esc => {
                 self.peer_sync_link_mode = false;
                 self.peer_sync_link_input.clear();
+                // Also clear busy so the user can recover if the link task
+                // hung/timed out; the actual link task will still finish in the
+                // background and emit PeerSyncLinkCompleted, which is safe to
+                // ignore.
+                self.peer_sync_busy = false;
             }
             // Enter is handled by the main loop because it needs async network IO.
             _ => {}

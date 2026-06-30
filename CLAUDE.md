@@ -17,6 +17,7 @@ Additional crates/packages:
 - `app/src-tauri/plugins/tauri-plugin-media-picker/` — custom Tauri plugin for iOS photo/video picking
 - `packages/shared/` — shared i18n string exports used by the Tauri UI
 - `packages/ui/` — shared display helpers (file-size formatting, display names) and small components
+- `packages/config/` — shared Tailwind CSS v4 config (`@sendme/config`) consumed by both frontends
 
 `browser-lib/` is intentionally a separate Cargo workspace from the root workspace because the native workspace dependencies are not WASM-compatible.
 
@@ -364,7 +365,7 @@ The Tauri app uses system-browser OAuth instead of an in-app WebView:
 
 ### Android Build Notes
 
-- **`sodium_memcmp` crash on launch**: When cross-compiling Android on macOS, `libsodium-sys-stable` may produce an empty static library because the NDK's `llvm-ar` is not detected. This causes a runtime `UnsatisfiedLinkError`. The fix requires manually pre-building libsodium with the NDK toolchain and pointing `.cargo/config.toml` to it. See `ANDROID_DEBUG_GUIDE.md` for the full one-time setup.
+- **`sodium_memcmp` crash on launch**: When cross-compiling Android on macOS, `libsodium-sys-stable` may produce an empty static library because the NDK's `llvm-ar` is not detected. This causes a runtime `UnsatisfiedLinkError`. The fix requires manually pre-building libsodium with the NDK toolchain and pointing `.cargo/config.toml` to it. Run `scripts/build-libsodium-android.sh` for the one-time setup, and see `ANDROID_DEBUG_GUIDE.md` for the full workflow.
 - **`CHANGE_WIFI_MULTICAST_STATE` permission**: Required for iroh mDNS discovery on Android. Must be present in `app/src-tauri/gen/android/app/src/main/AndroidManifest.xml`.
 
 ### Platform-Specific File Picking

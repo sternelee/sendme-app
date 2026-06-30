@@ -1036,6 +1036,18 @@ async fn run_peer_sync_engine(event_handler: tui::EventHandler) {
         event_handler.emit(tui::event::AppEvent::PeerSyncTicket(ticket));
     }
 
+    // Auto-refresh status so the ticket and device/namespace info appear
+    // immediately on the Status tab — without this the user has to press
+    // [r] (Refresh) before `peer_sync_status` is populated and the ticket
+    // line renders. Engine state has already been persisted by `start`,
+    // so a disk-based refresh picks up namespace/author/device name.
+    if let Err(e) = do_refresh_peer_sync(event_handler.clone()).await {
+        event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+            "Refresh failed: {}",
+            e
+        )));
+    }
+
     if let Err(e) = engine.run().await {
         event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
             "Sync engine error: {}",
@@ -1099,32 +1111,71 @@ async fn link_peer_sync(event_handler: tui::EventHandler, ticket: String) {
     let data_dir = config::peersync_data_dir();
     let _ = config::ensure_peersync_dirs();
 
-    let result = async {
-        let config = tokio::task::spawn_blocking({
-            let config_dir = config_dir.clone();
-            move || peersync::config::load_config(Some(&config_dir)).unwrap_or_default()
-        })
-        .await?;
+    // The import can hang if the ticket's peers are unreachable, and the
+    // local Network we spin up here must be shut down before the engine
+    // reopens the same persistent blobs/docs stores — otherwise the engine's
+    // `Network::start` blocks on the db lock the abandoned network still holds.
+    // Bound the whole operation so the UI never gets stuck in "working…".
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        async {
+            let config = tokio::task::spawn_blocking({
+                let config_dir = config_dir.clone();
+                move || peersync::config::load_config(Some(&config_dir)).unwrap_or_default()
+            })
+            .await?;
 
-        let mut state = tokio::task::spawn_blocking({
-            let config_dir = config_dir.clone();
-            move || peersync::state::load_state(&config, Some(&config_dir))
-        })
-        .await??;
-
-        let network =
-            peersync::network::Network::start(Some(&config_dir), Some(&data_dir), &state).await?;
-        let namespace = network.import_ticket(&ticket).await?;
-        state.namespace_id = Some(namespace.to_string());
-        let author = network.default_author().await?;
-        state.author_id = Some(author.to_string());
-
-        tokio::task::spawn_blocking(move || peersync::state::save_state(Some(&config_dir), &state))
+            let mut state = tokio::task::spawn_blocking({
+                let config_dir = config_dir.clone();
+                move || peersync::state::load_state(&config, Some(&config_dir))
+            })
             .await??;
 
-        anyhow::Ok(namespace.to_string())
-    }
+            let network =
+                peersync::network::Network::start(Some(&config_dir), Some(&data_dir), &state)
+                    .await?;
+
+            // From here on we must shut the network down on every path,
+            // success or failure, so the persistent blobs/docs stores are
+            // released before the engine tries to reopen them.
+            let inner = async {
+                // import_ticket can block on the ticket's peers; keep it bounded.
+                let namespace = tokio::time::timeout(
+                    std::time::Duration::from_secs(15),
+                    network.import_ticket(&ticket),
+                )
+                .await
+                .map_err(|_| anyhow::anyhow!("timed out importing ticket (peer unreachable)"))??;
+
+                state.namespace_id = Some(namespace.to_string());
+                let author = network.default_author().await?;
+                state.author_id = Some(author.to_string());
+
+                // Persist a local share ticket so the engine can reuse it on
+                // start instead of re-sharing. Mirrors Tauri `peersync_link_device`.
+                let local_ticket = network.share_doc(namespace).await?;
+                state.ticket = Some(local_ticket);
+
+                tokio::task::spawn_blocking(move || {
+                    peersync::state::save_state(Some(&config_dir), &state)
+                })
+                .await??;
+
+                anyhow::Ok(namespace.to_string())
+            };
+
+            let outcome = inner.await;
+            // Release the persistent stores before the engine reopens them.
+            let _ = network.shutdown().await;
+            outcome
+        },
+    )
     .await;
+
+    let result = match result {
+        Ok(inner) => inner,
+        Err(_) => Err(anyhow::anyhow!("timed out linking to sync doc")),
+    };
 
     match result {
         Ok(ns) => {
