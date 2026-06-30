@@ -198,22 +198,25 @@ impl SyncEngine {
         let doc = engine.network.open_doc(engine.namespace).await?;
         let mut events = doc.subscribe().await.context("subscribing to doc events")?;
 
-        // Re-join the doc's gossip swarm with the remote peer's addresses.
-        // `Docs::open` does not auto-start sync, so without this the receiver
-        // never reconnects to the peer it linked to and no remote events arrive.
+        // Re-join the doc's gossip swarm. `Docs::open` does not auto-start sync,
+        // so without this the node never receives remote events. Seed with the
+        // linked peer's node addresses if available; otherwise an empty list is
+        // fine because `start_sync` will also load known peers from the doc db.
+        let mut peers = Vec::new();
         if let Some(peer_ticket) = &engine.peer_ticket {
             match peer_ticket.parse::<DocTicket>() {
                 Ok(t) => {
                     if !t.nodes.is_empty() {
-                        if let Err(e) = doc.start_sync(t.nodes.clone()).await {
-                            tracing::warn!(error = %e, "failed to re-start doc sync with peer");
-                        } else {
-                            tracing::info!(peers = t.nodes.len(), "re-joined doc sync with linked peer(s)");
-                        }
+                        peers = t.nodes.clone();
                     }
                 }
                 Err(e) => tracing::warn!(error = %e, "stored peer_ticket failed to parse"),
             }
+        }
+        if let Err(e) = doc.start_sync(peers.clone()).await {
+            tracing::warn!(error = %e, peers = peers.len(), "failed to start doc sync");
+        } else {
+            tracing::info!(peers = peers.len(), "started doc sync");
         }
 
         // Start periodic GC task.
