@@ -118,6 +118,14 @@ impl SyncEngine {
         let author = network.default_author().await?;
         state.author_id = Some(author.to_string());
 
+        // Ensure we have a stable secret key. Without persisting it, the iroh
+        // node id changes on every run, invalidating any previously shared doc
+        // tickets because they embed the old node address.
+        if state.secret_key.is_none() {
+            let sk_bytes = network.endpoint.secret_key().to_bytes();
+            state.secret_key = Some(hex::encode(sk_bytes));
+        }
+
         // Ensure we have a persistent doc ticket for linking other devices.
         // Reuse the existing ticket if one is already stored in state.
         let ticket = if let Some(t) = state.ticket.clone() {
