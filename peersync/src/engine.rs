@@ -213,10 +213,21 @@ impl SyncEngine {
                 Err(e) => tracing::warn!(error = %e, "stored peer_ticket failed to parse"),
             }
         }
-        if let Err(e) = doc.start_sync(peers.clone()).await {
-            tracing::warn!(error = %e, peers = peers.len(), "failed to start doc sync");
-        } else {
-            tracing::info!(peers = peers.len(), "started doc sync");
+        match doc.start_sync(peers.clone()).await {
+            Ok(()) => {
+                tracing::info!(peers = peers.len(), "started doc sync");
+                if peers.is_empty() && engine.peer_ticket.is_none() {
+                    engine.emit(EngineEvent::Warning {
+                        message: "No linked peer in state — re-link with the host ticket so this device can join the sync swarm.".to_string(),
+                    });
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, peers = peers.len(), "failed to start doc sync");
+                engine.emit(EngineEvent::Warning {
+                    message: format!("Failed to start sync: {}", e),
+                });
+            }
         }
 
         // Start periodic GC task.

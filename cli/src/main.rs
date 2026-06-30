@@ -1014,8 +1014,30 @@ async fn run_peer_sync_engine(event_handler: tui::EventHandler) {
         }
     };
 
+    // Wire engine events into the TUI event bus so warnings (e.g. "no linked
+    // peer in state", "failed to start sync") surface as notifications instead
+    // of only going to tracing (which the CLI TUI never initializes).
+    let (engine_tx, mut engine_rx) = peersync::events::channel();
+    let eh_fwd = event_handler.clone();
+    tokio::spawn(async move {
+        while let Ok(event) = engine_rx.recv().await {
+            match event {
+                peersync::events::EngineEvent::Warning { message } => {
+                    eh_fwd.emit(tui::event::AppEvent::PeerSyncNotification(message));
+                }
+                peersync::events::EngineEvent::StatusRefresh => {
+                    let eh = eh_fwd.clone();
+                    tokio::spawn(async move {
+                        refresh_peer_sync(eh).await;
+                    });
+                }
+                _ => {}
+            }
+        }
+    });
+
     let engine =
-        match peersync::engine::SyncEngine::start(config, Some(config_dir), Some(data_dir), state, None)
+        match peersync::engine::SyncEngine::start(config, Some(config_dir), Some(data_dir), state, Some(engine_tx))
             .await
         {
             Ok(e) => e,
