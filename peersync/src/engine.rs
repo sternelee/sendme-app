@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use futures_lite::StreamExt;
 use iroh_blobs::protocol::ChunkRanges;
 use iroh_docs::engine::LiveEvent;
-use iroh_docs::{AuthorId, NamespaceId};
+use iroh_docs::{AuthorId, DocTicket, NamespaceId};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -68,6 +68,9 @@ pub struct SyncEngine {
     network: Network,
     history: Arc<History>,
     ticket: Option<String>,
+    /// Remote doc ticket from which this device was linked, if any.
+    /// Stored so the engine can re-run `start_sync` after a restart.
+    peer_ticket: Option<String>,
     in_flight: Arc<RwLock<HashMap<(String, String), Instant>>>,
     pending: Arc<RwLock<Vec<PendingDownload>>>,
     node_id: String,
@@ -145,6 +148,7 @@ impl SyncEngine {
             network,
             history,
             ticket,
+            peer_ticket: state.peer_ticket.clone(),
             in_flight: Arc::new(RwLock::new(HashMap::new())),
             pending: Arc::new(RwLock::new(Vec::new())),
             node_id,
@@ -193,6 +197,24 @@ impl SyncEngine {
         let mut watcher = TargetWatcher::start(&engine.config.targets, &engine.ignore_sets)?;
         let doc = engine.network.open_doc(engine.namespace).await?;
         let mut events = doc.subscribe().await.context("subscribing to doc events")?;
+
+        // Re-join the doc's gossip swarm with the remote peer's addresses.
+        // `Docs::open` does not auto-start sync, so without this the receiver
+        // never reconnects to the peer it linked to and no remote events arrive.
+        if let Some(peer_ticket) = &engine.peer_ticket {
+            match peer_ticket.parse::<DocTicket>() {
+                Ok(t) => {
+                    if !t.nodes.is_empty() {
+                        if let Err(e) = doc.start_sync(t.nodes.clone()).await {
+                            tracing::warn!(error = %e, "failed to re-start doc sync with peer");
+                        } else {
+                            tracing::info!(peers = t.nodes.len(), "re-joined doc sync with linked peer(s)");
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "stored peer_ticket failed to parse"),
+            }
+        }
 
         // Start periodic GC task.
         let gc_engine = engine.clone();

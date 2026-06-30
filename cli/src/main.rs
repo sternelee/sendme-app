@@ -1155,6 +1155,9 @@ async fn link_peer_sync(event_handler: tui::EventHandler, ticket: String) {
                 // start instead of re-sharing. Mirrors Tauri `peersync_link_device`.
                 let local_ticket = network.share_doc(namespace).await?;
                 state.ticket = Some(local_ticket);
+                // Keep the remote ticket so the engine can re-start sync after
+                // restart (Docs::open does not auto-join the gossip swarm).
+                state.peer_ticket = Some(ticket.clone());
 
                 tokio::task::spawn_blocking(move || {
                     peersync::state::save_state(Some(&config_dir), &state)

@@ -295,6 +295,9 @@ pub async fn peersync_link_device(
 
     st.namespace_id = Some(ns.to_string());
     st.ticket = Some(local_ticket.clone());
+    // Keep the remote ticket so the engine can re-start sync after restart
+    // (Docs::open does not auto-join the gossip swarm).
+    st.peer_ticket = Some(ticket.clone());
     peersync::state::save_state(Some(&guard.base_dir), &st)
         .map_err(|e| format!("saving state: {}", e))?;
 

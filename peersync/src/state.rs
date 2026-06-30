@@ -18,6 +18,14 @@ pub struct State {
     pub author_id: Option<String>,
     /// Shareable doc ticket for linking other devices.
     pub ticket: Option<String>,
+    /// The remote doc ticket this device linked to (raw string).
+    ///
+    /// Kept so the engine can re-run `start_sync` with the remote peer's
+    /// node addresses after a restart — `Docs::open` does not auto-join the
+    /// doc's gossip swarm, so without re-syncing the receiver never connects
+    /// back to the peer that shared the doc.
+    #[serde(default)]
+    pub peer_ticket: Option<String>,
 }
 
 /// State file path: `~/.local/share/peersync/state.toml`.

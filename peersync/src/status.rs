@@ -343,6 +343,7 @@ mod tests {
             author_id: None,
             secret_key: None,
             ticket: None,
+            peer_ticket: None,
         };
 
         let history = History::open(Some(tmp.path()), None).unwrap();
