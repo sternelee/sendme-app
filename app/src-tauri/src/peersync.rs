@@ -212,7 +212,7 @@ pub async fn peersync_start(state: tauri::State<'_, PeerSyncState>) -> Result<()
     let st = peersync::state::load_state(&guard.config, Some(&guard.base_dir))
         .map_err(|e| format!("loading state: {}", e))?;
 
-    let engine = SyncEngine::start(
+    let engine = Arc::new(SyncEngine::start(
         guard.config.clone(),
         Some(guard.base_dir.clone()),
         Some(guard.base_dir.clone()),
@@ -220,7 +220,7 @@ pub async fn peersync_start(state: tauri::State<'_, PeerSyncState>) -> Result<()
         Some(guard.events_tx.clone()),
     )
     .await
-    .map_err(|e| format!("starting engine: {}", e))?;
+    .map_err(|e| format!("starting engine: {}", e))?);
 
     guard.ticket = engine.ticket();
 

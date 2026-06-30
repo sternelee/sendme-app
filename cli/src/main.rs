@@ -3,6 +3,7 @@
 //! Supports both interactive TUI mode and command-line mode.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -1017,8 +1018,31 @@ async fn run_peer_sync_engine(event_handler: tui::EventHandler) {
     // Wire engine events into the TUI event bus so warnings (e.g. "no linked
     // peer in state", "failed to start sync") surface as notifications instead
     // of only going to tracing (which the CLI TUI never initializes).
+    // We wrap the engine in an Arc so the event-forwarding task can call
+    // engine.status() without reopening the history database.
     let (engine_tx, mut engine_rx) = peersync::events::channel();
     let eh_fwd = event_handler.clone();
+    let engine = match peersync::engine::SyncEngine::start(
+        config,
+        Some(config_dir),
+        Some(data_dir),
+        state,
+        Some(engine_tx),
+    )
+    .await
+    {
+        Ok(e) => Arc::new(e),
+        Err(e) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "Failed to start sync engine: {}",
+                e
+            )));
+            event_handler.emit(tui::event::AppEvent::PeerSyncEngineStopped);
+            return;
+        }
+    };
+
+    let engine_fwd = engine.clone();
     tokio::spawn(async move {
         while let Ok(event) = engine_rx.recv().await {
             match event {
@@ -1026,30 +1050,22 @@ async fn run_peer_sync_engine(event_handler: tui::EventHandler) {
                     eh_fwd.emit(tui::event::AppEvent::PeerSyncNotification(message));
                 }
                 peersync::events::EngineEvent::StatusRefresh => {
-                    let eh = eh_fwd.clone();
-                    tokio::spawn(async move {
-                        refresh_peer_sync(eh).await;
-                    });
+                    match engine_fwd.status().await {
+                        Ok(info) => {
+                            eh_fwd.emit(tui::event::AppEvent::PeerSyncStatusUpdated(info));
+                        }
+                        Err(e) => {
+                            eh_fwd.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                                "Refresh failed: {}",
+                                e
+                            )));
+                        }
+                    }
                 }
                 _ => {}
             }
         }
     });
-
-    let engine =
-        match peersync::engine::SyncEngine::start(config, Some(config_dir), Some(data_dir), state, Some(engine_tx))
-            .await
-        {
-            Ok(e) => e,
-            Err(e) => {
-                event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
-                    "Failed to start sync engine: {}",
-                    e
-                )));
-                event_handler.emit(tui::event::AppEvent::PeerSyncEngineStopped);
-                return;
-            }
-        };
 
     event_handler.emit(tui::event::AppEvent::PeerSyncEngineStarted);
 
@@ -1061,13 +1077,18 @@ async fn run_peer_sync_engine(event_handler: tui::EventHandler) {
     // Auto-refresh status so the ticket and device/namespace info appear
     // immediately on the Status tab — without this the user has to press
     // [r] (Refresh) before `peer_sync_status` is populated and the ticket
-    // line renders. Engine state has already been persisted by `start`,
-    // so a disk-based refresh picks up namespace/author/device name.
-    if let Err(e) = do_refresh_peer_sync(event_handler.clone()).await {
-        event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
-            "Refresh failed: {}",
-            e
-        )));
+    // line renders. Reuse the already-open engine history/network to avoid
+    // exhausting file descriptors on macOS.
+    match engine.status().await {
+        Ok(info) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncStatusUpdated(info));
+        }
+        Err(e) => {
+            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                "Refresh failed: {}",
+                e
+            )));
+        }
     }
 
     if let Err(e) = engine.run().await {

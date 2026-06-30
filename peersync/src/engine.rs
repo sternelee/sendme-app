@@ -20,6 +20,7 @@ use crate::history::{History, SyncAction, SyncRecord};
 use crate::metadata::{parse_doc_key, FileMetadata};
 use crate::network::Network;
 use crate::state::{save_state, State};
+use crate::status::{collect_status, StatusInfo};
 use crate::watcher::{FsEvent, FsEventKind, TargetWatcher};
 
 /// How long a remote-write marker lives before the local fs watcher is allowed
@@ -201,14 +202,12 @@ impl SyncEngine {
     }
 
     /// Run the engine: scan local targets, start watcher, listen for remote events.
-    pub async fn run(self) -> Result<()> {
-        let engine = Arc::new(self);
-
+    pub async fn run(self: Arc<Self>) -> Result<()> {
         // Initial upload of local state.
-        engine.scan_and_upload_all().await?;
+        self.scan_and_upload_all().await?;
 
-        let mut watcher = TargetWatcher::start(&engine.config.targets, &engine.ignore_sets)?;
-        let doc = engine.network.open_doc(engine.namespace).await?;
+        let mut watcher = TargetWatcher::start(&self.config.targets, &self.ignore_sets)?;
+        let doc = self.network.open_doc(self.namespace).await?;
         let mut events = doc.subscribe().await.context("subscribing to doc events")?;
 
         // Re-join the doc's gossip swarm. `Docs::open` does not auto-start sync,
@@ -216,7 +215,7 @@ impl SyncEngine {
         // linked peer's node addresses if available; otherwise an empty list is
         // fine because `start_sync` will also load known peers from the doc db.
         let mut peers = Vec::new();
-        if let Some(peer_ticket) = &engine.peer_ticket {
+        if let Some(peer_ticket) = &self.peer_ticket {
             match peer_ticket.parse::<DocTicket>() {
                 Ok(t) => {
                     if !t.nodes.is_empty() {
@@ -229,15 +228,15 @@ impl SyncEngine {
         match doc.start_sync(peers.clone()).await {
             Ok(()) => {
                 tracing::info!(peers = peers.len(), "started doc sync");
-                if peers.is_empty() && engine.peer_ticket.is_none() {
-                    engine.emit(EngineEvent::Warning {
+                if peers.is_empty() && self.peer_ticket.is_none() {
+                    self.emit(EngineEvent::Warning {
                         message: "No linked peer in state — re-link with the host ticket so this device can join the sync swarm.".to_string(),
                     });
                 }
             }
             Err(e) => {
                 tracing::warn!(error = %e, peers = peers.len(), "failed to start doc sync");
-                engine.emit(EngineEvent::Warning {
+                self.emit(EngineEvent::Warning {
                     message: format!("Failed to start sync: {}", e),
                 });
             }
@@ -248,7 +247,7 @@ impl SyncEngine {
         // where the host ticket is unreachable (relay blocked, NAT, etc.) or
         // the receiver was linked with an old build that never persisted
         // peer_ticket.
-        let health_engine = engine.clone();
+        let health_engine = self.clone();
         let health_doc = doc.clone();
         let health_handle = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -265,7 +264,7 @@ impl SyncEngine {
         });
 
         // Start periodic GC task.
-        let gc_engine = engine.clone();
+        let gc_engine = self.clone();
         let gc_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
             loop {
@@ -282,16 +281,16 @@ impl SyncEngine {
             tokio::select! {
                 Some(batch) = watcher.recv() => {
                     for event in batch {
-                        if let Err(e) = engine.handle_local_event(event).await {
+                        if let Err(e) = self.handle_local_event(event).await {
                             tracing::warn!(error = %e, "handling local event failed");
                         }
                     }
                 }
                 Some(event) = events.next() => {
                     let event = event.context("doc event stream error")?;
-                    if let Err(e) = engine.handle_remote_event(event).await {
+                    if let Err(e) = self.handle_remote_event(event).await {
                         tracing::warn!(error = %e, "handling remote event failed");
-                        engine.emit(EngineEvent::Warning {
+                        self.emit(EngineEvent::Warning {
                             message: e.to_string(),
                         });
                     }
@@ -302,7 +301,7 @@ impl SyncEngine {
 
         gc_handle.abort();
         health_handle.abort();
-        engine.emit(EngineEvent::Stopped);
+        self.emit(EngineEvent::Stopped);
         Ok(())
     }
 
@@ -318,6 +317,21 @@ impl SyncEngine {
     /// Return the persisted shareable doc ticket for this sync namespace.
     pub fn ticket(&self) -> Option<String> {
         self.ticket.clone()
+    }
+
+    /// Collect status information reusing the already-open history and network.
+    /// This avoids reopening the SQLite history database, which can exhaust
+    /// the file descriptor limit when called frequently.
+    pub async fn status(&self) -> Result<StatusInfo> {
+        let state = State {
+            device_name: self.device_name.clone(),
+            namespace_id: Some(self.namespace.to_string()),
+            author_id: Some(self.author.to_string()),
+            secret_key: None,
+            ticket: self.ticket.clone(),
+            peer_ticket: None,
+        };
+        collect_status(&self.config, &state, &self.history, Some(&self.network)).await
     }
 
     /// Scan all targets and upload missing/changed files.
