@@ -1,30 +1,8 @@
 use anyhow::{Context, Result};
-use blake3::Hasher;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-/// Compute the BLAKE3 hash of a file's contents.
-pub fn compute_file_hash(path: &Path) -> Result<String> {
-    let mut file = fs::File::open(path)
-        .with_context(|| format!("opening file for hashing {}", path.display()))?;
-    let mut hasher = Hasher::new();
-    let mut buf = [0u8; 8192];
-    loop {
-        let n = file.read(&mut buf).context("reading file for hash")?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(format!("b3_{}", hasher.finalize().to_hex()))
-}
-
-/// Compute hash from bytes.
-pub fn compute_hash_bytes(bytes: &[u8]) -> String {
-    format!("b3_{}", blake3::hash(bytes).to_hex())
-}
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Convert a BLAKE3 hex string (with `b3_` prefix) to an `iroh_blobs::Hash`.
 pub fn parse_hash(hash: &str) -> Result<iroh_blobs::Hash> {
@@ -43,6 +21,20 @@ pub fn file_mtime_ms(path: &Path) -> Result<u64> {
     let mtime = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
     let duration = mtime.duration_since(UNIX_EPOCH).unwrap_or_default();
     Ok(duration.as_millis() as u64)
+}
+
+/// Set the modification time of a file from milliseconds since UNIX epoch.
+///
+/// Used after applying a remote file so the local copy keeps the sender's
+/// mtime instead of the download time. Only `modified` is set (not accessed),
+/// and on platforms without sub-ms precision the value is truncated.
+pub fn set_file_mtime_ms(path: &Path, mtime_ms: u64) -> Result<()> {
+    let mtime = UNIX_EPOCH + Duration::from_millis(mtime_ms);
+    let f = fs::File::open(path)
+        .with_context(|| format!("opening file to set mtime {}", path.display()))?;
+    f.set_times(fs::FileTimes::new().set_modified(mtime))
+        .with_context(|| format!("setting mtime {}", path.display()))?;
+    Ok(())
 }
 
 /// Current timestamp in milliseconds.
@@ -93,6 +85,15 @@ pub fn backup_existing_file(path: &Path, device_name: &str) -> Result<Option<Pat
     fs::copy(path, &backup_path)
         .with_context(|| format!("backing up {} to {}", path.display(), backup_path.display()))?;
     Ok(Some(backup_path))
+}
+
+/// True if the filename follows the peersync conflict-backup naming
+/// convention (`<name>.peersync_conflict.<device>.<timestamp>`).
+/// Non-UTF-8 file names are treated as non-conflicts.
+pub fn is_conflict_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.contains(".peersync_conflict."))
 }
 
 /// Inverse of the naming convention in `backup_existing_file`. Given a
@@ -169,7 +170,7 @@ mod tests {
     #[test]
     fn test_hash_and_parse() {
         let data = b"hello world";
-        let hash = compute_hash_bytes(data);
+        let hash = format!("b3_{}", blake3::hash(data).to_hex());
         assert!(hash.starts_with("b3_"));
         let parsed = parse_hash(&hash).unwrap();
         assert_eq!(
@@ -188,6 +189,22 @@ mod tests {
         atomic_write(&path, b"v2").unwrap();
         assert_eq!(read_file(&path).unwrap(), b"v2");
         assert_eq!(read_file(&backup.unwrap()).unwrap(), b"v1");
+    }
+
+    /// A synced file keeps the sender's mtime instead of inheriting the
+    /// download time. Regression guard for the mtime-preservation fix.
+    #[test]
+    fn test_set_file_mtime_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("synced.txt");
+        std::fs::write(&path, b"remote").unwrap();
+
+        let sender_mtime: u64 = 1_700_000_000_000; // 2023-11-14
+        set_file_mtime_ms(&path, sender_mtime).unwrap();
+
+        let read_back = file_mtime_ms(&path).unwrap();
+        // Platforms differ in sub-ms precision; the ms should round-trip.
+        assert_eq!(read_back, sender_mtime);
     }
 
     #[test]

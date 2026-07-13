@@ -2,7 +2,7 @@
 
 Sendme is a multi-target P2P file transfer repo built on `iroh`: a Rust core + CLI, a Tauri/SolidJS desktop/mobile app, and a separate Cloudflare/SolidStart browser app with a WASM bridge.
 
-**MSRV**: Rust 1.81. **Node**: 22+. **Package manager**: `pnpm` everywhere.
+**MSRV**: Rust 1.91. **Node**: 22+. **Package manager**: `pnpm` everywhere.
 
 ## Build, test, and lint
 

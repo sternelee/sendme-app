@@ -4,7 +4,7 @@ use iroh_blobs::protocol::ChunkRanges;
 use iroh_blobs::HashAndFormat;
 use iroh_docs::engine::LiveEvent;
 use iroh_docs::{AuthorId, DocTicket, NamespaceId};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -13,7 +13,8 @@ use tokio::sync::RwLock;
 use crate::config::{expand_path, Config, TargetConfig};
 use crate::events::{channel, EngineEvent};
 use crate::fs::{
-    backup_existing_file, build_ignore_set, file_mtime_ms, now_ms, parse_hash, IgnoreSet,
+    backup_existing_file, build_ignore_set, file_mtime_ms, now_ms, parse_hash, set_file_mtime_ms,
+    IgnoreSet,
 };
 use crate::gc;
 use crate::history::{History, SyncAction, SyncRecord};
@@ -78,7 +79,7 @@ pub struct SyncEngine {
     /// Stored so the engine can re-run `start_sync` after a restart.
     peer_ticket: Option<String>,
     in_flight: Arc<RwLock<HashMap<(String, String), Instant>>>,
-    pending: Arc<RwLock<Vec<PendingDownload>>>,
+    pending: Arc<RwLock<VecDeque<PendingDownload>>>,
     node_id: String,
     device_name: String,
     /// Pre-compiled ignore matchers keyed by target label. Built once at
@@ -150,8 +151,7 @@ impl SyncEngine {
         // Pre-compile ignore sets for each target. Fail fast on bad patterns.
         let mut ignore_sets = HashMap::new();
         for (key, target) in &config.targets {
-            let set = build_ignore_set(key, &target.ignore)
-                .context("compiling ignore patterns")?;
+            let set = build_ignore_set(key, &target.ignore).context("compiling ignore patterns")?;
             ignore_sets.insert(key.clone(), set);
         }
 
@@ -164,7 +164,7 @@ impl SyncEngine {
             ticket,
             peer_ticket: state.peer_ticket.clone(),
             in_flight: Arc::new(RwLock::new(HashMap::new())),
-            pending: Arc::new(RwLock::new(Vec::new())),
+            pending: Arc::new(RwLock::new(VecDeque::new())),
             node_id,
             device_name,
             ignore_sets,
@@ -191,13 +191,43 @@ impl SyncEngine {
     /// in the status panel. Read-only events (neighbor up/down, sync
     /// completed bookkeeping) skip the refresh to avoid UI churn.
     fn log_record(&self, record: SyncRecord) -> Result<()> {
-        self.history
-            .log(record.clone())
-            .context("logging record")?;
-        self.emit(EngineEvent::Logged { record: record.clone() });
+        self.history.log(record.clone()).context("logging record")?;
+        self.emit(EngineEvent::Logged {
+            record: record.clone(),
+        });
         if status_affecting_action(record.action) {
             self.emit(EngineEvent::StatusRefresh);
         }
+        Ok(())
+    }
+
+    /// Record a neighbor up/down event in history and the event log.
+    fn record_neighbor_event(&self, node_id: &str, online: bool) -> Result<()> {
+        if let Err(e) = self
+            .history
+            .store
+            .upsert_peer(node_id, online, now_ms())
+            .context("upserting peer")
+        {
+            let direction = if online { "up" } else { "down" };
+            tracing::warn!(error = %e, "failed to record neighbor {}", direction);
+        }
+        self.log_record(SyncRecord {
+            timestamp_ms: now_ms(),
+            device_name: self.device_name.clone(),
+            node_id: node_id.to_string(),
+            target_key: String::new(),
+            relative_path: String::new(),
+            action: if online {
+                SyncAction::NeighborUp
+            } else {
+                SyncAction::NeighborDown
+            },
+            file_hash: None,
+            size: None,
+            updated_at_ms: None,
+            details: None,
+        })?;
         Ok(())
     }
 
@@ -352,7 +382,7 @@ impl SyncEngine {
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             let relative = path.strip_prefix(src)?.to_string_lossy().replace('\\', "/");
-            if ignore.map_or(false, |s| s.matches(&relative)) {
+            if ignore.is_some_and(|s| s.matches(&relative)) {
                 continue;
             }
             let meta = entry.metadata().await?;
@@ -493,129 +523,69 @@ impl SyncEngine {
                 let (target_key, relative) =
                     parse_doc_key(&key).with_context(|| format!("parsing doc key {}", key))?;
 
-                // Read metadata from blob store.
+                // The doc entry's content hash points at the metadata JSON
+                // blob, not the file bytes. We must always read the metadata
+                // to learn the real content hash and the sender's file mtime
+                // (used for LWW). The earlier `entry.content_len() == 0`
+                // shortcut was unreachable for peersync-produced entries
+                // (set_bytes always writes non-empty JSON) and, had it fired,
+                // would have fabricated a tombstone stamped with the doc
+                // insert time instead of the sender's mtime — breaking LWW.
                 let hash = entry.content_hash();
-                let size = entry.content_len();
-                let meta = if size == 0 {
+                let meta = if self.network.blobs.has(hash).await? {
+                    let meta_bytes = self.read_blob_bytes(hash).await?;
+                    FileMetadata::from_bytes(&meta_bytes)?
+                } else {
+                    // Metadata blob not present locally yet. Queue a pending
+                    // download keyed by content_hash so process_pending can
+                    // re-read the metadata once ContentReady fires. We use a
+                    // placeholder meta with the doc entry's timestamp as a
+                    // best-effort fallback; it will be replaced by the real
+                    // meta read from the blob before any apply.
                     FileMetadata {
                         relative_path: relative.clone(),
                         target_key: target_key.clone(),
                         file_hash: format!("b3_{}", "0".repeat(64)),
-                        size: 0,
+                        size: entry.content_len(),
                         updated_at: entry.timestamp(),
                         last_modified_by: "unknown".to_string(),
-                        is_deleted: true,
+                        is_deleted: false,
                     }
-                } else {
-                    let meta_bytes = self.read_blob_bytes(hash).await?;
-                    FileMetadata::from_bytes(&meta_bytes)?
                 };
 
                 // The content hash embedded in the metadata is the actual file
                 // bytes; the doc entry's content hash is the metadata JSON. Keep
                 // both so we can queue the file content for download once the
                 // metadata arrives.
-                let content_hash = parse_hash(&meta.file_hash).unwrap_or_else(|_| hash);
+                let content_hash = parse_hash(&meta.file_hash).unwrap_or(hash);
                 let from = Some(from);
 
-                if self.network.blobs.has(hash).await? {
-                    // Metadata already available locally. For tombstones we can
-                    // apply immediately; for files we still need the content blob.
-                    if meta.is_deleted {
-                        self.apply_remote_delete(&target_key, &relative, meta.updated_at)
-                            .await?;
-                    } else if self.network.blobs.has(content_hash).await? {
-                        self.apply_remote_file(&target_key, &relative, &meta)
-                            .await?;
-                    } else {
-                        let mut pending = self.pending.write().await;
-                        if pending.len() >= PENDING_MAX {
-                            tracing::warn!(
-                                pending_len = pending.len(),
-                                max = PENDING_MAX,
-                                "pending download queue full, evicting oldest entry"
-                            );
-                            pending.remove(0);
-                        }
-                        pending.push(PendingDownload {
-                            target_key,
-                            relative_path: relative,
-                            meta,
-                            from,
-                            content_hash,
-                            queued_at: Instant::now(),
-                        });
-                    }
+                if meta.is_deleted {
+                    self.apply_remote_delete(&target_key, &relative, meta.updated_at)
+                        .await?;
+                } else if self.network.blobs.has(content_hash).await? {
+                    self.apply_remote_file(&target_key, &relative, &meta)
+                        .await?;
                 } else {
-                    // Wait for ContentReady. Drop oldest entry if the queue
-                    // is full — a stuck queue shouldn't grow without bound.
-                    let mut pending = self.pending.write().await;
-                    if pending.len() >= PENDING_MAX {
-                        tracing::warn!(
-                            pending_len = pending.len(),
-                            max = PENDING_MAX,
-                            "pending download queue full, evicting oldest entry"
-                        );
-                        pending.remove(0);
-                    }
-                    pending.push(PendingDownload {
+                    self.queue_pending(PendingDownload {
                         target_key,
                         relative_path: relative,
                         meta,
                         from,
                         content_hash,
                         queued_at: Instant::now(),
-                    });
+                    })
+                    .await;
                 }
             }
             LiveEvent::ContentReady { hash } => {
                 self.process_pending(hash).await?;
             }
             LiveEvent::NeighborUp(pk) => {
-                let node_id = pk.to_string();
-                if let Err(e) = self
-                    .history
-                    .store
-                    .upsert_peer(&node_id, true, now_ms())
-                    .context("upserting peer")
-                {
-                    tracing::warn!(error = %e, "failed to record neighbor up");
-                }
-                self.log_record(SyncRecord {
-                    timestamp_ms: now_ms(),
-                    device_name: self.device_name.clone(),
-                    node_id: node_id.clone(),
-                    target_key: String::new(),
-                    relative_path: String::new(),
-                    action: SyncAction::NeighborUp,
-                    file_hash: None,
-                    size: None,
-                    updated_at_ms: None,
-                    details: None,
-                })?;
+                self.record_neighbor_event(&pk.to_string(), true)?;
             }
             LiveEvent::NeighborDown(pk) => {
-                let node_id = pk.to_string();
-                if let Err(e) = self
-                    .history
-                    .store
-                    .upsert_peer(&node_id, false, now_ms())
-                    .context("upserting peer")
-                {
-                    tracing::warn!(error = %e, "failed to record neighbor down");
-                }
-                self.log_record(SyncRecord {
-                    timestamp_ms: now_ms(),
-                    device_name: self.device_name.clone(),
-                    node_id: node_id.clone(),
-                    target_key: String::new(),
-                    relative_path: String::new(),
-                    action: SyncAction::NeighborDown,
-                    file_hash: None,
-                    size: None,
-                    updated_at_ms: None,
-                    details: None,
-                })?;
+                self.record_neighbor_event(&pk.to_string(), false)?;
             }
             LiveEvent::SyncFinished(ev) => {
                 self.log_record(SyncRecord {
@@ -636,49 +606,100 @@ impl SyncEngine {
         Ok(())
     }
 
+    /// Append a pending download, evicting the oldest entry if the queue is
+    /// full. Centralized so both the InsertRemote and ContentReady paths keep
+    /// the same bound. O(1) eviction via `pop_front` on a VecDeque.
+    async fn queue_pending(self: &Arc<Self>, download: PendingDownload) {
+        let mut pending = self.pending.write().await;
+        if pending.len() >= PENDING_MAX {
+            tracing::warn!(
+                pending_len = pending.len(),
+                max = PENDING_MAX,
+                "pending download queue full, evicting oldest entry"
+            );
+            pending.pop_front();
+        }
+        pending.push_back(download);
+    }
+
     /// Process any pending downloads whose metadata or content hash matches.
     /// When metadata becomes ready, download the actual file content blob from
     /// the peer that sent the metadata before applying the file.
+    ///
+    /// The metadata-blob read happens *outside* the pending lock: we first
+    /// pull the obvious content-hash matches under a short lock, then attempt
+    /// the metadata read for the rest without holding the lock. Holding the
+    /// write lock across an awaited blob read serialized every ContentReady
+    /// event behind whichever read was in flight.
     async fn process_pending(self: &Arc<Self>, hash: iroh_blobs::Hash) -> Result<()> {
-        let mut pending = self.pending.write().await;
-        // Drop entries that have been waiting too long — the peer that owned
-        // the content is probably gone. 5 minutes is generous for a single
-        // iroh-blobs round trip on a healthy connection.
-        pending.retain(|p| p.queued_at.elapsed() < Duration::from_secs(300));
+        // Phase 1: short lock. Prune stale entries, then drain the queue and
+        // split into definite matches (content_hash == hash) and candidates
+        // that might match via a metadata-blob read.
+        let (mut matched, candidates) = {
+            let mut pending = self.pending.write().await;
+            // Drop entries that have been waiting too long — the peer that owned
+            // the content is probably gone. 5 minutes is generous for a single
+            // iroh-blobs round trip on a healthy connection.
+            pending.retain(|p| p.queued_at.elapsed() < Duration::from_secs(300));
 
-        // Collect all pending entries that match the hash (metadata or content).
-        let mut matched = Vec::new();
-        let mut i = 0;
-        while i < pending.len() {
-            let is_match = {
-                let p = &pending[i];
+            let mut matched = Vec::new();
+            let mut candidates = Vec::new();
+            while let Some(p) = pending.pop_front() {
                 if p.content_hash == hash {
-                    // Content blob ready locally.
-                    true
+                    // Content blob ready locally — definite match.
+                    matched.push(p);
                 } else {
-                    // Could be metadata blob ready; try reading metadata.
-                    match self.read_blob_bytes(hash).await {
-                        Ok(bytes) => {
-                            if let Ok(meta) = FileMetadata::from_bytes(&bytes) {
-                                meta.target_key == p.target_key
-                                    && meta.relative_path == p.relative_path
-                            } else {
-                                false
-                            }
-                        }
-                        Err(_) => false,
+                    // Could be the metadata blob becoming ready; resolve after
+                    // releasing the lock by reading the blob bytes.
+                    candidates.push(p);
+                }
+            }
+            drop(pending);
+            (matched, candidates)
+        };
+
+        // Phase 2: no lock held. For each candidate, read the metadata blob
+        // (may await network/disk). Matches get the real metadata (sender's
+        // mtime, not the doc-entry fallback); non-matches go back to the queue
+        // for a future ContentReady event.
+        let mut requeue = Vec::new();
+        for p in candidates {
+            let real_meta = match self.read_blob_bytes(hash).await {
+                Ok(bytes) => match FileMetadata::from_bytes(&bytes) {
+                    Ok(meta)
+                        if meta.target_key == p.target_key
+                            && meta.relative_path == p.relative_path =>
+                    {
+                        meta
                     }
+                    _ => {
+                        requeue.push(p);
+                        continue;
+                    }
+                },
+                Err(_) => {
+                    requeue.push(p);
+                    continue;
                 }
             };
+            matched.push(PendingDownload {
+                meta: real_meta,
+                ..p
+            });
+        }
 
-            if is_match {
-                matched.push(pending.remove(i));
-            } else {
-                i += 1;
+        // Requeue candidates that didn't match this hash.
+        if !requeue.is_empty() {
+            let mut pending = self.pending.write().await;
+            for p in requeue {
+                if pending.len() >= PENDING_MAX {
+                    pending.pop_front();
+                }
+                pending.push_back(p);
             }
         }
-        drop(pending);
 
+        // Phase 3: apply matches.
         for p in matched {
             if p.meta.is_deleted {
                 self.apply_remote_delete(&p.target_key, &p.relative_path, p.meta.updated_at)
@@ -690,7 +711,10 @@ impl SyncEngine {
             // iroh-docs sync protocol only replicates metadata entries; the file
             // bytes live in iroh-blobs and must be fetched separately from the
             // peer that uploaded them.
-            if let Err(e) = self.ensure_content_blob(p.content_hash, p.from.as_ref()).await {
+            if let Err(e) = self
+                .ensure_content_blob(p.content_hash, p.from.as_ref())
+                .await
+            {
                 tracing::warn!(
                     error = %e,
                     target = %p.target_key,
@@ -712,7 +736,11 @@ impl SyncEngine {
     }
 
     /// Ensure a file content blob exists in the local blob store, downloading
-    /// it from the provided peer if necessary.
+    /// it from a peer if necessary.
+    ///
+    /// Tries the peer that sent the metadata first; if that fails (the
+    /// metadata may have been relayed via gossip by a node that doesn't hold
+    /// the content), falls back to every other currently-known sync peer.
     async fn ensure_content_blob(
         self: &Arc<Self>,
         hash: iroh_blobs::Hash,
@@ -721,13 +749,41 @@ impl SyncEngine {
         if self.network.blobs.has(hash).await? {
             return Ok(());
         }
-        let Some(provider) = provider else {
-            anyhow::bail!("no known provider for content blob");
-        };
 
         let downloader = self.network.blobs.downloader(&self.network.endpoint);
-        let providers = vec![provider.clone()];
         let request = HashAndFormat::raw(hash);
+
+        // Primary provider (the node that sent the metadata). PublicKey is
+        // Copy, so no clone needed.
+        if let Some(provider) = provider {
+            match downloader.download(request, vec![*provider]).await {
+                Ok(()) => return Ok(()),
+                Err(e) => tracing::warn!(
+                    error = %e,
+                    hash = %hash.to_hex(),
+                    "primary provider download failed, trying sync peers"
+                ),
+            }
+        }
+
+        // Fallback: every other known sync peer for the doc.
+        let doc = self.network.open_doc(self.namespace).await?;
+        let peers = doc
+            .get_sync_peers()
+            .await
+            .context("getting sync peers for fallback download")?
+            .unwrap_or_default();
+        if peers.is_empty() {
+            anyhow::bail!("no known provider for content blob");
+        }
+        let providers: Vec<iroh::PublicKey> = peers
+            .iter()
+            .filter_map(|bytes| iroh::PublicKey::try_from(&bytes[..]).ok())
+            .filter(|pk| Some(*pk) != provider.copied())
+            .collect();
+        if providers.is_empty() {
+            anyhow::bail!("no known provider for content blob");
+        }
         downloader
             .download(request, providers)
             .await
@@ -748,7 +804,18 @@ impl SyncEngine {
     /// Stream a blob from the local store to `dest`, writing chunks
     /// incrementally and renaming atomically over any existing file.
     /// Never loads the full blob into memory, so multi-GB files work.
-    async fn stream_blob_to_path(&self, hash: iroh_blobs::Hash, dest: &Path) -> Result<()> {
+    ///
+    /// After the atomic rename, restores `mtime_ms` as the file's modification
+    /// time so a synced file keeps its original mtime instead of inheriting
+    /// the download time. Without this, mtimes drift across devices on every
+    /// hop even though LWW still works (it compares against the carried
+    /// `meta.updated_at`, not the on-disk mtime).
+    async fn stream_blob_to_path(
+        &self,
+        hash: iroh_blobs::Hash,
+        dest: &Path,
+        mtime_ms: u64,
+    ) -> Result<()> {
         use futures_lite::StreamExt;
         use tokio::io::AsyncWriteExt;
 
@@ -763,28 +830,28 @@ impl SyncEngine {
                 .await
                 .with_context(|| format!("creating temp file {}", tmp.display()))?;
             let mut stream = self
-            .network
-            .blobs
-            .export_bao(hash, ChunkRanges::all())
-            .into_byte_stream();
+                .network
+                .blobs
+                .export_bao(hash, ChunkRanges::all())
+                .into_byte_stream();
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.context("reading blob chunk")?;
                 file.write_all(&chunk)
                     .await
                     .with_context(|| format!("writing chunk to {}", tmp.display()))?;
             }
-            file.sync_all()
-                .await
-                .context("syncing temp file")?;
+            file.sync_all().await.context("syncing temp file")?;
         }
         // std::fs::rename is a single metadata op — cheap and safe.
-        std::fs::rename(&tmp, dest).with_context(|| {
-            format!(
-                "renaming {} to {}",
-                tmp.display(),
-                dest.display()
-            )
-        })?;
+        std::fs::rename(&tmp, dest)
+            .with_context(|| format!("renaming {} to {}", tmp.display(), dest.display()))?;
+
+        // Restore the sender's mtime. Best-effort: a failure here only means
+        // the file keeps the download time, which is not a correctness issue.
+        if let Err(e) = set_file_mtime_ms(dest, mtime_ms) {
+            tracing::warn!(path = %dest.display(), error = %e, "failed to restore file mtime");
+        }
+
         Ok(())
     }
 
@@ -829,7 +896,8 @@ impl SyncEngine {
         // replaces the target; the original (or its backup) is preserved
         // until the new bytes are fully on disk.
         let hash = parse_hash(&meta.file_hash)?;
-        self.stream_blob_to_path(hash, &local_path).await?;
+        self.stream_blob_to_path(hash, &local_path, meta.updated_at)
+            .await?;
 
         self.log_record(SyncRecord {
             timestamp_ms: now_ms(),
@@ -887,10 +955,10 @@ impl SyncEngine {
             // Register in-flight BEFORE delete so the watcher's subsequent
             // Remove event for this path is suppressed (otherwise we would
             // immediately re-publish a tombstone and ping-pong).
-            self.in_flight
-                .write()
-                .await
-                .insert((target_key.to_string(), relative.to_string()), Instant::now());
+            self.in_flight.write().await.insert(
+                (target_key.to_string(), relative.to_string()),
+                Instant::now(),
+            );
             std::fs::remove_file(&local_path)
                 .with_context(|| format!("deleting {}", local_path.display()))?;
             tracing::info!(target = %target_key, path = %relative, "applied remote delete");
@@ -964,7 +1032,10 @@ mod tests {
         let key = ("t".to_string(), "stale".to_string());
 
         // Backdate well past TTL.
-        map.insert(key.clone(), Instant::now() - IN_FLIGHT_TTL - Duration::from_secs(1));
+        map.insert(
+            key.clone(),
+            Instant::now() - IN_FLIGHT_TTL - Duration::from_secs(1),
+        );
 
         // try_suppress_echo should drop the stale entry and return false
         // (no live suppression) — otherwise an old marker would suppress

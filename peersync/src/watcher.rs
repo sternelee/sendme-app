@@ -100,21 +100,11 @@ fn handle_debounced_events(
             let src = expand_path(&target.src)?;
             if let Some(rel) = path.strip_prefix(&src).ok().and_then(|p| p.to_str()) {
                 let rel = rel.replace('\\', "/");
-                if ignore_sets
-                    .get(target_key)
-                    .map_or(false, |s| s.matches(&rel))
-                {
+                if ignore_sets.get(target_key).is_some_and(|s| s.matches(&rel)) {
                     continue;
                 }
                 let kind = match event.kind {
-                    DebouncedEventKind::Any => {
-                        if path.exists() {
-                            FsEventKind::Modify
-                        } else {
-                            FsEventKind::Remove
-                        }
-                    }
-                    DebouncedEventKind::AnyContinuous => FsEventKind::Modify,
+                    DebouncedEventKind::Any if !path.exists() => FsEventKind::Remove,
                     _ => FsEventKind::Modify,
                 };
                 out.push(FsEvent {

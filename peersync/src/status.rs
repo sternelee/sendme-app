@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::config::{expand_path, Config};
-use crate::fs::now_ms;
+use crate::fs::{is_conflict_file, now_ms};
 use crate::history::History;
 use crate::network::Network;
 use crate::state::State;
@@ -82,9 +82,14 @@ pub async fn collect_status(
         .collect();
 
     if let Some(net) = network {
-        let doc = net
-            .open_doc(state.namespace_id.as_ref().unwrap().parse().unwrap())
-            .await?;
+        let ns_hex = state
+            .namespace_id
+            .as_ref()
+            .context("namespace id missing from state")?;
+        let ns = ns_hex
+            .parse()
+            .with_context(|| format!("parsing namespace id {}", ns_hex))?;
+        let doc = net.open_doc(ns).await?;
         if let Some(sync_peers) = doc.get_sync_peers().await? {
             let now = now_ms();
             for peer_bytes in sync_peers {
@@ -173,11 +178,7 @@ async fn scan_target_status(
             file_count += c;
             has_conflicts |= hc;
         } else if meta.is_file() {
-            let is_conflict = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .map(|n| n.contains(".peersync_conflict."))
-                .unwrap_or(false);
+            let is_conflict = is_conflict_file(&path);
             if is_conflict {
                 has_conflicts = true;
             } else {
@@ -221,12 +222,7 @@ async fn collect_conflicts_in_dir(
         let meta = entry.metadata().await?;
         if meta.is_dir() {
             Box::pin(collect_conflicts_in_dir(root, &path, target_key, out)).await?;
-        } else if path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n.contains(".peersync_conflict."))
-            .unwrap_or(false)
-        {
+        } else if is_conflict_file(&path) {
             let relative = path
                 .strip_prefix(root)
                 .ok()
@@ -241,74 +237,6 @@ async fn collect_conflicts_in_dir(
         }
     }
     Ok(())
-}
-
-/// Print status in human-readable form.
-pub fn print_status(info: &StatusInfo) {
-    println!("Device: {}", info.device_name);
-    println!(
-        "Namespace: {}",
-        info.namespace_id.as_deref().unwrap_or("(none)")
-    );
-    println!("Author: {}", info.author_id.as_deref().unwrap_or("(none)"));
-
-    println!("\nPeers:");
-    if info.online_peers.is_empty() {
-        println!("  (none seen yet)");
-    } else {
-        for p in &info.online_peers {
-            println!(
-                "  {} [{}] last seen {} ms ago",
-                p.node_id,
-                if p.online { "online" } else { "offline" },
-                now_ms().saturating_sub(p.last_seen_ms)
-            );
-        }
-    }
-
-    println!("\nTargets:");
-    for t in &info.targets {
-        println!(
-            "  {} -> {} ({} files{}, last sync: {})",
-            t.key,
-            t.src,
-            t.file_count,
-            if t.has_conflicts { ", conflicts" } else { "" },
-            t.last_sync_ms
-                .map(|ms| format!("{} ms ago", now_ms().saturating_sub(ms)))
-                .unwrap_or_else(|| "never".to_string())
-        );
-    }
-
-    println!("\nRecent events:");
-    if info.recent_events.is_empty() {
-        println!("  (none)");
-    } else {
-        for e in &info.recent_events {
-            println!(
-                "  [{}] {} {}/{} {}",
-                e.timestamp_ms,
-                e.action,
-                e.target_key,
-                e.relative_path,
-                e.details.as_deref().unwrap_or("")
-            );
-        }
-    }
-
-    println!("\nConflict files:");
-    if info.conflict_files.is_empty() {
-        println!("  (none)");
-    } else {
-        for c in &info.conflict_files {
-            println!(
-                "  {}/{} -> {}",
-                c.target_key,
-                c.relative_path,
-                c.path.display()
-            );
-        }
-    }
 }
 
 #[cfg(test)]

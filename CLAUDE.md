@@ -11,7 +11,7 @@ There are five distinct products/crates in this repo:
 - `cli/` — `sendme` terminal app and TUI
 - `app/` + `app/src-tauri/` — Tauri desktop/mobile app with a SolidJS frontend
 - `browser/` + `browser-lib/` — browser app plus WASM bindings
-- `peersync/` — P2P config/dotfile sync engine (iroh-docs + iroh-blobs)
+- `peersync/` — P2P config/dotfile sync engine (iroh-docs + iroh-blobs), integrated into both the CLI TUI (tab `[5]`) and the Tauri app
 
 Additional crates/packages:
 - `app/src-tauri/plugins/tauri-plugin-media-picker/` — custom Tauri plugin for iOS photo/video picking
@@ -376,15 +376,17 @@ The Tauri app uses system-browser OAuth instead of an in-app WebView:
 
 ## Environment Variables
 
-- **`IROH_SECRET`**: Hex-encoded 32-byte secret key (optional, generates random if not set)
-- **`SENDME_RELAY_URL`**: Custom iroh relay URL. When set, overrides the default n0 relay for CLI, Tauri remote transfers, and the browser WASM node
-- **`IROH_FORCE_STAGING_RELAYS`**: Set to `1` to use staging relays (CI tests)
-- **`RUST_LOG`**: Tracing level (debug, info, warn, error)
-- **`RUSTFLAGS=-Dwarnings`**: Treat all warnings as errors (CI)
-- **`SENDME_IOS_INSPECTOR=1`**: Enable Safari Web Inspector on the iOS WebView
-- **`BETTER_AUTH_SECRET`**: better-auth secret for session signing (browser backend)
-- **`GITHUB_CLIENT_ID`** / **`GITHUB_CLIENT_SECRET`**: GitHub OAuth credentials (browser backend)
-- **`GOOGLE_CLIENT_ID`** / **`GOOGLE_CLIENT_SECRET`**: Google OAuth credentials (browser backend)
+| Variable | Purpose |
+| --- | --- |
+| `IROH_SECRET` | Hex-encoded 32-byte secret key (random if unset) |
+| `SENDME_RELAY_URL` | Custom iroh relay URL. When set, overrides the default n0 relay for CLI, Tauri remote transfers, and the browser WASM node |
+| `IROH_FORCE_STAGING_RELAYS=1` | Use staging relays; required for CI tests |
+| `RUST_LOG` | Tracing level: `debug`, `info`, `warn`, `error` |
+| `RUSTFLAGS=-Dwarnings` | Treat warnings as errors (CI) |
+| `SENDME_IOS_INSPECTOR=1` | Enable Safari Web Inspector on iOS WebView |
+| `BETTER_AUTH_SECRET` | Session signing secret (browser backend) |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth (browser backend) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth (browser backend) |
 
 ## MSRV
 

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 use crate::config::{expand_path, Config};
-use crate::fs::file_mtime_ms;
+use crate::fs::{file_mtime_ms, is_conflict_file};
 use crate::history::History;
 
 /// Result of a GC run.
@@ -95,12 +95,7 @@ async fn collect_old_conflicts(dir: &Path, cutoff_ms: u64, out: &mut Vec<PathBuf
             // Async recursion needs indirection — the compiler can't size
             // the stack frame of an async fn that recurses directly.
             Box::pin(collect_old_conflicts(&path, cutoff_ms, out)).await?;
-        } else if path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n.contains(".peersync_conflict."))
-            .unwrap_or(false)
-        {
+        } else if is_conflict_file(&path) {
             if let Ok(mtime) = file_mtime_ms(&path) {
                 if mtime < cutoff_ms {
                     out.push(path);
@@ -109,27 +104,6 @@ async fn collect_old_conflicts(dir: &Path, cutoff_ms: u64, out: &mut Vec<PathBuf
         }
     }
     Ok(())
-}
-
-/// Print a GC report.
-pub fn print_report(report: &GcReport, dry_run: bool) {
-    let prefix = if dry_run { "Would remove" } else { "Removed" };
-    println!(
-        "{} {} conflict backup(s)",
-        prefix,
-        report.conflict_backups_removed.len()
-    );
-    for p in &report.conflict_backups_removed {
-        println!("  {}", p.display());
-    }
-    println!(
-        "{} {} tombstone record(s)",
-        prefix, report.tombstones_pruned
-    );
-    println!(
-        "{} {} history record(s)",
-        prefix, report.history_records_pruned
-    );
 }
 
 #[cfg(test)]

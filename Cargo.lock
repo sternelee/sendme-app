@@ -5416,7 +5416,6 @@ version = "0.1.3"
 dependencies = [
  "anyhow",
  "blake3",
- "data-encoding",
  "directories",
  "dirs",
  "futures-lite",

@@ -38,9 +38,7 @@ serde_json = "1"
 
 # Paths and hashing
 directories = "5"
-blake3 = "1.5"
 hex = "0.4"
-data-encoding = "2.5"
 
 # Utils
 futures-lite = "2"
@@ -50,4 +48,4 @@ tempfile = "3.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
-tempfile = "3.8"
+blake3 = "1.5"
