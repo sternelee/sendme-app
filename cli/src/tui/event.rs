@@ -75,12 +75,11 @@ impl EventHandler {
             loop {
                 if crossterm::event::poll(Duration::from_millis(tick_rate_ms)).unwrap_or(false) {
                     match crossterm::event::read() {
-                        Ok(CrosstermEvent::Key(key)) => {
+                        Ok(CrosstermEvent::Key(key))
                             // Only process key press events, not release/repeat
-                            if key.kind == KeyEventKind::Press {
+                            if key.kind == KeyEventKind::Press => {
                                 sender_clone.send(AppEvent::Input(key)).unwrap();
                             }
-                        }
                         Ok(CrosstermEvent::Paste(text)) => {
                             sender_clone.send(AppEvent::Paste(text)).unwrap();
                         }

@@ -293,10 +293,13 @@ impl SyncEngine {
             health_engine.emit(EngineEvent::Warning { message: msg });
         });
 
-        // Start periodic GC task.
+        // Start periodic GC task. Skip the first tick so GC doesn't run
+        // immediately at engine startup — the first GC should happen after
+        // the full retention period has elapsed.
         let gc_engine = self.clone();
         let gc_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
+            interval.tick().await; // consume the immediate first tick
             loop {
                 interval.tick().await;
                 if let Err(e) = gc_engine.run_gc(30, false).await {

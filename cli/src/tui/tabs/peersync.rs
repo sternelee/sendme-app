@@ -310,13 +310,35 @@ fn render_log_section(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_gc_section(f: &mut Frame, app: &App, area: Rect) {
     let mut lines = Vec::new();
+    let dry_run_label = if app.peer_sync_gc_dry_run {
+        "ON"
+    } else {
+        "OFF"
+    };
+    let dry_run_color = if app.peer_sync_gc_dry_run {
+        Color::Yellow
+    } else {
+        Color::DarkGray
+    };
     lines.push(Line::from(vec![
         Span::styled("GC actions", Style::default().fg(Color::Yellow)),
-        Span::raw("  [Enter] Run GC   [d] Dry-run"),
+        Span::raw("  [Enter] Run GC   [d] Dry-run: "),
+        Span::styled(
+            dry_run_label,
+            Style::default()
+                .fg(dry_run_color)
+                .add_modifier(Modifier::BOLD),
+        ),
     ]));
     lines.push(Line::from(""));
 
     if app.peer_sync_message.is_empty() {
+        let mode_hint = if app.peer_sync_gc_dry_run {
+            "Dry-run mode: no files will be deleted. Toggle with [d]."
+        } else {
+            "Live mode: files WILL be deleted. Toggle dry-run with [d]."
+        };
+        lines.push(Line::from(mode_hint));
         lines.push(Line::from(
             "Select an action to clean up old conflict backups and history records.",
         ));

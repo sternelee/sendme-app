@@ -52,9 +52,10 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         .iter()
         .map(|tab| {
             let style = if *tab == app.current_tab {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+                // Active tab: only bold here — the highlight_style on Tabs
+                // provides the bg/fg so the active tab stands out with a
+                // background bar. Setting fg here would override highlight_style.
+                Style::default().add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::Gray)
             };
@@ -75,8 +76,14 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
                 .title(" Sendme - P2P File Transfer "),
         )
         .style(Style::default().fg(Color::White))
-        .highlight_style(Style::default().bg(Color::Blue))
-        .divider(Span::raw("|"));
+        .highlight_style(
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )
+        .divider(Span::raw("|"))
+        .select(app.current_tab.index());
 
     f.render_widget(tabs, area);
 }

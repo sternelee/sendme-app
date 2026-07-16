@@ -129,7 +129,7 @@ pub async fn scan_directory(base_dir: &Path, max_depth: usize) -> Vec<FileInfo> 
 
     // Use tokio for async file scanning
     let base_dir = base_dir.to_path_buf();
-    let max_depth = max_depth.clone();
+    let max_depth = max_depth;
 
     tokio::task::spawn_blocking(move || {
         scan_directory_recursive(&base_dir, &base_dir, 0, max_depth, &mut files);
@@ -209,15 +209,15 @@ pub fn fuzzy_score(query: &str, text: &str) -> Option<usize> {
         return Some(0);
     }
 
-    let mut query_chars = query.chars().peekable();
+    let query_chars = query.chars().peekable();
     let mut text_chars = text.chars().enumerate().peekable();
     let mut score = 0usize;
     let mut prev_match_idx: Option<usize> = None;
 
-    while let Some(qc) = query_chars.next() {
+    for qc in query_chars {
         let mut found = false;
 
-        while let Some((idx, tc)) = text_chars.next() {
+        for (idx, tc) in text_chars.by_ref() {
             if tc == qc {
                 // Found a match
 
@@ -239,7 +239,7 @@ pub fn fuzzy_score(query: &str, text: &str) -> Option<usize> {
                 } else {
                     // Check if previous character is a separator
                     let prev_char = text.chars().nth(idx - 1);
-                    if prev_char.map_or(false, |c| c == '_' || c == '-' || c == '/' || c == '.') {
+                    if prev_char.is_some_and(|c| c == '_' || c == '-' || c == '/' || c == '.') {
                         score += 15; // Word boundary bonus
                     }
                 }

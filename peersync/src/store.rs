@@ -23,6 +23,12 @@ pub fn db_path(config_dir: Option<&Path>, data_dir: Option<&Path>) -> Result<Pat
 }
 
 /// Local SQLite store for history, tombstones, and peer state.
+///
+/// Uses `std::sync::Mutex` (not `tokio::sync::Mutex`) because all SQLite
+/// operations via `rusqlite` are synchronous and complete in microseconds.
+/// `tokio::sync::Mutex` would add unnecessary async overhead without
+/// benefit. The mutex is held only for the duration of each short query; it
+/// never blocks across an `.await` point so it cannot stall the async runtime.
 pub struct Store {
     conn: Mutex<Connection>,
 }

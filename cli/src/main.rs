@@ -8,9 +8,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use crossterm::{
-    event::{
-        DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    },
+    event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -340,10 +338,7 @@ async fn do_list_devices() -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "{:<36}  {:<15}  {:<8}  {}",
-        "ID", "NAME", "PLATFORM", "STATUS"
-    );
+    println!("{:<36}  {:<15}  {:<8}  STATUS", "ID", "NAME", "PLATFORM");
     for d in &devices {
         let status = if d.online.unwrap_or(false) {
             "online"
@@ -378,7 +373,7 @@ async fn do_list_friends() -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<36}  {:<20}  {}", "USER ID", "NAME", "STATUS");
+    println!("{:<36}  {:<20}  STATUS", "USER ID", "NAME");
     for f in &friends {
         let name = f.name.as_deref().unwrap_or("—");
         let user_id = f.friend_user_id.as_deref().unwrap_or(&f.id);
@@ -581,7 +576,7 @@ async fn run_tui() -> Result<()> {
                                     let ticket = app.send_success_ticket.clone();
                                     let path = app.send_success_path.clone();
                                     let my_device_id = app.cloud_my_device_db_id.clone();
-                                    let state = app.send_cloud_state.clone();
+                                    let state = app.send_cloud_state;
                                     let idx = app.send_cloud_selected_index;
                                     app.send_cloud_state = tui::app::SendCloudState::None;
 
@@ -740,23 +735,22 @@ async fn run_tui() -> Result<()> {
                         if app.current_tab == tui::app::Tab::PeerSync {
                             match key.code {
                                 crossterm::event::KeyCode::Char('r')
-                                | crossterm::event::KeyCode::Char('R') => {
-                                    if !app.peer_sync_busy {
-                                        app.peer_sync_busy = true;
-                                        app.peer_sync_message.clear();
-                                        // Load targets synchronously so the UI is immediately
-                                        // up to date; status/log refresh runs async.
-                                        let config_dir = config::peersync_config_dir();
-                                        let _ = config::ensure_peersync_dirs();
-                                        let config =
-                                            peersync::config::load_config(Some(&config_dir))
-                                                .unwrap_or_default();
-                                        app.load_peer_sync_targets(&config);
-                                        let eh = event_handler.clone();
-                                        tokio::spawn(async move {
-                                            refresh_peer_sync(eh).await;
-                                        });
-                                    }
+                                | crossterm::event::KeyCode::Char('R')
+                                    if !app.peer_sync_busy =>
+                                {
+                                    app.peer_sync_busy = true;
+                                    app.peer_sync_message.clear();
+                                    // Load targets synchronously so the UI is immediately
+                                    // up to date; status/log refresh runs async.
+                                    let config_dir = config::peersync_config_dir();
+                                    let _ = config::ensure_peersync_dirs();
+                                    let config = peersync::config::load_config(Some(&config_dir))
+                                        .unwrap_or_default();
+                                    app.load_peer_sync_targets(&config);
+                                    let eh = event_handler.clone();
+                                    tokio::spawn(async move {
+                                        refresh_peer_sync(eh).await;
+                                    });
                                 }
                                 crossterm::event::KeyCode::Enter if !app.peer_sync_busy => {
                                     if app.peer_sync_link_mode {
@@ -898,7 +892,8 @@ async fn run_tui() -> Result<()> {
                         app.peer_sync_link_mode = false;
                         app.peer_sync_link_input.clear();
                         app.peer_sync_busy = false;
-                        if success && !app.peer_sync_engine_running {
+                        if success && !app.peer_sync_engine_running && !app.peer_sync_link_cancelled
+                        {
                             app.peer_sync_busy = true;
                             app.peer_sync_message = "Starting sync engine...".to_string();
                             let eh = event_handler.clone();
@@ -907,6 +902,8 @@ async fn run_tui() -> Result<()> {
                             });
                             peer_sync_engine_handle = Some(handle.abort_handle());
                         }
+                        // Reset the cancelled flag regardless of outcome.
+                        app.peer_sync_link_cancelled = false;
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => {
                         // No more events, break inner loop
@@ -1049,19 +1046,17 @@ async fn run_peer_sync_engine(event_handler: tui::EventHandler) {
                 peersync::events::EngineEvent::Warning { message } => {
                     eh_fwd.emit(tui::event::AppEvent::PeerSyncNotification(message));
                 }
-                peersync::events::EngineEvent::StatusRefresh => {
-                    match engine_fwd.status().await {
-                        Ok(info) => {
-                            eh_fwd.emit(tui::event::AppEvent::PeerSyncStatusUpdated(info));
-                        }
-                        Err(e) => {
-                            eh_fwd.emit(tui::event::AppEvent::PeerSyncNotification(format!(
-                                "Refresh failed: {}",
-                                e
-                            )));
-                        }
+                peersync::events::EngineEvent::StatusRefresh => match engine_fwd.status().await {
+                    Ok(info) => {
+                        eh_fwd.emit(tui::event::AppEvent::PeerSyncStatusUpdated(info));
                     }
-                }
+                    Err(e) => {
+                        eh_fwd.emit(tui::event::AppEvent::PeerSyncNotification(format!(
+                            "Refresh failed: {}",
+                            e
+                        )));
+                    }
+                },
                 _ => {}
             }
         }
@@ -1139,12 +1134,6 @@ async fn run_peer_sync_gc(event_handler: tui::EventHandler, dry_run: bool) {
                 e
             )));
         }
-        Err(e) => {
-            event_handler.emit(tui::event::AppEvent::PeerSyncNotification(format!(
-                "GC task panicked: {}",
-                e
-            )));
-        }
     }
 }
 
@@ -1159,63 +1148,59 @@ async fn link_peer_sync(event_handler: tui::EventHandler, ticket: String) {
     // reopens the same persistent blobs/docs stores — otherwise the engine's
     // `Network::start` blocks on the db lock the abandoned network still holds.
     // Bound the whole operation so the UI never gets stuck in "working…".
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        async {
-            let config = tokio::task::spawn_blocking({
-                let config_dir = config_dir.clone();
-                move || peersync::config::load_config(Some(&config_dir)).unwrap_or_default()
-            })
-            .await?;
+    let result = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let config = tokio::task::spawn_blocking({
+            let config_dir = config_dir.clone();
+            move || peersync::config::load_config(Some(&config_dir)).unwrap_or_default()
+        })
+        .await?;
 
-            let mut state = tokio::task::spawn_blocking({
-                let config_dir = config_dir.clone();
-                move || peersync::state::load_state(&config, Some(&config_dir))
+        let mut state = tokio::task::spawn_blocking({
+            let config_dir = config_dir.clone();
+            move || peersync::state::load_state(&config, Some(&config_dir))
+        })
+        .await??;
+
+        let network =
+            peersync::network::Network::start(Some(&config_dir), Some(&data_dir), &state).await?;
+
+        // From here on we must shut the network down on every path,
+        // success or failure, so the persistent blobs/docs stores are
+        // released before the engine tries to reopen them.
+        let inner = async {
+            // import_ticket can block on the ticket's peers; keep it bounded.
+            let namespace = tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                network.import_ticket(&ticket),
+            )
+            .await
+            .map_err(|_| anyhow::anyhow!("timed out importing ticket (peer unreachable)"))??;
+
+            state.namespace_id = Some(namespace.to_string());
+            let author = network.default_author().await?;
+            state.author_id = Some(author.to_string());
+
+            // Persist a local share ticket so the engine can reuse it on
+            // start instead of re-sharing. Mirrors Tauri `peersync_link_device`.
+            let local_ticket = network.share_doc(namespace).await?;
+            state.ticket = Some(local_ticket);
+            // Keep the remote ticket so the engine can re-start sync after
+            // restart (Docs::open does not auto-join the gossip swarm).
+            state.peer_ticket = Some(ticket.clone());
+
+            tokio::task::spawn_blocking(move || {
+                peersync::state::save_state(Some(&config_dir), &state)
             })
             .await??;
 
-            let network =
-                peersync::network::Network::start(Some(&config_dir), Some(&data_dir), &state)
-                    .await?;
+            anyhow::Ok(namespace.to_string())
+        };
 
-            // From here on we must shut the network down on every path,
-            // success or failure, so the persistent blobs/docs stores are
-            // released before the engine tries to reopen them.
-            let inner = async {
-                // import_ticket can block on the ticket's peers; keep it bounded.
-                let namespace = tokio::time::timeout(
-                    std::time::Duration::from_secs(15),
-                    network.import_ticket(&ticket),
-                )
-                .await
-                .map_err(|_| anyhow::anyhow!("timed out importing ticket (peer unreachable)"))??;
-
-                state.namespace_id = Some(namespace.to_string());
-                let author = network.default_author().await?;
-                state.author_id = Some(author.to_string());
-
-                // Persist a local share ticket so the engine can reuse it on
-                // start instead of re-sharing. Mirrors Tauri `peersync_link_device`.
-                let local_ticket = network.share_doc(namespace).await?;
-                state.ticket = Some(local_ticket);
-                // Keep the remote ticket so the engine can re-start sync after
-                // restart (Docs::open does not auto-join the gossip swarm).
-                state.peer_ticket = Some(ticket.clone());
-
-                tokio::task::spawn_blocking(move || {
-                    peersync::state::save_state(Some(&config_dir), &state)
-                })
-                .await??;
-
-                anyhow::Ok(namespace.to_string())
-            };
-
-            let outcome = inner.await;
-            // Release the persistent stores before the engine reopens them.
-            let _ = network.shutdown().await;
-            outcome
-        },
-    )
+        let outcome = inner.await;
+        // Release the persistent stores before the engine reopens them.
+        let _ = network.shutdown().await;
+        outcome
+    })
     .await;
 
     let result = match result {

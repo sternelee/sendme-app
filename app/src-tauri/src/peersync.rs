@@ -92,9 +92,7 @@ pub fn new_state(
                     // distinct event name so the frontend can listen for it
                     // without parsing the full event envelope.
                     let event_name = match &event {
-                        peersync::events::EngineEvent::StatusRefresh => {
-                            "peersync-status-refresh"
-                        }
+                        peersync::events::EngineEvent::StatusRefresh => "peersync-status-refresh",
                         _ => "peersync-event",
                     };
                     if let Err(e) = app_handle.emit(event_name, &event) {
@@ -115,9 +113,7 @@ pub fn new_state(
 // ----- Commands -----
 
 #[tauri::command]
-pub async fn peersync_get_config(
-    state: tauri::State<'_, PeerSyncState>,
-) -> Result<Config, String> {
+pub async fn peersync_get_config(state: tauri::State<'_, PeerSyncState>) -> Result<Config, String> {
     let guard = state.read().await;
     Ok(guard.config.clone())
 }
@@ -128,8 +124,7 @@ pub async fn peersync_save_config(
     config: Config,
 ) -> Result<(), String> {
     let mut guard = state.write().await;
-    peersync::config::save_config(Some(&guard.base_dir), &config)
-        .map_err(|e| e.to_string())?;
+    peersync::config::save_config(Some(&guard.base_dir), &config).map_err(|e| e.to_string())?;
     guard.config = config;
     Ok(())
 }
@@ -149,10 +144,10 @@ pub async fn peersync_add_target(
     let mut guard = state.write().await;
 
     // Validate the path is a real directory.
-    let expanded = peersync::config::expand_path(&src)
-        .map_err(|e| format!("expanding path: {}", e))?;
-    let meta = std::fs::metadata(&expanded)
-        .map_err(|e| format!("stat {}: {}", expanded.display(), e))?;
+    let expanded =
+        peersync::config::expand_path(&src).map_err(|e| format!("expanding path: {}", e))?;
+    let meta =
+        std::fs::metadata(&expanded).map_err(|e| format!("stat {}: {}", expanded.display(), e))?;
     if !meta.is_dir() {
         return Err(format!("not a directory: {}", expanded.display()));
     }
@@ -212,15 +207,17 @@ pub async fn peersync_start(state: tauri::State<'_, PeerSyncState>) -> Result<()
     let st = peersync::state::load_state(&guard.config, Some(&guard.base_dir))
         .map_err(|e| format!("loading state: {}", e))?;
 
-    let engine = Arc::new(SyncEngine::start(
-        guard.config.clone(),
-        Some(guard.base_dir.clone()),
-        Some(guard.base_dir.clone()),
-        st,
-        Some(guard.events_tx.clone()),
-    )
-    .await
-    .map_err(|e| format!("starting engine: {}", e))?);
+    let engine = Arc::new(
+        SyncEngine::start(
+            guard.config.clone(),
+            Some(guard.base_dir.clone()),
+            Some(guard.base_dir.clone()),
+            st,
+            Some(guard.events_tx.clone()),
+        )
+        .await
+        .map_err(|e| format!("starting engine: {}", e))?,
+    );
 
     guard.ticket = engine.ticket();
 
@@ -275,13 +272,10 @@ pub async fn peersync_link_device(
     let mut st = peersync::state::load_state(&guard.config, Some(&guard.base_dir))
         .map_err(|e| format!("loading state: {}", e))?;
 
-    let network = peersync::network::Network::start(
-        Some(&guard.base_dir),
-        Some(&guard.base_dir),
-        &st,
-    )
-    .await
-    .map_err(|e| format!("starting network: {}", e))?;
+    let network =
+        peersync::network::Network::start(Some(&guard.base_dir), Some(&guard.base_dir), &st)
+            .await
+            .map_err(|e| format!("starting network: {}", e))?;
 
     let ns = network
         .import_ticket(&ticket)
@@ -427,13 +421,9 @@ pub async fn peersync_resolve_conflict(
             // Open transient network + doc.
             let st = peersync::state::load_state(&guard.config, Some(&base_dir))
                 .map_err(|e| format!("loading state: {}", e))?;
-            let network = peersync::network::Network::start(
-                Some(&base_dir),
-                Some(&base_dir),
-                &st,
-            )
-            .await
-            .map_err(|e| format!("starting network: {}", e))?;
+            let network = peersync::network::Network::start(Some(&base_dir), Some(&base_dir), &st)
+                .await
+                .map_err(|e| format!("starting network: {}", e))?;
 
             let result: anyhow::Result<()> = async {
                 let namespace = st
@@ -472,8 +462,7 @@ pub async fn peersync_resolve_conflict(
                     .context("writing restored file")?;
 
                 // Remove the backup.
-                std::fs::remove_file(&backup_path)
-                    .context("removing backup file")?;
+                std::fs::remove_file(&backup_path).context("removing backup file")?;
                 Ok(())
             }
             .await;

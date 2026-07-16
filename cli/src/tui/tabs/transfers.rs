@@ -62,7 +62,7 @@ fn render_transfers_list(f: &mut Frame, app: &App, area: Rect) {
 
         f.render_widget(empty, chunks[1]);
     } else {
-        let header_cells = vec!["Type", "Path", "Status", "Progress", "Size", "Time"];
+        let header_cells = ["Type", "Path", "Status", "Progress", "Size", "Time"];
         let header = Row::new(header_cells.iter().map(|h| {
             Cell::from(*h).style(
                 Style::default()
@@ -150,7 +150,7 @@ fn render_transfers_list(f: &mut Frame, app: &App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::DarkGray)),
         )
-        .widths(&[
+        .widths([
             Constraint::Percentage(10),
             Constraint::Percentage(25),
             Constraint::Percentage(25),

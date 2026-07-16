@@ -20,8 +20,11 @@ pub struct FsEvent {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FsEventKind {
-    Create,
+    /// File was created or modified. `notify-debouncer-mini` collapses both
+    /// into a single `DebouncedEventKind::Any` event, so we can't distinguish
+    /// them at this layer. The engine treats this the same as "upload file".
     Modify,
+    /// File was removed (detected by checking `path.exists()` is false).
     Remove,
 }
 

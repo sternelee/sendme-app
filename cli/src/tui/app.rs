@@ -400,6 +400,9 @@ pub struct App {
     pub peer_sync_link_mode: bool,
     /// Input buffer for linking an existing sync doc ticket.
     pub peer_sync_link_input: String,
+    /// Flag set when the user cancels (ESC) a link operation so the
+    /// background link task knows not to auto-start the engine on success.
+    pub peer_sync_link_cancelled: bool,
     /// Selected index in PeerSync lists.
     pub peer_sync_selected_index: usize,
     /// Short-lived notification/message in PeerSync tab.
@@ -448,6 +451,7 @@ impl App {
             peer_sync_file_search: None,
             peer_sync_link_mode: false,
             peer_sync_link_input: String::new(),
+            peer_sync_link_cancelled: false,
             peer_sync_selected_index: 0,
             peer_sync_message: String::new(),
             running: true,
@@ -505,6 +509,7 @@ impl App {
                     } else if self.peer_sync_link_mode {
                         self.peer_sync_link_mode = false;
                         self.peer_sync_link_input.clear();
+                        self.peer_sync_link_cancelled = true;
                     }
                 }
                 _ => {}
@@ -566,11 +571,9 @@ impl App {
                     crossterm::event::KeyCode::Backspace => {
                         self.send_input_path.pop();
                     }
-                    crossterm::event::KeyCode::Enter => {
-                        if !self.send_input_path.is_empty() {
-                            // Import will be handled externally, just set message for now
-                            self.send_message = format!("Sending: {}", self.send_input_path);
-                        }
+                    crossterm::event::KeyCode::Enter if !self.send_input_path.is_empty() => {
+                        // Import will be handled externally, just set message for now
+                        self.send_message = format!("Sending: {}", self.send_input_path);
                     }
                     _ => {}
                 }
@@ -581,11 +584,11 @@ impl App {
             SendTabState::Success => {
                 match key.code {
                     // 'C' – copy ticket to clipboard
-                    crossterm::event::KeyCode::Char('c') | crossterm::event::KeyCode::Char('C') => {
-                        if self.send_cloud_state == SendCloudState::None {
-                            if let Some(ticket) = self.send_success_ticket.clone() {
-                                self.copy_to_clipboard(&ticket);
-                            }
+                    crossterm::event::KeyCode::Char('c') | crossterm::event::KeyCode::Char('C')
+                        if self.send_cloud_state == SendCloudState::None =>
+                    {
+                        if let Some(ticket) = self.send_success_ticket.clone() {
+                            self.copy_to_clipboard(&ticket);
                         }
                     }
                     // 'D' – open device selector (cloud send)
@@ -610,11 +613,10 @@ impl App {
                     }
                     // Navigate inside cloud send popup
                     crossterm::event::KeyCode::Up
-                        if self.send_cloud_state != SendCloudState::None =>
+                        if self.send_cloud_state != SendCloudState::None
+                            && self.send_cloud_selected_index > 0 =>
                     {
-                        if self.send_cloud_selected_index > 0 {
-                            self.send_cloud_selected_index -= 1;
-                        }
+                        self.send_cloud_selected_index -= 1;
                     }
                     crossterm::event::KeyCode::Down
                         if self.send_cloud_state != SendCloudState::None =>
@@ -644,10 +646,8 @@ impl App {
             crossterm::event::KeyCode::Backspace => {
                 self.receive_input_ticket.pop();
             }
-            crossterm::event::KeyCode::Enter => {
-                if !self.receive_input_ticket.is_empty() {
-                    self.receive_message = format!("Receiving from ticket...");
-                }
+            crossterm::event::KeyCode::Enter if !self.receive_input_ticket.is_empty() => {
+                self.receive_message = "Receiving from ticket...".to_string();
             }
             _ => {}
         }
@@ -868,10 +868,8 @@ impl App {
                 self.cloud_section = CloudSection::Incoming;
                 self.cloud_selected_index = 0;
             }
-            crossterm::event::KeyCode::Up => {
-                if self.cloud_selected_index > 0 {
-                    self.cloud_selected_index -= 1;
-                }
+            crossterm::event::KeyCode::Up if self.cloud_selected_index > 0 => {
+                self.cloud_selected_index -= 1;
             }
             crossterm::event::KeyCode::Down => {
                 let max = self.cloud_section_len();
@@ -939,6 +937,7 @@ impl App {
                 if self.peer_sync_section == PeerSyncSection::Status {
                     self.peer_sync_link_mode = true;
                     self.peer_sync_link_input.clear();
+                    self.peer_sync_link_cancelled = false;
                 }
             }
             crossterm::event::KeyCode::Char('d') | crossterm::event::KeyCode::Char('D') => {
@@ -978,10 +977,12 @@ impl App {
             crossterm::event::KeyCode::Esc => {
                 self.peer_sync_link_mode = false;
                 self.peer_sync_link_input.clear();
+                self.peer_sync_link_cancelled = true;
                 // Also clear busy so the user can recover if the link task
                 // hung/timed out; the actual link task will still finish in the
                 // background and emit PeerSyncLinkCompleted, which is safe to
-                // ignore.
+                // ignore because the cancelled flag prevents auto-starting the
+                // engine.
                 self.peer_sync_busy = false;
             }
             // Enter is handled by the main loop because it needs async network IO.
@@ -1019,13 +1020,8 @@ impl App {
             crossterm::event::KeyCode::Backspace => {
                 self.peer_sync_target_input.pop();
             }
-            crossterm::event::KeyCode::Enter => {
-                let path = self.peer_sync_target_input.clone();
-                if !path.is_empty() {
-                    self.add_peer_sync_target(&path);
-                    self.peer_sync_target_input.clear();
-                }
-            }
+            // Enter is handled by the main event loop so it can respect the
+            // peer_sync_busy guard and avoid double-processing.
             _ => {}
         }
     }
@@ -1050,11 +1046,29 @@ impl App {
         let expanded = peersync::config::expand_path(path)
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| path.to_string());
-        let key = std::path::Path::new(&expanded)
+
+        // Check if the expanded path is already a target to avoid duplicates.
+        if self
+            .peer_sync_targets
+            .iter()
+            .any(|(_, t)| t.src == expanded)
+        {
+            self.peer_sync_message = format!("Already a target: {}", path);
+            return;
+        }
+
+        let base_key = std::path::Path::new(&expanded)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("target")
             .to_string();
+        // Ensure key uniqueness by appending a suffix if needed.
+        let mut key = base_key.clone();
+        let mut suffix = 1;
+        while self.peer_sync_targets.iter().any(|(k, _)| *k == key) {
+            key = format!("{}-{}", base_key, suffix);
+            suffix += 1;
+        }
         let target = peersync::config::TargetConfig {
             src: expanded,
             ignore: Vec::new(),

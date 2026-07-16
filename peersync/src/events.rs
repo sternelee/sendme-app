@@ -34,6 +34,9 @@ pub enum EngineEvent {
 pub const CHANNEL_CAPACITY: usize = 256;
 
 /// Construct a paired sender + receiver.
-pub fn channel() -> (broadcast::Sender<EngineEvent>, broadcast::Receiver<EngineEvent>) {
+pub fn channel() -> (
+    broadcast::Sender<EngineEvent>,
+    broadcast::Receiver<EngineEvent>,
+) {
     broadcast::channel(CHANNEL_CAPACITY)
 }
