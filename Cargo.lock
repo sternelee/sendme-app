@@ -5416,6 +5416,8 @@ version = "0.1.3"
 dependencies = [
  "anyhow",
  "blake3",
+ "clap",
+ "crossterm 0.29.0",
  "directories",
  "dirs",
  "futures-lite",
@@ -5428,6 +5430,7 @@ dependencies = [
  "iroh-gossip",
  "notify",
  "notify-debouncer-mini",
+ "ratatui",
  "rusqlite",
  "sendme-lib",
  "serde",
@@ -5436,6 +5439,7 @@ dependencies = [
  "tokio",
  "toml 0.8.2",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
