@@ -20,6 +20,7 @@ use crate::gc;
 use crate::history::{History, SyncAction, SyncRecord};
 use crate::metadata::{parse_doc_key, FileMetadata};
 use crate::network::Network;
+use crate::security::SecurityFilter;
 use crate::state::{save_state, State};
 use crate::status::{collect_status, StatusInfo};
 use crate::watcher::{FsEvent, FsEventKind, TargetWatcher};
@@ -85,6 +86,8 @@ pub struct SyncEngine {
     /// Pre-compiled ignore matchers keyed by target label. Built once at
     /// engine start so file events don't pay globset compile cost.
     ignore_sets: HashMap<String, IgnoreSet>,
+    /// Security filter for secret detection. Built once at engine start.
+    security: SecurityFilter,
     /// Broadcast channel for engine events. Cheap to clone the sender and
     /// emit; the receiver side is for Tauri/UI subscribers.
     events: tokio::sync::broadcast::Sender<EngineEvent>,
@@ -155,6 +158,9 @@ impl SyncEngine {
             ignore_sets.insert(key.clone(), set);
         }
 
+        // Build the security filter for secret detection.
+        let security = SecurityFilter::new(&config.security).context("building security filter")?;
+
         Ok(Self {
             config,
             namespace,
@@ -168,6 +174,7 @@ impl SyncEngine {
             node_id,
             device_name,
             ignore_sets,
+            security,
             events: events.unwrap_or_else(|| channel().0),
         })
     }
@@ -438,6 +445,23 @@ impl SyncEngine {
     /// authoritative; we don't pre-compute our own BLAKE3 (saves a full
     /// read + hash pass over the same data).
     async fn upload_file(&self, target_key: &str, relative: &str, path: &Path) -> Result<()> {
+        // Security check: skip files that match secret patterns.
+        if let Some(reason) = self.security.check_file(relative, path) {
+            tracing::warn!(
+                target = %target_key,
+                path = %relative,
+                reason = %reason,
+                "skipping file due to security policy"
+            );
+            self.emit(EngineEvent::Warning {
+                message: format!(
+                    "Skipped {} (security): {}",
+                    relative, reason
+                ),
+            });
+            return Ok(());
+        }
+
         let mtime = file_mtime_ms(path)?;
         let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 

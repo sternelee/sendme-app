@@ -6,6 +6,7 @@ pub mod gc;
 pub mod history;
 pub mod metadata;
 pub mod network;
+pub mod security;
 pub mod state;
 pub mod status;
 pub mod store;

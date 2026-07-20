@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::security::SecurityConfig;
+
 /// Per-target sync configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetConfig {
@@ -25,6 +27,10 @@ pub struct Config {
     /// Map of target label -> target configuration.
     #[serde(rename = "sync_targets", default)]
     pub targets: HashMap<String, TargetConfig>,
+
+    /// Security settings: secret detection and file filtering.
+    #[serde(default)]
+    pub security: SecurityConfig,
 }
 
 fn default_device_name() -> String {
@@ -39,6 +45,7 @@ impl Default for Config {
         Self {
             device_name: default_device_name(),
             targets: default_targets(),
+            security: SecurityConfig::default(),
         }
     }
 }
