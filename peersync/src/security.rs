@@ -134,7 +134,9 @@ impl SecurityFilter {
                 .with_context(|| format!("invalid skip_files pattern: {}", pattern))?;
             glob_builder.add(glob);
         }
-        let skip_globs = glob_builder.build().context("building skip_files globset")?;
+        let skip_globs = glob_builder
+            .build()
+            .context("building skip_files globset")?;
 
         let mut content_regexes = Vec::new();
         for pattern in &config.content_patterns {
@@ -323,11 +325,7 @@ mod tests {
     fn test_content_scan_clean_file() {
         let f = default_filter();
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(
-            tmp.path(),
-            "vim.opt.number = true\nvim.opt.tabstop = 2\n",
-        )
-        .unwrap();
+        std::fs::write(tmp.path(), "vim.opt.number = true\nvim.opt.tabstop = 2\n").unwrap();
         let matches = f.scan_content(tmp.path());
         assert!(matches.is_empty(), "clean config file should pass");
     }
@@ -348,7 +346,10 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), "sk-ant-abcdefghij1234567890xyz").unwrap();
         let result = f.check_file("config/settings.json", tmp.path());
-        assert!(result.is_some(), "file with secret content should be blocked");
+        assert!(
+            result.is_some(),
+            "file with secret content should be blocked"
+        );
     }
 
     #[test]

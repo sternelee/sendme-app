@@ -30,11 +30,66 @@ const MAX_SUBSTITUTE_BYTES: u64 = 1024 * 1024;
 /// Extensions considered "text" for path substitution purposes.
 /// Files without a recognized extension are checked for null bytes.
 const TEXT_EXTENSIONS: &[&str] = &[
-    "lua", "vim", "toml", "yaml", "yml", "json", "jsonc", "json5", "xml", "ini", "cfg", "conf",
-    "config", "rc", "sh", "bash", "zsh", "fish", "py", "rb", "js", "ts", "mjs", "cjs", "md",
-    "txt", "rst", "org", "el", "clj", "edn", "scm", "rkt", "hs", "rs", "go", "c", "h", "cpp",
-    "hpp", "java", "kt", "swift", "pl", "pm", "r", "R", "sql", "graphql", "proto", "css", "scss",
-    "less", "html", "htm", "svg", "env", "gitignore", "gitconfig", "editorconfig",
+    "lua",
+    "vim",
+    "toml",
+    "yaml",
+    "yml",
+    "json",
+    "jsonc",
+    "json5",
+    "xml",
+    "ini",
+    "cfg",
+    "conf",
+    "config",
+    "rc",
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "py",
+    "rb",
+    "js",
+    "ts",
+    "mjs",
+    "cjs",
+    "md",
+    "txt",
+    "rst",
+    "org",
+    "el",
+    "clj",
+    "edn",
+    "scm",
+    "rkt",
+    "hs",
+    "rs",
+    "go",
+    "c",
+    "h",
+    "cpp",
+    "hpp",
+    "java",
+    "kt",
+    "swift",
+    "pl",
+    "pm",
+    "r",
+    "R",
+    "sql",
+    "graphql",
+    "proto",
+    "css",
+    "scss",
+    "less",
+    "html",
+    "htm",
+    "svg",
+    "env",
+    "gitignore",
+    "gitconfig",
+    "editorconfig",
 ];
 
 /// Path variable configuration.
@@ -146,13 +201,44 @@ impl PathMapper {
             // Known binary extensions — skip immediately.
             if matches!(
                 ext_lower.as_str(),
-                "png" | "jpg" | "jpeg" | "gif" | "bmp" | "ico" | "webp"
-                | "zip" | "tar" | "gz" | "bz2" | "xz" | "7z"
-                | "pdf" | "doc" | "docx" | "xls" | "xlsx"
-                | "so" | "dylib" | "dll" | "exe" | "bin"
-                | "woff" | "woff2" | "ttf" | "otf" | "eot"
-                | "mp3" | "mp4" | "avi" | "mov" | "wav" | "flac"
-                | "sqlite" | "db" | "pack" | "idx"
+                "png"
+                    | "jpg"
+                    | "jpeg"
+                    | "gif"
+                    | "bmp"
+                    | "ico"
+                    | "webp"
+                    | "zip"
+                    | "tar"
+                    | "gz"
+                    | "bz2"
+                    | "xz"
+                    | "7z"
+                    | "pdf"
+                    | "doc"
+                    | "docx"
+                    | "xls"
+                    | "xlsx"
+                    | "so"
+                    | "dylib"
+                    | "dll"
+                    | "exe"
+                    | "bin"
+                    | "woff"
+                    | "woff2"
+                    | "ttf"
+                    | "otf"
+                    | "eot"
+                    | "mp3"
+                    | "mp4"
+                    | "avi"
+                    | "mov"
+                    | "wav"
+                    | "flac"
+                    | "sqlite"
+                    | "db"
+                    | "pack"
+                    | "idx"
             ) {
                 return false;
             }
@@ -239,10 +325,7 @@ impl PathMapper {
 /// "macbook" = "~/Library/Application Support/Claude"
 /// "work-linux" = "~/.config/claude"
 /// ```
-pub fn resolve_target_src(
-    target: &crate::config::TargetConfig,
-    device_name: &str,
-) -> String {
+pub fn resolve_target_src(target: &crate::config::TargetConfig, device_name: &str) -> String {
     if let Some(overrides) = &target.overrides {
         if let Some(override_path) = overrides.get(device_name) {
             return override_path.clone();
@@ -290,8 +373,16 @@ brew = "${BREW}/bin/node""#;
 
         let result = mapper.substitute_for_download(content).unwrap();
         let text = String::from_utf8(result).unwrap();
-        assert!(text.contains("/Users/testuser/.local/bin/uvx"), "got: {}", text);
-        assert!(text.contains("/Users/testuser/.config/nvim"), "got: {}", text);
+        assert!(
+            text.contains("/Users/testuser/.local/bin/uvx"),
+            "got: {}",
+            text
+        );
+        assert!(
+            text.contains("/Users/testuser/.config/nvim"),
+            "got: {}",
+            text
+        );
         assert!(text.contains("/opt/homebrew/bin/node"), "got: {}", text);
         assert!(!text.contains("${"), "got: {}", text);
     }
@@ -361,10 +452,7 @@ brew = "${BREW}/bin/node""#;
             "~/Library/App/Claude"
         );
         // Non-matching device → use default src
-        assert_eq!(
-            resolve_target_src(&target, "linux-box"),
-            "~/.config/claude"
-        );
+        assert_eq!(resolve_target_src(&target, "linux-box"), "~/.config/claude");
     }
 
     #[test]
