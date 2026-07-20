@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::pathmap::PathVars;
 use crate::security::SecurityConfig;
 
 /// Per-target sync configuration.
@@ -15,6 +16,13 @@ pub struct TargetConfig {
     /// Glob patterns to ignore.
     #[serde(default)]
     pub ignore: Vec<String>,
+    /// Per-device source path overrides. Key is the device name, value is
+    /// the local path to use on that device instead of `src`. Lets the same
+    /// sync target map to different directories across machines (e.g. Claude
+    /// config lives in `~/Library/Application Support/Claude` on macOS but
+    /// `~/.config/claude` on Linux).
+    #[serde(default)]
+    pub overrides: Option<HashMap<String, String>>,
 }
 
 /// Top-level user configuration.
@@ -31,6 +39,11 @@ pub struct Config {
     /// Security settings: secret detection and file filtering.
     #[serde(default)]
     pub security: SecurityConfig,
+
+    /// Path variables for cross-machine content substitution.
+    /// See [`PathVars`] for details.
+    #[serde(default, rename = "path_vars")]
+    pub path_vars: PathVars,
 }
 
 fn default_device_name() -> String {
@@ -46,6 +59,7 @@ impl Default for Config {
             device_name: default_device_name(),
             targets: default_targets(),
             security: SecurityConfig::default(),
+            path_vars: PathVars::default(),
         }
     }
 }
@@ -57,6 +71,7 @@ fn default_targets() -> HashMap<String, TargetConfig> {
         TargetConfig {
             src: "~/.config/nvim".to_string(),
             ignore: vec![".git/".to_string(), "undo/".to_string()],
+            overrides: None,
         },
     );
     map.insert(
@@ -64,6 +79,7 @@ fn default_targets() -> HashMap<String, TargetConfig> {
         TargetConfig {
             src: "~/.config/claude-code".to_string(),
             ignore: vec![],
+            overrides: None,
         },
     );
     map

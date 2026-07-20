@@ -981,6 +981,7 @@ async fn cmd_config(config_dir: PathBuf, _data_dir: PathBuf, action: ConfigActio
                 peersync::config::TargetConfig {
                     src: expanded.to_string_lossy().to_string(),
                     ignore: Vec::new(),
+                    overrides: None,
                 },
             );
             peersync::config::save_config(Some(&config_dir), &config).context("saving config")?;

@@ -127,6 +127,7 @@ mod tests {
             crate::config::TargetConfig {
                 src: src.to_string_lossy().to_string(),
                 ignore: vec![],
+                overrides: None,
             },
         );
         config

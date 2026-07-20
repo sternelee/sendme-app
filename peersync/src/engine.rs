@@ -20,6 +20,7 @@ use crate::gc;
 use crate::history::{History, SyncAction, SyncRecord};
 use crate::metadata::{parse_doc_key, FileMetadata};
 use crate::network::Network;
+use crate::pathmap::{resolve_target_src, PathMapper};
 use crate::security::SecurityFilter;
 use crate::state::{save_state, State};
 use crate::status::{collect_status, StatusInfo};
@@ -86,6 +87,8 @@ pub struct SyncEngine {
     /// Pre-compiled ignore matchers keyed by target label. Built once at
     /// engine start so file events don't pay globset compile cost.
     ignore_sets: HashMap<String, IgnoreSet>,
+    /// Cross-machine path substitution mapper. Built once at engine start.
+    path_mapper: PathMapper,
     /// Security filter for secret detection. Built once at engine start.
     security: SecurityFilter,
     /// Broadcast channel for engine events. Cheap to clone the sender and
@@ -158,6 +161,9 @@ impl SyncEngine {
             ignore_sets.insert(key.clone(), set);
         }
 
+        // Build the cross-machine path mapper (no-op when no path_vars are configured).
+        let path_mapper = PathMapper::new(&config.path_vars).unwrap_or_else(PathMapper::noop);
+
         // Build the security filter for secret detection.
         let security = SecurityFilter::new(&config.security).context("building security filter")?;
 
@@ -174,6 +180,7 @@ impl SyncEngine {
             node_id,
             device_name,
             ignore_sets,
+            path_mapper,
             security,
             events: events.unwrap_or_else(|| channel().0),
         })
@@ -377,7 +384,7 @@ impl SyncEngine {
     /// Scan all targets and upload missing/changed files.
     async fn scan_and_upload_all(self: &Arc<Self>) -> Result<()> {
         for (target_key, target) in &self.config.targets {
-            let src = expand_path(&target.src)?;
+            let src = expand_path(&resolve_target_src(target, &self.device_name))?;
             if !src.exists() {
                 continue;
             }
@@ -463,14 +470,37 @@ impl SyncEngine {
         }
 
         let mtime = file_mtime_ms(path)?;
-        let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
-        let tag_info = self
-            .network
-            .blobs
-            .add_path(path)
-            .await
-            .context("adding file to blobs")?;
+        // Cross-machine path substitution: for text files, store device-neutral
+        // content with local paths replaced by `${VAR}` placeholders. Binary and
+        // oversized files fall through to the streaming path unchanged.
+        let (tag_info, size) = if self.path_mapper.is_active() && PathMapper::is_text_file(path) {
+            let bytes =
+                std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+            let content = self
+                .path_mapper
+                .substitute_for_upload(&bytes)
+                .unwrap_or(bytes);
+            // Size must reflect the substituted content actually stored, not the
+            // original on-disk bytes (placeholders change the byte length).
+            let size = content.len() as u64;
+            let tag = self
+                .network
+                .blobs
+                .add_bytes(content)
+                .await
+                .context("adding file to blobs")?;
+            (tag, size)
+        } else {
+            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            let tag = self
+                .network
+                .blobs
+                .add_path(path)
+                .await
+                .context("adding file to blobs")?;
+            (tag, size)
+        };
         let file_hash = format!("b3_{}", tag_info.hash.to_hex());
 
         let meta = FileMetadata {
@@ -894,7 +924,7 @@ impl SyncEngine {
             .targets
             .get(target_key)
             .with_context(|| format!("unknown target {}", target_key))?;
-        let src = expand_path(&target.src)?;
+        let src = expand_path(&resolve_target_src(target, &self.device_name))?;
         let local_path = src.join(relative);
 
         // Conflict detection: if local file is newer, keep it.
@@ -921,10 +951,23 @@ impl SyncEngine {
 
         // Stream blob → file. Atomic rename means a partial write never
         // replaces the target; the original (or its backup) is preserved
-        // until the new bytes are fully on disk.
+        // until the new bytes are fully on disk. After streaming, expand any
+        // `${VAR}` path placeholders to this device's local paths.
         let hash = parse_hash(&meta.file_hash)?;
         self.stream_blob_to_path(hash, &local_path, meta.updated_at)
             .await?;
+        if self.path_mapper.is_active() && PathMapper::is_text_file(&local_path) {
+            if let Ok(bytes) = std::fs::read(&local_path) {
+                if let Some(substituted) = self.path_mapper.substitute_for_download(&bytes) {
+                    crate::fs::atomic_write(&local_path, &substituted).with_context(|| {
+                        format!("applying path substitution to {}", local_path.display())
+                    })?;
+                    // atomic_write resets mtime to now; restore the sender's mtime
+                    // so LWW conflict detection stays correct after the rewrite.
+                    let _ = crate::fs::set_file_mtime_ms(&local_path, meta.updated_at);
+                }
+            }
+        }
 
         self.log_record(SyncRecord {
             timestamp_ms: now_ms(),
@@ -970,7 +1013,7 @@ impl SyncEngine {
             .targets
             .get(target_key)
             .with_context(|| format!("unknown target {}", target_key))?;
-        let src = expand_path(&target.src)?;
+        let src = expand_path(&resolve_target_src(target, &self.device_name))?;
         let local_path = src.join(relative);
 
         if local_path.exists() {
@@ -1100,6 +1143,7 @@ mod tests {
             crate::config::TargetConfig {
                 src: tmp.path().to_string_lossy().to_string(),
                 ignore: vec![],
+                overrides: None,
             },
         );
         // We can't easily build a SyncEngine in a unit test (needs Network +

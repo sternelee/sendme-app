@@ -258,6 +258,7 @@ impl App {
         let target = peersync::config::TargetConfig {
             src: expanded,
             ignore: Vec::new(),
+            overrides: None,
         };
         self.targets.push((key, target));
         if self.save_targets_to_disk().is_err() {

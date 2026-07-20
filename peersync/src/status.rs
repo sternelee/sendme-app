@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::config::{expand_path, Config};
+use crate::pathmap::resolve_target_src;
 use crate::fs::{is_conflict_file, now_ms};
 use crate::history::History;
 use crate::network::Network;
@@ -116,7 +117,7 @@ pub async fn collect_status(
     // Per-target status.
     let mut targets = Vec::new();
     for (key, target) in &config.targets {
-        let src = expand_path(&target.src)?;
+        let src = expand_path(&resolve_target_src(target, &state.device_name))?;
         let (file_count, has_conflicts, last_sync_ms) =
             scan_target_status(&src, key, history).await?;
         targets.push(TargetStatus {
@@ -145,7 +146,7 @@ pub async fn collect_status(
         .collect();
 
     // Conflict files.
-    let conflict_files = collect_conflict_files(config).await?;
+    let conflict_files = collect_conflict_files(config, &state.device_name).await?;
 
     Ok(StatusInfo {
         device_name: state.device_name.clone(),
@@ -198,10 +199,10 @@ async fn scan_target_status(
     Ok((file_count, has_conflicts, last_sync_ms))
 }
 
-async fn collect_conflict_files(config: &Config) -> Result<Vec<ConflictFile>> {
+async fn collect_conflict_files(config: &Config, device_name: &str) -> Result<Vec<ConflictFile>> {
     let mut conflicts = Vec::new();
     for (target_key, target) in &config.targets {
-        let src = expand_path(&target.src)?;
+        let src = expand_path(&resolve_target_src(target, device_name))?;
         if !src.exists() {
             continue;
         }
@@ -262,6 +263,7 @@ mod tests {
             crate::config::TargetConfig {
                 src: src.to_string_lossy().to_string(),
                 ignore: vec![],
+                overrides: None,
             },
         );
 
