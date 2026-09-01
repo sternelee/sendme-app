@@ -184,11 +184,14 @@ pub async fn peersync_add_target(
         peersync::config::TargetConfig {
             src: src.clone(),
             ignore: Vec::new(),
+            overrides: None,
         },
     );
     let next_config = Config {
         device_name: guard.config.device_name.clone(),
         targets: next_targets,
+        security: guard.config.security.clone(),
+        path_vars: guard.config.path_vars.clone(),
     };
 
     peersync::config::save_config(Some(&guard.base_dir), &next_config)

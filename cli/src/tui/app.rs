@@ -1072,6 +1072,7 @@ impl App {
         let target = peersync::config::TargetConfig {
             src: expanded,
             ignore: Vec::new(),
+            overrides: None,
         };
         self.peer_sync_targets.push((key, target));
         if let Err(e) = self.save_peer_sync_config() {
