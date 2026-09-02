@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::config::{expand_path, Config};
-use crate::pathmap::resolve_target_src;
 use crate::fs::{is_conflict_file, now_ms};
 use crate::history::History;
 use crate::network::Network;
+use crate::pathmap::resolve_target_src;
 use crate::state::State;
 
 /// Aggregate status information for display.

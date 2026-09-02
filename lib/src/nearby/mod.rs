@@ -1,13 +1,18 @@
-//! Nearby device discovery and transfer
+//! Nearby (LAN) discovery and transfer over the LocalSend protocol.
+//!
+//! Replaces the previous mDNS + iroh implementation. Interoperates with
+//! official LocalSend clients: discovery via UDP multicast (group
+//! `224.0.0.167:53317`), transfers over HTTPS with self-signed device
+//! certificates, protocol version 2.2.
 
-#[cfg(not(target_os = "ios"))]
-pub mod core;
-#[cfg(target_os = "ios")]
-pub mod core_ios;
-pub mod protocol;
+mod identity;
+mod runtime;
+mod types;
 
-#[cfg(not(target_os = "ios"))]
-pub use core::{DeviceType, NearbyDevice, NearbyDiscovery, SERVICE_TYPE};
-#[cfg(target_os = "ios")]
-pub use core_ios::{DeviceType, NearbyDevice, NearbyDiscovery, SERVICE_TYPE};
-pub use protocol::{FileInfo, Message, TransferManifest, ALPN};
+pub use identity::NearbyIdentity;
+pub use runtime::{
+    IncomingFile, NearbyEvent, NearbyIncomingDecision, NearbyPrepareError, NearbyRuntime,
+    NearbyRuntimeConfig, NearbySendEvent, NearbySendSession, OutgoingFile, ReceiveOutcome,
+    ReceiveRequest, DEFAULT_PORT,
+};
+pub use types::{DeviceType, NearbyDevice};

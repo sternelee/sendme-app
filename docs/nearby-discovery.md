@@ -1,96 +1,67 @@
-# Nearby Device Discovery — mDNS 冲突问题
+# Nearby Device Discovery — LocalSend Protocol
 
-## 现象
+Nearby sharing now speaks the **LocalSend protocol v2.2** (HTTPS), making
+sendme interoperable with official LocalSend clients on the same LAN. The
+previous custom mDNS + iroh handshake (`_sendme._udp`, ALPN
+`sendme/transfer/v1`) was removed in favor of the vendored `localsend` crate.
 
-在同一局域网内，macOS、Android、iOS 三台设备同时启动 sendme App 时，Nearby（附近设备）列表显示不一致：
+## Architecture
 
-- **iOS**：只看到 Android
-- **Android**：只看到 Mac
-- **Mac**：只看到 Android
-
-文件传输本身可以正常工作（如 iOS → Android），但发现列表的结果不对。
-
-## 根因
-
-**mDNS 服务名冲突。**
-
-Nearby 发现使用 [mdns-sd](https://crates.io/crates/mdns-sd) 库发布 `_sendme._udp` 服务。旧代码中，所有设备都使用相同的 `instance_name` 和 `hostname`：
-
-```rust
-// 所有设备都叫这个名字 → 冲突
-let instance_name = "Sendme";                // mDNS 服务实例名
-let hostname = "Sendme.local.";              // 局域网主机名
+```
+app/src-tauri (commands/events, UI contract)
+      │
+lib/src/nearby/            sendme-facing wrapper
+  ├── types.rs             DeviceType / NearbyDevice (serde contract)
+  ├── identity.rs          Persistent certificate identity (fingerprint)
+  └── runtime.rs           NearbyRuntime: discovery + receive + two-phase send
+      │
+localsend/                 vendored from localsend/packages/core
+  ├── discovery/           UDP multicast 224.0.0.167:53317 announce/register
+  ├── http/server/v2.rs    HTTPS server, /api/localsend/v2/*
+  └── http/client/v2.rs    register + prepare-upload + upload
 ```
 
-mDNS 规范要求**同一局域网内服务实例名必须唯一**。当多个设备发布相同实例名时，各平台的 mDNS 守护进程（macOS mDNSResponder / Android avahi / iOS mDNSResponder）在冲突解决时表现不一致，导致：
+## Protocol behavior
 
-- 部分平台将某台设备的服务视为"已被替代"
-- 浏览时只能看到某个子集的设备
-- 结果在不同平台上各不相同
+- **Discovery**: UDP multicast announcements on `224.0.0.167:53317`. A new
+  device announces itself; existing devices answer by POSTing
+  `/api/localsend/v2/register` to the announcer's HTTPS server.
+- **Identity**: each install generates a self-signed certificate persisted at
+  `app_data_dir/nearby/localsend-identity.json`; its SHA-256 fingerprint is
+  the stable device ID (`NearbyDevice.id`).
+- **Send**: two-phase — `POST /prepare-upload` (metadata, receiver may accept
+  or decline) then one `POST /upload?sessionId&fileId&token` per file with
+  SHA-256 checksum verification on write.
+- **Receive**: the server streams accepted files to disk directly, verifies
+  checksums, and applies mtimes.
 
-## 修复
+## Platform notes
 
-### 方案：让服务名唯一 + 保留显示名
+- **Port**: the HTTPS server prefers LocalSend's canonical `53317` and falls
+  back to an OS-assigned port when occupied. The actual port is announced in
+  discovery messages.
+- **Android**: multicast works when the app holds the Wi-Fi multicast lock;
+  the existing `CHANGE_WIFI_MULTICAST_STATE` permission still applies.
+- **iOS**: without the `com.apple.developer.networking.multicast` entitlement
+  (unavailable to personal teams), the device cannot *receive* UDP multicast,
+  so it does not see multicast announcements. HTTPS server and outbound
+  register/probe still work: transfers function once the peer is known (e.g.
+  after the peer announces and a registration arrives via broadcast on some
+  networks). This is a platform limitation, not a code bug.
+- **v1 HTTP fallback**: the vendored client and server negotiate
+  `protocol: http` for peers that announce HTTP, matching official clients.
 
-修改 `lib/src/nearby/core.rs`：
+## Historical note: the old mDNS approach
 
-1. **让 `instance_name` 唯一**：追加 endpoint ID 的前 8 位 hex 后缀：
-   ```rust
-   let unique_suffix = {
-       let id_str = endpoint_addr.id.to_string();
-       &id_str[..id_str.len().min(8)].to_string()
-   };
-   let instance_name = format!("{}-{}", name.replace(" ", "-"), unique_suffix);
-   // 例如：Sendme → "Sendme-a3f7b2d1"
-   ```
+The old `_sendme._udp` mDNS design suffered instance-name conflicts when
+several devices ran simultaneously (each platform's mDNS daemon resolved the
+clash differently, so device lists disagreed). LocalSend's multicast +
+register design has no such uniqueness requirement: announcements carry a
+random message ID and registrations go straight to the announcer's server.
 
-2. **同步让 `hostname` 唯一**：
-   ```rust
-   let hostname = format!("{}.local.", instance_name);
-   // 例如：Sendme-a3f7b2d1.local.
-   ```
+## Related code
 
-3. **在 TXT 记录中保留原始显示名**：
-   ```rust
-   properties.push(("name", "Sendme"));   // 实际显示的名字
-   ```
-
-4. **UI 解析时优先用 TXT 中的 `name`**：
-   ```rust
-   let name = info
-       .get_property_val_str("name")
-       .map(|s| s.to_string())
-       .or_else(|| extract_instance_name(fullname))?;
-   ```
-
-5. **自我过滤改为前缀匹配**：
-   ```rust
-   if id.starts_with(&format!("{}.", our_name)) {
-       // skip our own service
-   }
-   ```
-
-## 验证
-
-修复后 `cargo check` 通过，逻辑上：
-
-- 每台设备的 mDNS 服务名在局域网内唯一，不会再触发冲突
-- 所有平台看到的设备列表趋于一致
-- 显示名仍通过 TXT 记录保留，UI 不发生变化
-
-## iOS 平台限制
-
-即使修复了冲突，**iOS 仍可能不被其他设备发现**，因为：
-
-- iOS 14+ 要求 `com.apple.developer.networking.multicast` entitlement 才能**发送** mDNS 广播
-- 没有这个 entitlement 时，iOS 只能**接收**广播，无法**发布**自己的服务
-- 该 entitlement 需要 Apple Developer 的特殊权限，个人开发团队通常无法申请
-
-因此 **Android 和 Mac 的列表里可能仍然看不到 iOS**，这是系统限制，不是代码 bug。
-
-若要彻底解决这个问题，可考虑增加 UDP 单播/广播到特定端口的**备用发现机制**，作为 mDNS 的 fallback。
-
-## 相关代码
-
-- `lib/src/nearby/core.rs` — mDNS 发现核心逻辑
-- `app/src-tauri/src/lib.rs` — Tauri 后端 Nearby runtime 管理
+- `localsend/` — vendored protocol crate (see its README/licenses)
+- `lib/src/nearby/` — sendme wrapper (runtime, identity, types)
+- `app/src-tauri/src/lib.rs` — Tauri commands and event mapping
+- `lib/tests/nearby.rs` — in-process end-to-end roundtrip and decline tests

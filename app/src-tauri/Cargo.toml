@@ -18,6 +18,7 @@ peersync = { path = "../../peersync" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { workspace = true, features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 tauri-plugin-websocket = "2"
 tauri = { version = "2", features = ["tracing", "tray-icon", "image-png"] }
 tracing = "0.1"

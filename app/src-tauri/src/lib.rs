@@ -65,11 +65,9 @@ use tauri_plugin_notification::NotificationExt;
 mod peersync;
 use tauri_plugin_opener::OpenerExt;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, RwLock};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
-
-use iroh::{endpoint::Incoming, Endpoint, RelayMode};
 
 /// Pending file path from CLI arguments (Windows/Linux "Open With" / context menu launch).
 /// Set during app startup before the frontend is ready; consumed by `app_ready`.
@@ -774,35 +772,42 @@ struct TransferState {
 }
 
 struct NearbyRuntime {
-    endpoint: Option<Endpoint>,
-    discovery: Option<sendme_lib::NearbyDiscovery>,
+    /// The LocalSend-protocol nearby service (HTTP server + discovery).
+    service: Option<sendme_lib::NearbyRuntime>,
+    /// Pending incoming requests awaiting the user's accept/decline decision,
+    /// keyed by request/session ID.
     pending_requests: HashMap<String, NearbyPendingRequest>,
+    /// Maps an active receive session ID to its UI state.
+    receive_transfers: HashMap<String, ActiveNearbyReceive>,
+    /// Maps an active send session ID to its UI state.
+    send_transfers: HashMap<String, ActiveNearbySend>,
+    /// Android: receive session ID -> content:// output URI chosen by the user.
+    #[cfg(target_os = "android")]
+    receive_content_outputs: HashMap<String, String>,
     device_name: String,
     device_type: sendme_lib::DeviceType,
-    listener_started: bool,
 }
 
 impl Default for NearbyRuntime {
     fn default() -> Self {
         Self {
-            endpoint: None,
-            discovery: None,
+            service: None,
             pending_requests: HashMap::new(),
+            receive_transfers: HashMap::new(),
+            send_transfers: HashMap::new(),
+            #[cfg(target_os = "android")]
+            receive_content_outputs: HashMap::new(),
             device_name: String::new(),
             device_type: sendme_lib::DeviceType::Unknown,
-            listener_started: false,
         }
     }
 }
 
 struct NearbyPendingRequest {
-    decision_tx: mpsc::Sender<NearbyDecision>,
-}
-
-#[derive(Debug)]
-enum NearbyDecision {
-    Accept { output_dir: Option<String> },
-    Decline { reason: Option<String> },
+    decision_tx: tokio::sync::oneshot::Sender<sendme_lib::NearbyIncomingDecision>,
+    sender_name: String,
+    sender_device_type: String,
+    total_size: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1016,10 +1021,10 @@ struct AndroidForegroundNotificationPayload {
 }
 
 struct PreparedNearbySource {
-    send_path: PathBuf,
-    cleanup_path: Option<PathBuf>,
+    /// Staging root that must be deleted once the transfer is over.
+    cleanup_path: PathBuf,
     display_name: String,
-    manifest: Vec<sendme_lib::nearby::FileInfo>,
+    files: Vec<sendme_lib::OutgoingFile>,
     total_size: u64,
 }
 
@@ -1040,9 +1045,9 @@ async fn get_nearby_devices(
 ) -> Result<Vec<sendme_lib::NearbyDevice>, String> {
     let guard = nearby.read().await;
     Ok(guard
-        .discovery
+        .service
         .as_ref()
-        .map(|discovery| discovery.get_devices())
+        .map(|service| service.devices())
         .unwrap_or_default())
 }
 
@@ -1072,20 +1077,19 @@ async fn stop_nearby_discovery(
     app: AppHandle,
     nearby: tauri::State<'_, NearbyState>,
 ) -> Result<(), String> {
-    // Take the endpoint and other state out while holding the lock, then
-    // release the lock before awaiting close() so we don't hold a write
-    // guard across an await point.
-    let endpoint = {
+    // Take the service out while holding the lock, then release the lock
+    // before awaiting stop() so we don't hold a write guard across an await.
+    let service = {
         let mut guard = nearby.write().await;
-        guard.discovery = None;
         guard.pending_requests.clear();
-        guard.listener_started = false;
-        guard.endpoint.take()
+        guard.receive_transfers.clear();
+        guard.send_transfers.clear();
+        #[cfg(target_os = "android")]
+        guard.receive_content_outputs.clear();
+        guard.service.take()
     };
-    // Gracefully close the iroh Endpoint so it doesn't log
-    // "Endpoint dropped without calling close".
-    if let Some(ep) = endpoint {
-        ep.close().await;
+    if let Some(service) = service {
+        service.stop().await;
     }
     set_android_active_nearby(&app, None).await;
     Ok(())
@@ -1201,140 +1205,49 @@ async fn send_to_device(
     device_id: String,
 ) -> Result<String, String> {
     ensure_nearby_runtime(&app, nearby.inner().clone()).await?;
-
     let prepared = prepare_nearby_source(&app, &file_items).await?;
-    let endpoint = {
+    let service = {
         let guard = nearby.read().await;
         guard
-            .endpoint
+            .service
             .clone()
-            .ok_or_else(|| "Nearby control endpoint is not available".to_string())?
+            .ok_or_else(|| "Nearby service is not running".to_string())?
     };
 
     let transfer_id = Uuid::new_v4().to_string();
-    let transfer_info = TransferInfo {
-        id: transfer_id.clone(),
-        transfer_type: "nearby-send".to_string(),
-        path: prepared.display_name.clone(),
-        status: "connecting".to_string(),
-        created_at: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64,
-        ticket: None,
-        filename: None,
-        file_size: None,
-        completed_at: None,
-        duration_ms: None,
-    };
+    let (abort_tx, abort_rx) = tokio::sync::oneshot::channel::<()>();
     {
         let mut transfers_guard = transfers.write().await;
         transfers_guard.insert(
             transfer_id.clone(),
             TransferState {
-                info: transfer_info,
-                abort_tx: None,
+                info: TransferInfo {
+                    id: transfer_id.clone(),
+                    transfer_type: "nearby-send".to_string(),
+                    path: prepared.display_name.clone(),
+                    status: "connecting".to_string(),
+                    created_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64,
+                    ticket: None,
+                    filename: None,
+                    file_size: None,
+                    completed_at: None,
+                    duration_ms: None,
+                },
+                abort_tx: Some(abort_tx),
                 send_shutdown: None,
             },
         );
     }
 
-    let current_profile = current_nearby_profile(&app)?;
-    let mut fallback_name = "Nearby device".to_string();
-    let conn = {
-        let mut connected = None;
-        let mut last_error = String::new();
-        for attempt in 0..2 {
-            let (peer_addr, device_name) = {
-                let guard = nearby.read().await;
-                let discovery = guard
-                    .discovery
-                    .as_ref()
-                    .ok_or_else(|| "Nearby discovery is not running".to_string())?;
-                let peer_addr = discovery
-                    .get_endpoint_addr(&device_id)
-                    .ok_or_else(|| "Selected device is no longer available".to_string())?;
-                let device_name = discovery
-                    .get_devices()
-                    .into_iter()
-                    .find(|device| device.id == device_id)
-                    .map(|device| device.name)
-                    .unwrap_or_else(|| "Nearby device".to_string());
-                (peer_addr, device_name)
-            };
-            fallback_name = device_name;
-            match tokio::time::timeout(
-                Duration::from_secs(8),
-                endpoint.connect(peer_addr, sendme_lib::nearby::ALPN),
-            )
-            .await
-            {
-                Ok(Ok(conn)) => {
-                    connected = Some(conn);
-                    break;
-                }
-                Ok(Err(error)) => {
-                    last_error = format!("Nearby connect attempt {} failed: {error}", attempt + 1);
-                }
-                Err(_) => {
-                    last_error =
-                        format!("Nearby connect attempt {} timed out after 8s", attempt + 1);
-                }
-            }
-            if attempt == 0 {
-                emit_nearby_send_state(
-                    &app,
-                    NearbyTransferStatePayload {
-                        request_id: None,
-                        transfer_id: Some(transfer_id.clone()),
-                        state: "waiting".to_string(),
-                        device_name: Some(fallback_name.clone()),
-                        device_type: None,
-                        message: Some(
-                            "Connection unstable. Retrying on local network...".to_string(),
-                        ),
-                        progress: None,
-                    },
-                );
-            }
-        }
-        connected.ok_or(last_error)?
-    };
-    let (mut send, mut recv) = conn
-        .open_bi()
-        .await
-        .map_err(|e| format!("Failed to open nearby control stream: {e}"))?;
-
-    write_nearby_message(
-        &mut send,
-        &sendme_lib::nearby::Message::Hello {
-            device_name: current_profile.0.clone(),
-            device_type: current_profile.1.as_str().to_string(),
-            endpoint_id: endpoint.addr().id.to_string(),
-        },
-    )
-    .await?;
-
-    let receiver_hello = read_nearby_message(&mut recv).await?;
-    let (receiver_name, receiver_type) = match receiver_hello {
-        sendme_lib::nearby::Message::Hello {
-            device_name,
-            device_type,
-            ..
-        } => (device_name, device_type),
-        _ => {
-            return Err("Nearby device sent an invalid hello message".to_string());
-        }
-    };
-
-    write_nearby_message(
-        &mut send,
-        &sendme_lib::nearby::Message::Offer {
-            files: prepared.manifest.clone(),
-            total_size: prepared.total_size,
-        },
-    )
-    .await?;
+    let device_name = service
+        .devices()
+        .into_iter()
+        .find(|device| device.id == device_id)
+        .map(|device| device.name)
+        .unwrap_or_else(|| "Nearby device".to_string());
 
     emit_nearby_send_state(
         &app,
@@ -1342,8 +1255,8 @@ async fn send_to_device(
             request_id: None,
             transfer_id: Some(transfer_id.clone()),
             state: "waiting".to_string(),
-            device_name: Some(receiver_name.clone()),
-            device_type: Some(receiver_type.clone()),
+            device_name: Some(device_name.clone()),
+            device_type: None,
             message: Some("Waiting for device confirmation".to_string()),
             progress: Some(NearbyTransferProgressPayload {
                 transferred: 0,
@@ -1356,7 +1269,7 @@ async fn send_to_device(
     set_android_active_nearby(
         &app,
         Some(AndroidForegroundTransfer {
-            title: format!("Sending to {}", receiver_name),
+            title: format!("Sending to {}", device_name),
             message: "Waiting for device confirmation".to_string(),
             detail: format!("{} · {} bytes", prepared.display_name, prepared.total_size),
             progress_current: 0,
@@ -1366,15 +1279,22 @@ async fn send_to_device(
     )
     .await;
 
-    let response = read_nearby_message(&mut recv).await?;
-    let session_id = match response {
-        sendme_lib::nearby::Message::Accept { session_id } => session_id,
-        sendme_lib::nearby::Message::Decline { reason, .. } => {
-            let reason = reason.unwrap_or_else(|| "Transfer declined".to_string());
+    // Ask the receiver for confirmation. This blocks the command until the
+    // peer answers (or times out), so a decline surfaces as an invoke error
+    // exactly like the previous iroh handshake implementation.
+    let session = match service.prepare_send(&device_id, prepared.files).await {
+        Ok(session) => session,
+        Err(error) => {
+            let message = error.message();
+            let state = if matches!(error, sendme_lib::NearbyPrepareError::Declined) {
+                "declined"
+            } else {
+                "error"
+            };
             update_transfer_status(
                 transfers.inner(),
                 &transfer_id,
-                &format!("declined: {reason}"),
+                &format!("{state}: {message}"),
             )
             .await;
             emit_nearby_send_state(
@@ -1382,53 +1302,23 @@ async fn send_to_device(
                 NearbyTransferStatePayload {
                     request_id: None,
                     transfer_id: Some(transfer_id.clone()),
-                    state: "declined".to_string(),
-                    device_name: Some(receiver_name),
-                    device_type: Some(receiver_type),
-                    message: Some(reason.clone()),
+                    state: state.to_string(),
+                    device_name: Some(device_name),
+                    device_type: None,
+                    message: Some(message.clone()),
                     progress: None,
                 },
             );
-            if let Some(cleanup_path) = &prepared.cleanup_path {
-                let _ = tokio::fs::remove_dir_all(cleanup_path).await;
-            }
+            let _ = tokio::fs::remove_dir_all(&prepared.cleanup_path).await;
             sync_android_nearby_foreground(&app).await;
-            return Err(reason);
-        }
-        sendme_lib::nearby::Message::Cancel { reason, .. } => {
-            let reason = reason.unwrap_or_else(|| "Receiver cancelled the request".to_string());
-            update_transfer_status(
-                transfers.inner(),
-                &transfer_id,
-                &format!("cancelled: {reason}"),
-            )
-            .await;
-            emit_nearby_send_state(
-                &app,
-                NearbyTransferStatePayload {
-                    request_id: None,
-                    transfer_id: Some(transfer_id.clone()),
-                    state: "cancelled".to_string(),
-                    device_name: Some(receiver_name),
-                    device_type: Some(receiver_type),
-                    message: Some(reason.clone()),
-                    progress: None,
-                },
-            );
-            if let Some(cleanup_path) = &prepared.cleanup_path {
-                let _ = tokio::fs::remove_dir_all(cleanup_path).await;
-            }
-            sync_android_nearby_foreground(&app).await;
-            return Err(reason);
-        }
-        _ => {
-            if let Some(cleanup_path) = &prepared.cleanup_path {
-                let _ = tokio::fs::remove_dir_all(cleanup_path).await;
-            }
-            sync_android_nearby_foreground(&app).await;
-            return Err(format!("Unexpected nearby response from {fallback_name}"));
+            return Err(message);
         }
     };
+
+    let session_id = session.session_id().to_string();
+    let receiver_name = session.receiver_alias().to_string();
+    let receiver_type = session.receiver_device_type().as_str().to_string();
+    let total_size = session.total();
 
     update_transfer_status(transfers.inner(), &transfer_id, "preparing").await;
     emit_nearby_send_state(
@@ -1442,98 +1332,268 @@ async fn send_to_device(
             message: Some("Preparing transfer".to_string()),
             progress: Some(NearbyTransferProgressPayload {
                 transferred: 0,
-                total: prepared.total_size,
+                total: total_size,
                 speed: 0,
                 eta: 0,
             }),
         },
     );
 
-    let temp_dir = app
-        .path()
-        .temp_dir()
-        .map_err(|e| format!("Failed to get temp directory: {e}"))?;
-    let args = SendArgs {
-        path: prepared.send_path.clone(),
-        // AirBridge traffic is restricted to local-network addresses only.
-        ticket_type: AddrInfoOptions::Addresses,
-        common: CommonConfig {
-            temp_dir: Some(temp_dir),
-            ..Default::default()
-        },
-        import_mode: sendme_lib::ImportMode::Copy,
-    };
+    if !session_id.is_empty() {
+        let mut guard = nearby.write().await;
+        guard.send_transfers.insert(
+            session_id.clone(),
+            ActiveNearbySend {
+                transfer_id: transfer_id.clone(),
+                receiver_name: receiver_name.clone(),
+                receiver_type: receiver_type.clone(),
+            },
+        );
+    }
 
-    let (tx, rx) = tokio::sync::mpsc::channel(32);
-    spawn_nearby_send_progress_listener(
+    let cancel = CancellationToken::new();
+    {
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            let _ = abort_rx.await;
+            cancel.cancel();
+        });
+    }
+
+    let (event_tx, event_rx) = mpsc::channel::<sendme_lib::NearbySendEvent>(32);
+    consume_nearby_send_events(
         app.clone(),
         transfers.inner().clone(),
+        nearby.inner().clone(),
         transfer_id.clone(),
-        receiver_name.clone(),
-        receiver_type.clone(),
-        prepared.total_size,
-        rx,
+        session_id,
+        receiver_name,
+        receiver_type,
+        total_size,
+        event_rx,
     );
 
-    let send_result = match sendme_lib::send_with_progress(args, tx).await {
-        Ok(send_result) => send_result,
-        Err(error) => {
+    {
+        let app = app.clone();
+        let transfers = transfers.inner().clone();
+        let transfer_id = transfer_id.clone();
+        let cleanup_path = prepared.cleanup_path.clone();
+        tokio::spawn(async move {
+            let result = session.upload(event_tx, cancel.clone()).await;
+            if let Err(error) = result {
+                if !cancel.is_cancelled() {
+                    let message = format!("{error:#}");
+                    update_transfer_status(&transfers, &transfer_id, &format!("error: {message}"))
+                        .await;
+                    emit_nearby_send_state(
+                        &app,
+                        NearbyTransferStatePayload {
+                            request_id: None,
+                            transfer_id: Some(transfer_id.clone()),
+                            state: "error".to_string(),
+                            device_name: None,
+                            device_type: None,
+                            message: Some(message),
+                            progress: None,
+                        },
+                    );
+                }
+            }
+            let _ = tokio::fs::remove_dir_all(&cleanup_path).await;
             sync_android_nearby_foreground(&app).await;
-            return Err(format!("Failed to prepare nearby transfer: {error}"));
+        });
+    }
+
+    Ok(transfer_id)
+}
+
+/// Consumes the progress events of an outgoing nearby transfer, mapping them
+/// onto the transfer registry, the `nearby_send_state` event, and the unified
+/// transfer state.
+#[allow(clippy::too_many_arguments)]
+fn consume_nearby_send_events(
+    app: AppHandle,
+    transfers: Transfers,
+    nearby: NearbyState,
+    transfer_id: String,
+    session_id: String,
+    receiver_name: String,
+    receiver_type: String,
+    total_size: u64,
+    mut rx: mpsc::Receiver<sendme_lib::NearbySendEvent>,
+) {
+    tokio::spawn(async move {
+        let started = Instant::now();
+        while let Some(event) = rx.recv().await {
+            match event {
+                sendme_lib::NearbySendEvent::Progress { transferred, total } => {
+                    update_transfer_status(&transfers, &transfer_id, "sending").await;
+                    emit_nearby_send_state(
+                        &app,
+                        NearbyTransferStatePayload {
+                            request_id: None,
+                            transfer_id: Some(transfer_id.clone()),
+                            state: "transferring".to_string(),
+                            device_name: Some(receiver_name.clone()),
+                            device_type: Some(receiver_type.clone()),
+                            message: Some("Sending nearby transfer".to_string()),
+                            progress: Some(nearby_progress_from_offset(
+                                transferred,
+                                total,
+                                started,
+                            )),
+                        },
+                    );
+                }
+                sendme_lib::NearbySendEvent::Done => {
+                    update_transfer_status(&transfers, &transfer_id, "completed").await;
+                    nearby.write().await.send_transfers.remove(&session_id);
+                    emit_nearby_send_state(
+                        &app,
+                        NearbyTransferStatePayload {
+                            request_id: None,
+                            transfer_id: Some(transfer_id.clone()),
+                            state: "done".to_string(),
+                            device_name: Some(receiver_name.clone()),
+                            device_type: Some(receiver_type.clone()),
+                            message: Some("Nearby transfer complete".to_string()),
+                            progress: Some(nearby_progress_from_offset(
+                                total_size, total_size, started,
+                            )),
+                        },
+                    );
+                }
+                sendme_lib::NearbySendEvent::Cancelled => {
+                    update_transfer_status(&transfers, &transfer_id, "cancelled").await;
+                    nearby.write().await.send_transfers.remove(&session_id);
+                    emit_nearby_send_state(
+                        &app,
+                        NearbyTransferStatePayload {
+                            request_id: None,
+                            transfer_id: Some(transfer_id.clone()),
+                            state: "cancelled".to_string(),
+                            device_name: Some(receiver_name.clone()),
+                            device_type: Some(receiver_type.clone()),
+                            message: Some("Nearby transfer cancelled".to_string()),
+                            progress: None,
+                        },
+                    );
+                }
+                // Waiting/Accepted/Declined are produced synchronously by the
+                // send_to_device command itself.
+                _ => {}
+            }
+        }
+    });
+}
+
+#[tauri::command]
+async fn accept_incoming(
+    app: AppHandle,
+    transfers: tauri::State<'_, Transfers>,
+    nearby: tauri::State<'_, NearbyState>,
+    request_id: String,
+    output_dir: Option<String>,
+) -> Result<(), String> {
+    let pending = {
+        let mut guard = nearby.write().await;
+        guard
+            .pending_requests
+            .remove(&request_id)
+            .ok_or_else(|| "Incoming nearby request not found".to_string())?
+    };
+
+    // Android: content:// destinations go through the Storage Access
+    // Framework; receive into a staging directory first and copy the files
+    // over when the transfer completes.
+    #[cfg(target_os = "android")]
+    let content_output = output_dir
+        .as_ref()
+        .filter(|dir| dir.starts_with("content://"))
+        .cloned();
+
+    let resolved = resolve_nearby_output_dir(&app, output_dir)?;
+    let output_path = match resolved {
+        Some(path) => path,
+        None => {
+            let staging = app
+                .path()
+                .temp_dir()
+                .map_err(|e| format!("Failed to get temp directory: {e}"))?
+                .join(format!("sendme-nearby-recv-{}", Uuid::new_v4()));
+            tokio::fs::create_dir_all(&staging)
+                .await
+                .map_err(|e| format!("Failed to create receive staging directory: {e}"))?;
+            staging
         }
     };
 
-    if let Some(cleanup_path) = prepared.cleanup_path {
-        let _ = tokio::fs::remove_dir_all(cleanup_path).await;
-    }
-
-    let ticket = send_result.ticket.to_string();
-    update_transfer_status(transfers.inner(), &transfer_id, "serving").await;
-    update_transfer_ticket(transfers.inner(), &transfer_id, &ticket).await;
-
-    // Hand the shutdown handle to the transfer registry so cancelling, deleting,
-    // or clearing this nearby transfer stops the provider and removes its
-    // temporary blob store. If the transfer was already removed, shut down now.
+    // Register the transfer so history and cancellation see it.
+    let transfer_id = Uuid::new_v4().to_string();
+    let (abort_tx, abort_rx) = tokio::sync::oneshot::channel::<()>();
     {
-        let mut guard = transfers.inner().write().await;
-        match guard.get_mut(&transfer_id) {
-            Some(state) => state.send_shutdown = Some(send_result.shutdown),
-            None => {
-                drop(guard);
-                send_result.shutdown.shutdown();
-            }
+        let mut transfers_guard = transfers.write().await;
+        transfers_guard.insert(
+            transfer_id.clone(),
+            TransferState {
+                info: TransferInfo {
+                    id: transfer_id.clone(),
+                    transfer_type: "nearby-receive".to_string(),
+                    path: pending.sender_name.clone(),
+                    status: "connecting".to_string(),
+                    created_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64,
+                    ticket: None,
+                    filename: None,
+                    file_size: Some(pending.total_size as i64),
+                    completed_at: None,
+                    duration_ms: None,
+                },
+                abort_tx: Some(abort_tx),
+                send_shutdown: None,
+            },
+        );
+    }
+    {
+        let mut guard = nearby.write().await;
+        guard.receive_transfers.insert(
+            request_id.clone(),
+            ActiveNearbyReceive {
+                transfer_id: transfer_id.clone(),
+                sender_name: pending.sender_name.clone(),
+                sender_device_type: pending.sender_device_type.clone(),
+                started: Instant::now(),
+            },
+        );
+        #[cfg(target_os = "android")]
+        if let Some(uri) = content_output {
+            guard
+                .receive_content_outputs
+                .insert(request_id.clone(), uri);
         }
     }
 
-    write_nearby_message(
-        &mut send,
-        &sendme_lib::nearby::Message::BlobTicket { session_id, ticket },
-    )
-    .await?;
+    // Wire registry cancellation to the protocol-level session cancel.
+    {
+        let nearby_state = nearby.inner().clone();
+        let session_id = request_id.clone();
+        tokio::spawn(async move {
+            let _ = abort_rx.await;
+            let service = nearby_state.read().await.service.clone();
+            if let Some(service) = service {
+                service.cancel_receive(&session_id).await;
+            }
+        });
+    }
 
-    emit_nearby_send_state(
-        &app,
-        NearbyTransferStatePayload {
-            request_id: None,
-            transfer_id: Some(transfer_id.clone()),
-            state: "transferring".to_string(),
-            device_name: Some(receiver_name.clone()),
-            device_type: Some(receiver_type.clone()),
-            message: Some("Receiver is downloading".to_string()),
-            progress: Some(NearbyTransferProgressPayload {
-                transferred: 0,
-                total: prepared.total_size,
-                speed: 0,
-                eta: 0,
-            }),
-        },
-    );
-    set_android_active_nearby(
+    set_android_active_receive(
         &app,
         Some(AndroidForegroundTransfer {
-            title: format!("Sending to {}", receiver_name),
-            message: "Receiver is downloading".to_string(),
-            detail: format!("{} · {} bytes", prepared.display_name, prepared.total_size),
+            title: format!("Receiving from {}", pending.sender_name),
+            message: "Preparing nearby transfer".to_string(),
+            detail: "Waiting for transfer data.".to_string(),
             progress_current: 0,
             progress_total: 0,
             indeterminate: true,
@@ -1541,130 +1601,507 @@ async fn send_to_device(
     )
     .await;
 
-    Ok(transfer_id)
-}
-
-#[tauri::command]
-async fn accept_incoming(
-    nearby: tauri::State<'_, NearbyState>,
-    request_id: String,
-    output_dir: Option<String>,
-) -> Result<(), String> {
-    let decision_tx = {
-        let guard = nearby.read().await;
-        guard
-            .pending_requests
-            .get(&request_id)
-            .map(|pending| pending.decision_tx.clone())
-            .ok_or_else(|| "Incoming nearby request not found".to_string())?
-    };
-
-    decision_tx
-        .send(NearbyDecision::Accept { output_dir })
-        .await
+    pending
+        .decision_tx
+        .send(sendme_lib::NearbyIncomingDecision::Accept {
+            output_dir: output_path,
+        })
         .map_err(|_| "Incoming nearby request is no longer active".to_string())
 }
 
 #[tauri::command]
 async fn decline_incoming(
+    app: AppHandle,
     nearby: tauri::State<'_, NearbyState>,
     request_id: String,
 ) -> Result<(), String> {
-    let decision_tx = {
-        let guard = nearby.read().await;
+    let pending = {
+        let mut guard = nearby.write().await;
         guard
             .pending_requests
-            .get(&request_id)
-            .map(|pending| pending.decision_tx.clone())
+            .remove(&request_id)
             .ok_or_else(|| "Incoming nearby request not found".to_string())?
     };
 
-    decision_tx
-        .send(NearbyDecision::Decline {
-            reason: Some("Declined".to_string()),
-        })
-        .await
-        .map_err(|_| "Incoming nearby request is no longer active".to_string())
+    pending
+        .decision_tx
+        .send(sendme_lib::NearbyIncomingDecision::Decline)
+        .map_err(|_| "Incoming nearby request is no longer active".to_string())?;
+
+    let _ = app.emit(
+        "nearby_request_declined",
+        serde_json::json!({ "requestId": request_id }),
+    );
+    Ok(())
 }
+
+/// An in-flight nearby receive, mapping the protocol session to the UI.
+#[derive(Debug, Clone)]
+struct ActiveNearbyReceive {
+    transfer_id: String,
+    sender_name: String,
+    sender_device_type: String,
+    started: Instant,
+}
+
+/// An in-flight nearby send, mapping the protocol session to the UI.
+#[derive(Debug, Clone)]
+struct ActiveNearbySend {
+    transfer_id: String,
+    receiver_name: String,
+    receiver_type: String,
+}
+
 async fn ensure_nearby_runtime(app: &AppHandle, nearby: NearbyState) -> Result<(), String> {
-    let (device_name, device_type) = current_nearby_profile(app)?;
-    // Fast-path: check if already fully initialized (read lock only)
+    // Fast-path: already running (read lock only).
     {
         let guard = nearby.read().await;
-        if guard.endpoint.is_some() && guard.discovery.is_some() {
+        if guard.service.is_some() {
             return Ok(());
         }
     }
 
-    // --- Endpoint ---
-    let endpoint_needs_init = {
+    let (device_name, device_type) = current_nearby_profile(app)?;
+
+    let identity_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data directory: {e}"))?
+        .join("nearby");
+    let identity = sendme_lib::NearbyIdentity::load_or_create(&identity_dir)
+        .map_err(|e| format!("Failed to load nearby identity: {e:#}"))?;
+
+    let (event_tx, event_rx) = mpsc::channel(64);
+    let service = sendme_lib::NearbyRuntime::start(sendme_lib::NearbyRuntimeConfig {
+        alias: device_name.clone(),
+        device_type: device_type.clone(),
+        device_model: Some(std::env::consts::OS.to_string()),
+        identity,
+        port: sendme_lib::nearby::DEFAULT_PORT,
+        event_tx,
+    })
+    .await
+    .map_err(|e| format!("Failed to start nearby service: {e:#}"))?;
+
+    {
+        let mut guard = nearby.write().await;
+        if guard.service.is_some() {
+            // Another caller won the race; shut our instance down.
+            drop(guard);
+            service.stop().await;
+            return Ok(());
+        }
+        guard.device_name = device_name;
+        guard.device_type = device_type;
+        guard.service = Some(service.clone());
+    }
+
+    spawn_nearby_event_pump(app.clone(), nearby.clone(), event_rx);
+
+    // Announce this device so listening peers register with us.
+    service.announce().await;
+
+    Ok(())
+}
+
+/// Pumps runtime events into Tauri events and the transfer registry.
+fn spawn_nearby_event_pump(
+    app: AppHandle,
+    nearby: NearbyState,
+    mut rx: mpsc::Receiver<sendme_lib::NearbyEvent>,
+) {
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                sendme_lib::NearbyEvent::DevicesChanged(devices) => {
+                    emit_nearby_devices_updated(&app, devices);
+                }
+                sendme_lib::NearbyEvent::ReceiveRequest(request) => {
+                    handle_nearby_receive_request(&app, &nearby, request).await;
+                }
+                sendme_lib::NearbyEvent::ReceiveRequestAborted { session_id } => {
+                    {
+                        let mut guard = nearby.write().await;
+                        guard.pending_requests.remove(&session_id);
+                    }
+                    let _ = app.emit(
+                        "nearby_request_cancelled",
+                        serde_json::json!({ "requestId": session_id }),
+                    );
+                    sync_android_nearby_foreground(&app).await;
+                }
+                sendme_lib::NearbyEvent::ReceiveProgress {
+                    session_id,
+                    transferred,
+                    total,
+                    ..
+                } => {
+                    handle_nearby_receive_progress(&app, &nearby, &session_id, transferred, total)
+                        .await;
+                }
+                sendme_lib::NearbyEvent::ReceiveFinished {
+                    session_id,
+                    outcome,
+                } => {
+                    handle_nearby_receive_finished(&app, &nearby, session_id, outcome).await;
+                }
+                sendme_lib::NearbyEvent::SendCancelledByPeer { session_id } => {
+                    let active = {
+                        let mut guard = nearby.write().await;
+                        guard.send_transfers.remove(&session_id)
+                    };
+                    if let Some(active) = active {
+                        let transfers = app.state::<Transfers>().inner().clone();
+                        update_transfer_status(&transfers, &active.transfer_id, "cancelled").await;
+                        emit_nearby_send_state(
+                            &app,
+                            NearbyTransferStatePayload {
+                                request_id: None,
+                                transfer_id: Some(active.transfer_id),
+                                state: "cancelled".to_string(),
+                                device_name: Some(active.receiver_name),
+                                device_type: Some(active.receiver_type),
+                                message: Some("Receiver cancelled the transfer".to_string()),
+                                progress: None,
+                            },
+                        );
+                    }
+                }
+                sendme_lib::NearbyEvent::ListenerFailed(error) => {
+                    log_error!("Nearby server listener failed: {}", error);
+                }
+            }
+        }
+    });
+}
+
+async fn handle_nearby_receive_request(
+    app: &AppHandle,
+    nearby: &NearbyState,
+    request: sendme_lib::ReceiveRequest,
+) {
+    let sendme_lib::ReceiveRequest {
+        session_id,
+        sender_alias,
+        sender_device_type,
+        files,
+        total_size,
+        decision_tx,
+        ..
+    } = request;
+
+    {
+        let mut guard = nearby.write().await;
+        guard.pending_requests.insert(
+            session_id.clone(),
+            NearbyPendingRequest {
+                decision_tx,
+                sender_name: sender_alias.clone(),
+                sender_device_type: sender_device_type.as_str().to_string(),
+                total_size,
+            },
+        );
+    }
+
+    let payload = NearbyIncomingRequestPayload {
+        id: session_id.clone(),
+        sender_name: sender_alias.clone(),
+        sender_device_type: sender_device_type.as_str().to_string(),
+        files: files
+            .iter()
+            .map(|file| NearbyIncomingFile {
+                name: file.name.clone(),
+                size: file.size,
+            })
+            .collect(),
+        total_size,
+    };
+    let _ = app.emit("incoming_nearby_request", payload);
+
+    let notification_title = format!("{} wants to send you files", sender_alias);
+    let notification_body = if files.len() == 1 {
+        format!("{} · {} bytes", files[0].name, files[0].size)
+    } else {
+        format!("{} files · {} bytes", files.len(), total_size)
+    };
+    if let Err(error) = app
+        .notification()
+        .builder()
+        .title(&notification_title)
+        .body(&notification_body)
+        .show()
+    {
+        tracing::warn!("Failed to send nearby request notification: {}", error);
+    }
+
+    sync_android_nearby_foreground(app).await;
+
+    // Auto-decline when the user never decides, so the sender is not stuck
+    // waiting and no stale request lingers.
+    {
+        let app = app.clone();
+        let nearby = nearby.clone();
+        let session_id = session_id.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(300)).await;
+            let pending = {
+                let mut guard = nearby.write().await;
+                guard.pending_requests.remove(&session_id)
+            };
+            if let Some(pending) = pending {
+                let _ = pending
+                    .decision_tx
+                    .send(sendme_lib::NearbyIncomingDecision::Decline);
+                let _ = app.emit(
+                    "nearby_request_declined",
+                    serde_json::json!({ "requestId": session_id }),
+                );
+                sync_android_nearby_foreground(&app).await;
+            }
+        });
+    }
+}
+
+async fn handle_nearby_receive_progress(
+    app: &AppHandle,
+    nearby: &NearbyState,
+    session_id: &str,
+    transferred: u64,
+    total: u64,
+) {
+    let active = {
         let guard = nearby.read().await;
-        guard.endpoint.is_none()
+        guard.receive_transfers.get(session_id).cloned()
+    };
+    let Some(active) = active else {
+        return;
     };
 
-    if endpoint_needs_init {
-        let secret_key = sendme_lib::get_or_create_secret(false)
-            .map_err(|e| format!("Failed to create nearby secret: {e}"))?;
-        // Endpoint::bind() can hang on macOS under flaky network conditions
-        // (IPv6 routing weirdness, captive portals, restricted firewalls).
-        // Cap it so a stuck bind never blocks app init.
-        let bind_fut = Endpoint::builder(iroh::endpoint::presets::N0)
-            .secret_key(secret_key)
-            .relay_mode(RelayMode::Disabled)
-            .alpns(vec![sendme_lib::nearby::ALPN.to_vec()])
-            .bind();
-        let endpoint = tokio::time::timeout(std::time::Duration::from_secs(8), bind_fut)
-            .await
-            .map_err(|_| "Nearby endpoint bind timed out after 8s".to_string())?
-            .map_err(|e| format!("Failed to bind nearby endpoint: {e}"))?;
+    let transfers = app.state::<Transfers>().inner().clone();
+    update_transfer_status(&transfers, &active.transfer_id, "downloading").await;
 
+    let progress = nearby_progress_from_offset(transferred, total, active.started);
+    emit_nearby_receive_state(
+        app,
+        NearbyTransferStatePayload {
+            request_id: Some(session_id.to_string()),
+            transfer_id: Some(active.transfer_id.clone()),
+            state: "receiving".to_string(),
+            device_name: Some(active.sender_name.clone()),
+            device_type: Some(active.sender_device_type.clone()),
+            message: Some("Receiving nearby transfer".to_string()),
+            progress: Some(progress),
+        },
+    );
+
+    let (progress_current, progress_total, indeterminate) = if total > 0 {
+        let current = ((transferred as f64 / total as f64) * 1000.0).round() as u32;
+        (current.min(1000), 1000, false)
+    } else {
+        (0, 0, true)
+    };
+    set_android_active_receive(
+        app,
+        Some(AndroidForegroundTransfer {
+            title: format!("Receiving from {}", active.sender_name),
+            message: if total > 0 {
+                format!(
+                    "{:.0}% received",
+                    (transferred as f64 / total as f64) * 100.0
+                )
+            } else {
+                "Receiving nearby transfer".to_string()
+            },
+            detail: format!("{transferred} / {total} bytes"),
+            progress_current,
+            progress_total,
+            indeterminate,
+        }),
+    )
+    .await;
+}
+
+async fn handle_nearby_receive_finished(
+    app: &AppHandle,
+    nearby: &NearbyState,
+    session_id: String,
+    outcome: sendme_lib::ReceiveOutcome,
+) {
+    let active = {
         let mut guard = nearby.write().await;
-        if guard.endpoint.is_none() {
-            guard.endpoint = Some(endpoint.clone());
-            guard.device_name = device_name.clone();
-            guard.device_type = device_type.clone();
-            if !guard.listener_started {
-                spawn_nearby_listener(app.clone(), nearby.clone(), endpoint);
-                guard.listener_started = true;
+        guard.receive_transfers.remove(&session_id)
+    };
+    #[cfg(target_os = "android")]
+    let content_output = {
+        let mut guard = nearby.write().await;
+        guard.receive_content_outputs.remove(&session_id)
+    };
+
+    let transfers = app.state::<Transfers>().inner().clone();
+    let (request_id, sender_name, sender_device_type) = match &active {
+        Some(active) => (
+            session_id.clone(),
+            active.sender_name.clone(),
+            active.sender_device_type.clone(),
+        ),
+        None => (
+            session_id.clone(),
+            "Nearby device".to_string(),
+            "unknown".to_string(),
+        ),
+    };
+
+    match outcome {
+        sendme_lib::ReceiveOutcome::Completed { saved } => {
+            // On non-Android platforms files are already in their final
+            // directory; only Android SAF output needs the staging copy.
+            #[cfg(not(target_os = "android"))]
+            let _ = &saved;
+            // Android SAF output: copy staged files into the picked directory.
+            #[cfg(target_os = "android")]
+            if let Some(content_uri) = content_output {
+                let staging_root = saved
+                    .first()
+                    .and_then(|path| path.parent().map(|p| p.to_path_buf()));
+                if let Some(staging_root) = staging_root {
+                    if let Err(error) =
+                        copy_saved_files_to_content_uri(app, &staging_root, &saved, &content_uri)
+                            .await
+                    {
+                        if let Some(active) = &active {
+                            update_transfer_status(
+                                &transfers,
+                                &active.transfer_id,
+                                &format!("error: {error:#}"),
+                            )
+                            .await;
+                        }
+                        emit_nearby_receive_state(
+                            app,
+                            NearbyTransferStatePayload {
+                                request_id: Some(request_id),
+                                transfer_id: active.as_ref().map(|a| a.transfer_id.clone()),
+                                state: "error".to_string(),
+                                device_name: Some(sender_name),
+                                device_type: Some(sender_device_type),
+                                message: Some(format!("{error:#}")),
+                                progress: None,
+                            },
+                        );
+                        set_android_active_receive(app, None).await;
+                        return;
+                    }
+                    let _ = tokio::fs::remove_dir_all(&staging_root).await;
+                }
             }
+
+            if let Some(active) = &active {
+                update_transfer_status(&transfers, &active.transfer_id, "completed").await;
+            }
+            emit_nearby_receive_state(
+                app,
+                NearbyTransferStatePayload {
+                    request_id: Some(request_id),
+                    transfer_id: active.as_ref().map(|a| a.transfer_id.clone()),
+                    state: "done".to_string(),
+                    device_name: Some(sender_name),
+                    device_type: Some(sender_device_type),
+                    message: Some("Nearby transfer complete".to_string()),
+                    progress: None,
+                },
+            );
+        }
+        sendme_lib::ReceiveOutcome::Cancelled => {
+            if let Some(active) = &active {
+                update_transfer_status(&transfers, &active.transfer_id, "cancelled").await;
+            }
+            emit_nearby_receive_state(
+                app,
+                NearbyTransferStatePayload {
+                    request_id: Some(request_id),
+                    transfer_id: active.as_ref().map(|a| a.transfer_id.clone()),
+                    state: "cancelled".to_string(),
+                    device_name: Some(sender_name),
+                    device_type: Some(sender_device_type),
+                    message: Some("Nearby transfer cancelled".to_string()),
+                    progress: None,
+                },
+            );
+        }
+        sendme_lib::ReceiveOutcome::Failed { message, .. } => {
+            if let Some(active) = &active {
+                update_transfer_status(
+                    &transfers,
+                    &active.transfer_id,
+                    &format!("error: {message}"),
+                )
+                .await;
+            }
+            emit_nearby_receive_state(
+                app,
+                NearbyTransferStatePayload {
+                    request_id: Some(request_id),
+                    transfer_id: active.as_ref().map(|a| a.transfer_id.clone()),
+                    state: "error".to_string(),
+                    device_name: Some(sender_name),
+                    device_type: Some(sender_device_type),
+                    message: Some(message),
+                    progress: None,
+                },
+            );
         }
     }
 
-    // --- Discovery ---
-    let discovery_needs_init = {
-        let guard = nearby.read().await;
-        guard.discovery.is_none()
+    set_android_active_receive(app, None).await;
+}
+
+/// Copy received files from a staging directory into a content:// URI on
+/// Android via the Storage Access Framework.
+#[cfg(target_os = "android")]
+async fn copy_saved_files_to_content_uri(
+    app: &AppHandle,
+    staging_root: &std::path::Path,
+    files: &[std::path::PathBuf],
+    content_uri: &str,
+) -> anyhow::Result<()> {
+    use tauri_plugin_android_fs::AndroidFsExt;
+
+    let api = app.android_fs_async();
+    let tree_uri = if let Some(doc_idx) = content_uri.find("/document/") {
+        &content_uri[..doc_idx]
+    } else {
+        content_uri
     };
+    let dir_uri: tauri_plugin_android_fs::FileUri = serde_json::from_value(serde_json::json!({
+        "uri": content_uri,
+        "documentTopTreeUri": tree_uri,
+    }))?;
 
-    if discovery_needs_init {
-        let endpoint = {
-            let guard = nearby.read().await;
-            guard
-                .endpoint
-                .clone()
-                .ok_or_else(|| "Nearby endpoint is not initialized".to_string())?
-        };
-        let mut endpoint_addr = endpoint.addr();
-        apply_options(&mut endpoint_addr, AddrInfoOptions::Addresses);
+    for source_path in files {
+        // Preserve nested folder structure relative to the staging root.
+        let name = source_path
+            .strip_prefix(staging_root)
+            .unwrap_or(source_path)
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
 
-        let mut discovery = sendme_lib::NearbyDiscovery::new()
-            .map_err(|e| format!("Failed to create nearby discovery: {e}"))?;
-        let app_handle = app.clone();
-        discovery
-            .start_with_callback(
-                &device_name,
-                device_type.clone(),
-                &endpoint_addr,
-                Some(Arc::new(move |devices| {
-                    emit_nearby_devices_updated(&app_handle, devices);
-                })),
-            )
-            .map_err(|e| format!("Failed to start nearby discovery: {e}"))?;
-
-        let mut guard = nearby.write().await;
-        if guard.discovery.is_none() {
-            guard.discovery = Some(discovery);
-        }
+        let file_uri = api
+            .create_new_file(&dir_uri, &name, None)
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to create file '{name}' in selected directory: {e:?}")
+            })?;
+        let mut dest = api
+            .open_file_writable(&file_uri)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to open file '{name}' for writing: {e:?}"))?;
+        let mut src = std::fs::File::open(source_path)
+            .map_err(|e| anyhow::anyhow!("Failed to open staged file {source_path:?}: {e}"))?;
+        std::io::copy(&mut src, &mut dest)
+            .map_err(|e| anyhow::anyhow!("Failed to write to file '{name}': {e:?}"))?;
+        let _ = std::fs::remove_file(source_path);
     }
 
     Ok(())
@@ -1746,453 +2183,6 @@ fn sanitize_nearby_device_name(value: &str) -> String {
     }
 
     name.trim().to_string()
-}
-
-fn spawn_nearby_listener(app: AppHandle, nearby: NearbyState, endpoint: Endpoint) {
-    tokio::spawn(async move {
-        loop {
-            match endpoint.accept().await {
-                Some(incoming) => {
-                    let app = app.clone();
-                    let nearby = nearby.clone();
-                    tokio::spawn(async move {
-                        if let Err(error) = handle_nearby_incoming(app, nearby, incoming).await {
-                            log_error!("Nearby incoming connection failed: {}", error);
-                        }
-                    });
-                }
-                None => break,
-            }
-        }
-    });
-}
-
-async fn handle_nearby_incoming(
-    app: AppHandle,
-    nearby: NearbyState,
-    incoming: Incoming,
-) -> Result<(), String> {
-    let connecting = incoming
-        .accept()
-        .map_err(|e| format!("Failed to accept nearby connection: {e}"))?;
-    let conn = connecting
-        .await
-        .map_err(|e| format!("Failed to establish nearby connection: {e}"))?;
-    let (mut send, mut recv) = conn
-        .accept_bi()
-        .await
-        .map_err(|e| format!("Failed to accept nearby bi-stream: {e}"))?;
-
-    let sender_hello = read_nearby_message(&mut recv).await?;
-    let (sender_name, sender_device_type) = match sender_hello {
-        sendme_lib::nearby::Message::Hello {
-            device_name,
-            device_type,
-            ..
-        } => (device_name, device_type),
-        _ => return Err("Expected nearby hello message".to_string()),
-    };
-
-    let (device_name, device_type) = current_nearby_profile(&app)?;
-    let endpoint_id = {
-        let guard = nearby.read().await;
-        guard
-            .endpoint
-            .as_ref()
-            .ok_or_else(|| "Nearby endpoint unavailable".to_string())?
-            .addr()
-            .id
-            .to_string()
-    };
-    write_nearby_message(
-        &mut send,
-        &sendme_lib::nearby::Message::Hello {
-            device_name,
-            device_type: device_type.as_str().to_string(),
-            endpoint_id,
-        },
-    )
-    .await?;
-
-    let offer = read_nearby_message(&mut recv).await?;
-    let (files, total_size) = match offer {
-        sendme_lib::nearby::Message::Offer { files, total_size } => (files, total_size),
-        sendme_lib::nearby::Message::Cancel { .. } => return Ok(()),
-        _ => return Err("Expected nearby offer message".to_string()),
-    };
-
-    let request_id = Uuid::new_v4().to_string();
-    let (decision_tx, mut decision_rx) = mpsc::channel(1);
-    {
-        let mut guard = nearby.write().await;
-        guard
-            .pending_requests
-            .insert(request_id.clone(), NearbyPendingRequest { decision_tx });
-    }
-
-    let request_payload = NearbyIncomingRequestPayload {
-        id: request_id.clone(),
-        sender_name: sender_name.clone(),
-        sender_device_type: sender_device_type.clone(),
-        files: files
-            .iter()
-            .map(|file| NearbyIncomingFile {
-                name: file.path.clone(),
-                size: file.size,
-            })
-            .collect(),
-        total_size,
-    };
-    let _ = app.emit("incoming_nearby_request", request_payload);
-
-    let notification_title = format!("{} wants to send you files", sender_name);
-    let notification_body = if files.len() == 1 {
-        format!("{} · {} bytes", files[0].path, files[0].size)
-    } else {
-        format!("{} files · {} bytes", files.len(), total_size)
-    };
-    if let Err(error) = app
-        .notification()
-        .builder()
-        .title(&notification_title)
-        .body(&notification_body)
-        .show()
-    {
-        tracing::warn!("Failed to send nearby request notification: {}", error);
-    }
-
-    let decision = tokio::time::timeout(Duration::from_secs(300), decision_rx.recv())
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(NearbyDecision::Decline {
-            reason: Some("Timed out waiting for approval".to_string()),
-        });
-
-    {
-        let mut guard = nearby.write().await;
-        guard.pending_requests.remove(&request_id);
-    }
-
-    match decision {
-        NearbyDecision::Accept { output_dir } => {
-            write_nearby_message(
-                &mut send,
-                &sendme_lib::nearby::Message::Accept {
-                    session_id: request_id.clone(),
-                },
-            )
-            .await?;
-
-            let next_message = read_nearby_message(&mut recv).await?;
-            match next_message {
-                sendme_lib::nearby::Message::BlobTicket { ticket, .. } => {
-                    start_nearby_receive(
-                        app.clone(),
-                        request_id,
-                        sender_name,
-                        sender_device_type,
-                        ticket,
-                        output_dir,
-                    )
-                    .await?;
-                }
-                sendme_lib::nearby::Message::Cancel { .. } => {
-                    let _ = app.emit(
-                        "nearby_request_cancelled",
-                        serde_json::json!({ "requestId": request_id }),
-                    );
-                }
-                _ => {
-                    return Err("Sender did not provide a blob ticket".to_string());
-                }
-            }
-        }
-        NearbyDecision::Decline { reason } => {
-            write_nearby_message(
-                &mut send,
-                &sendme_lib::nearby::Message::Decline {
-                    session_id: request_id.clone(),
-                    reason: reason.clone(),
-                },
-            )
-            .await?;
-            let _ = app.emit(
-                "nearby_request_declined",
-                serde_json::json!({ "requestId": request_id }),
-            );
-        }
-    }
-
-    Ok(())
-}
-
-async fn start_nearby_receive(
-    app: AppHandle,
-    request_id: String,
-    sender_name: String,
-    sender_device_type: String,
-    ticket: String,
-    output_dir: Option<String>,
-) -> Result<(), String> {
-    let transfer_id = Uuid::new_v4().to_string();
-    let transfers = app.state::<Transfers>().inner().clone();
-    let temp_dir = app
-        .path()
-        .temp_dir()
-        .map_err(|e| format!("Failed to get temp directory: {e}"))?;
-    #[cfg(target_os = "android")]
-    let content_uri_output = output_dir
-        .as_ref()
-        .filter(|dir| dir.starts_with("content://"))
-        .cloned();
-    let export_dir = resolve_nearby_output_dir(&app, output_dir)?;
-    let export_root = export_dir.clone().unwrap_or_else(|| temp_dir.clone());
-    let ticket: sendme_lib::BlobTicket = ticket
-        .parse()
-        .map_err(|e| format!("Invalid nearby transfer ticket: {e}"))?;
-
-    {
-        let mut guard = transfers.write().await;
-        guard.insert(
-            transfer_id.clone(),
-            TransferState {
-                info: TransferInfo {
-                    id: transfer_id.clone(),
-                    transfer_type: "nearby-receive".to_string(),
-                    path: sender_name.clone(),
-                    status: "connecting".to_string(),
-                    created_at: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64,
-                    ticket: Some(ticket.to_string()),
-                    filename: None,
-                    file_size: None,
-                    completed_at: None,
-                    duration_ms: None,
-                },
-                abort_tx: None,
-                send_shutdown: None,
-            },
-        );
-    }
-    set_android_active_receive(
-        &app,
-        Some(AndroidForegroundTransfer {
-            title: format!("Receiving from {}", sender_name),
-            message: "Preparing nearby transfer".to_string(),
-            detail: "Waiting for transfer data.".to_string(),
-            progress_current: 0,
-            progress_total: 0,
-            indeterminate: true,
-        }),
-    )
-    .await;
-
-    let (tx, mut rx) = tokio::sync::mpsc::channel(32);
-    let app_clone = app.clone();
-    let transfers_clone = transfers.clone();
-    let transfer_id_clone = transfer_id.clone();
-    let request_id_for_progress = request_id.clone();
-    let sender_name_for_progress = sender_name.clone();
-    let sender_type_for_progress = sender_device_type.clone();
-    tokio::spawn(async move {
-        let started = Instant::now();
-        const NEARBY_PROGRESS_TIMEOUT: Duration = Duration::from_secs(120);
-        loop {
-            let event = match tokio::time::timeout(NEARBY_PROGRESS_TIMEOUT, rx.recv()).await {
-                Ok(Some(e)) => e,
-                Ok(None) => break,
-                Err(_) => {
-                    log_warn!("[Nearby Receive] No progress events for 120s, exiting listener");
-                    break;
-                }
-            };
-            match event {
-                ProgressEvent::Download(DownloadProgress::Downloading { offset, total }) => {
-                    let progress = nearby_progress_from_offset(offset, total, started);
-                    update_transfer_status(&transfers_clone, &transfer_id_clone, "downloading")
-                        .await;
-                    emit_nearby_receive_state(
-                        &app_clone,
-                        NearbyTransferStatePayload {
-                            request_id: Some(request_id_for_progress.clone()),
-                            transfer_id: Some(transfer_id_clone.clone()),
-                            state: "receiving".to_string(),
-                            device_name: Some(sender_name_for_progress.clone()),
-                            device_type: Some(sender_type_for_progress.clone()),
-                            message: Some("Receiving nearby transfer".to_string()),
-                            progress: Some(progress),
-                        },
-                    );
-                    let (progress_current, progress_total, indeterminate) = if total > 0 {
-                        let current = ((offset as f64 / total as f64) * 1000.0).round() as u32;
-                        (current.min(1000), 1000, false)
-                    } else {
-                        (0, 0, true)
-                    };
-                    set_android_active_receive(
-                        &app_clone,
-                        Some(AndroidForegroundTransfer {
-                            title: format!("Receiving from {}", sender_name_for_progress),
-                            message: if total > 0 {
-                                format!("{:.0}% received", (offset as f64 / total as f64) * 100.0)
-                            } else {
-                                "Receiving nearby transfer".to_string()
-                            },
-                            detail: format!("{offset} / {total} bytes"),
-                            progress_current,
-                            progress_total,
-                            indeterminate,
-                        }),
-                    )
-                    .await;
-                }
-                ProgressEvent::Download(DownloadProgress::Completed) => {
-                    update_transfer_status(&transfers_clone, &transfer_id_clone, "completed").await;
-                    emit_nearby_receive_state(
-                        &app_clone,
-                        NearbyTransferStatePayload {
-                            request_id: Some(request_id_for_progress.clone()),
-                            transfer_id: Some(transfer_id_clone.clone()),
-                            state: "done".to_string(),
-                            device_name: Some(sender_name_for_progress.clone()),
-                            device_type: Some(sender_type_for_progress.clone()),
-                            message: Some("Nearby transfer complete".to_string()),
-                            progress: None,
-                        },
-                    );
-                    set_android_active_receive(&app_clone, None).await;
-                }
-                _ => {}
-            }
-        }
-    });
-
-    let app_clone = app.clone();
-    let transfers_clone = transfers.clone();
-    let export_root_for_receive = export_root.clone();
-    #[cfg(target_os = "android")]
-    let temp_dir_for_receive = temp_dir.clone();
-    tokio::spawn(async move {
-        let args = ReceiveArgs {
-            ticket,
-            common: CommonConfig {
-                temp_dir: Some(temp_dir),
-                ..Default::default()
-            },
-            export_dir,
-        };
-
-        match sendme_lib::receive_with_progress(args, tx).await {
-            Ok(result) => {
-                #[cfg(target_os = "android")]
-                if content_uri_output.is_none() {
-                    if let Err(error) = flatten_nearby_stage_dir(&export_root_for_receive) {
-                        update_transfer_status(
-                            &transfers_clone,
-                            &transfer_id,
-                            &format!("error: {error}"),
-                        )
-                        .await;
-                        emit_nearby_receive_state(
-                            &app_clone,
-                            NearbyTransferStatePayload {
-                                request_id: Some(request_id.clone()),
-                                transfer_id: Some(transfer_id.clone()),
-                                state: "error".to_string(),
-                                device_name: Some(sender_name.clone()),
-                                device_type: Some(sender_device_type.clone()),
-                                message: Some(error),
-                                progress: None,
-                            },
-                        );
-                        set_android_active_receive(&app_clone, None).await;
-                        return;
-                    }
-                }
-
-                #[cfg(not(target_os = "android"))]
-                if let Err(error) = flatten_nearby_stage_dir(&export_root_for_receive) {
-                    update_transfer_status(
-                        &transfers_clone,
-                        &transfer_id,
-                        &format!("error: {error}"),
-                    )
-                    .await;
-                    emit_nearby_receive_state(
-                        &app_clone,
-                        NearbyTransferStatePayload {
-                            request_id: Some(request_id.clone()),
-                            transfer_id: Some(transfer_id.clone()),
-                            state: "error".to_string(),
-                            device_name: Some(sender_name.clone()),
-                            device_type: Some(sender_device_type.clone()),
-                            message: Some(error),
-                            progress: None,
-                        },
-                    );
-                    set_android_active_receive(&app_clone, None).await;
-                    return;
-                }
-
-                #[cfg(target_os = "android")]
-                if let Some(content_uri) = content_uri_output {
-                    if let Err(error) = copy_files_to_content_uri(
-                        &app_clone,
-                        &temp_dir_for_receive,
-                        &content_uri,
-                        &result.collection,
-                    )
-                    .await
-                    {
-                        update_transfer_status(
-                            &transfers_clone,
-                            &transfer_id,
-                            &format!("error: {error}"),
-                        )
-                        .await;
-                        emit_nearby_receive_state(
-                            &app_clone,
-                            NearbyTransferStatePayload {
-                                request_id: Some(request_id),
-                                transfer_id: Some(transfer_id),
-                                state: "error".to_string(),
-                                device_name: Some(sender_name),
-                                device_type: Some(sender_device_type),
-                                message: Some(error.to_string()),
-                                progress: None,
-                            },
-                        );
-                        set_android_active_receive(&app_clone, None).await;
-                    }
-                }
-
-                #[cfg(not(target_os = "android"))]
-                let _ = result;
-            }
-            Err(error) => {
-                update_transfer_status(&transfers_clone, &transfer_id, &format!("error: {error}"))
-                    .await;
-                emit_nearby_receive_state(
-                    &app_clone,
-                    NearbyTransferStatePayload {
-                        request_id: Some(request_id),
-                        transfer_id: Some(transfer_id),
-                        state: "error".to_string(),
-                        device_name: Some(sender_name),
-                        device_type: Some(sender_device_type),
-                        message: Some(error.to_string()),
-                        progress: None,
-                    },
-                );
-                set_android_active_receive(&app_clone, None).await;
-            }
-        }
-    });
-
-    Ok(())
 }
 
 fn resolve_nearby_output_dir(
@@ -2532,7 +2522,7 @@ async fn sync_android_nearby_foreground(app: &AppHandle) {
     let transfers = app.state::<Transfers>().inner().clone();
     let payload = {
         let guard = nearby.read().await;
-        if guard.discovery.is_none() {
+        if guard.service.is_none() {
             None
         } else {
             let has_pending_requests = !guard.pending_requests.is_empty();
@@ -2683,83 +2673,6 @@ fn strip_nearby_staging_prefix(path: &str) -> &str {
     }
 }
 
-fn flatten_nearby_stage_dir(root: &Path) -> Result<(), String> {
-    let entries = std::fs::read_dir(root)
-        .map_err(|e| {
-            format!(
-                "Failed to read nearby export directory {}: {e}",
-                root.display()
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| {
-            format!(
-                "Failed to inspect nearby export directory {}: {e}",
-                root.display()
-            )
-        })?;
-
-    if entries.len() != 1 {
-        return Ok(());
-    }
-
-    let staged_root = entries[0].path();
-    let staged_name = staged_root
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default();
-    if !staged_root.is_dir() || !staged_name.starts_with("sendme-nearby-stage-") {
-        return Ok(());
-    }
-
-    for entry in std::fs::read_dir(&staged_root).map_err(|e| {
-        format!(
-            "Failed to read staged nearby directory {}: {e}",
-            staged_root.display()
-        )
-    })? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let child_path = entry.path();
-        let child_name = entry.file_name();
-        let destination = root.join(&child_name);
-        if destination.exists() {
-            let fallback_name = child_name.to_str().unwrap_or("item");
-            copy_path_recursive(&child_path, &unique_child_path(root, fallback_name))?;
-        } else if let Err(rename_error) = std::fs::rename(&child_path, &destination) {
-            copy_path_recursive(&child_path, &destination).map_err(|copy_error| {
-                format!(
-                    "Failed to flatten nearby export item {}: {rename_error}; fallback copy failed: {copy_error}",
-                    child_path.display()
-                )
-            })?;
-            if child_path.is_dir() {
-                std::fs::remove_dir_all(&child_path).map_err(|e| {
-                    format!(
-                        "Failed to remove staged nearby directory {} after copy: {e}",
-                        child_path.display()
-                    )
-                })?;
-            } else {
-                std::fs::remove_file(&child_path).map_err(|e| {
-                    format!(
-                        "Failed to remove staged nearby file {} after copy: {e}",
-                        child_path.display()
-                    )
-                })?;
-            }
-        }
-    }
-
-    std::fs::remove_dir_all(&staged_root).map_err(|e| {
-        format!(
-            "Failed to remove staged nearby directory {}: {e}",
-            staged_root.display()
-        )
-    })?;
-
-    Ok(())
-}
-
 fn nearby_progress_from_offset(
     transferred: u64,
     total: u64,
@@ -2779,69 +2692,6 @@ fn nearby_progress_from_offset(
         speed,
         eta,
     }
-}
-
-fn spawn_nearby_send_progress_listener(
-    app: AppHandle,
-    transfers: Transfers,
-    transfer_id: String,
-    receiver_name: String,
-    receiver_type: String,
-    total_size: u64,
-    mut rx: tokio::sync::mpsc::Receiver<ProgressEvent>,
-) {
-    tokio::spawn(async move {
-        let started = Instant::now();
-        const NEARBY_PROGRESS_TIMEOUT: Duration = Duration::from_secs(120);
-        loop {
-            let event = match tokio::time::timeout(NEARBY_PROGRESS_TIMEOUT, rx.recv()).await {
-                Ok(Some(e)) => e,
-                Ok(None) => break,
-                Err(_) => {
-                    log_warn!("[Nearby Send] No progress events for 120s, exiting listener");
-                    break;
-                }
-            };
-            match event {
-                ProgressEvent::Connection(ConnectionStatus::RequestProgress { offset, .. }) => {
-                    update_transfer_status(&transfers, &transfer_id, "sending").await;
-                    emit_nearby_send_state(
-                        &app,
-                        NearbyTransferStatePayload {
-                            request_id: None,
-                            transfer_id: Some(transfer_id.clone()),
-                            state: "transferring".to_string(),
-                            device_name: Some(receiver_name.clone()),
-                            device_type: Some(receiver_type.clone()),
-                            message: Some("Sending nearby transfer".to_string()),
-                            progress: Some(nearby_progress_from_offset(
-                                offset, total_size, started,
-                            )),
-                        },
-                    );
-                }
-                ProgressEvent::Connection(ConnectionStatus::RequestCompleted { .. }) => {
-                    update_transfer_status(&transfers, &transfer_id, "completed").await;
-                    emit_nearby_send_state(
-                        &app,
-                        NearbyTransferStatePayload {
-                            request_id: None,
-                            transfer_id: Some(transfer_id.clone()),
-                            state: "done".to_string(),
-                            device_name: Some(receiver_name.clone()),
-                            device_type: Some(receiver_type.clone()),
-                            message: Some("Nearby transfer complete".to_string()),
-                            progress: Some(nearby_progress_from_offset(
-                                total_size, total_size, started,
-                            )),
-                        },
-                    );
-                    sync_android_nearby_foreground(&app).await;
-                }
-                _ => {}
-            }
-        }
-    });
 }
 
 async fn prepare_nearby_source(
@@ -2896,11 +2746,17 @@ async fn prepare_nearby_source(
         }
     }
 
-    let manifest = build_manifest(&staging_root, None)?;
-    let total_size = manifest.iter().map(|file| file.size).sum();
+    let files = build_outgoing_files(&staging_root)?;
+    let total_size = files
+        .iter()
+        .map(|file| {
+            std::fs::metadata(&file.path)
+                .map(|meta| meta.len())
+                .unwrap_or(0)
+        })
+        .sum();
     Ok(PreparedNearbySource {
-        send_path: staging_root.clone(),
-        cleanup_path: Some(staging_root),
+        cleanup_path: staging_root,
         display_name: if file_items.len() == 1 {
             file_items[0]
                 .filename
@@ -2915,31 +2771,28 @@ async fn prepare_nearby_source(
         } else {
             format!("{} items", file_items.len())
         },
-        manifest,
+        files,
         total_size,
     })
 }
 
-fn build_manifest(
-    root: &Path,
-    prefix: Option<&Path>,
-) -> Result<Vec<sendme_lib::nearby::FileInfo>, String> {
+/// Lists the files under `root` as outgoing transfer entries. Logical names
+/// are relative to `root` and always use `/` separators: they go on the wire.
+fn build_outgoing_files(root: &Path) -> Result<Vec<sendme_lib::OutgoingFile>, String> {
     let metadata = std::fs::metadata(root)
         .map_err(|e| format!("Failed to read selected item {}: {e}", root.display()))?;
 
     if metadata.is_file() {
-        let display_path = prefix
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(root.file_name().unwrap_or_default()));
-        return Ok(vec![sendme_lib::nearby::FileInfo {
-            path: display_path.to_string_lossy().to_string(),
-            size: metadata.len(),
+        let name = root
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".to_string());
+        return Ok(vec![sendme_lib::OutgoingFile {
+            path: root.to_path_buf(),
+            name,
         }]);
     }
 
-    let base = prefix
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(root.file_name().unwrap_or_default()));
     let mut files = Vec::new();
     for entry in walkdir::WalkDir::new(root)
         .into_iter()
@@ -2949,15 +2802,15 @@ fn build_manifest(
         let relative = entry
             .path()
             .strip_prefix(root)
-            .map_err(|e| format!("Failed to build manifest path: {e}"))?;
-        let logical_path = if base.as_os_str().is_empty() {
-            relative.to_path_buf()
-        } else {
-            base.join(relative)
-        };
-        files.push(sendme_lib::nearby::FileInfo {
-            path: logical_path.to_string_lossy().to_string(),
-            size: entry.metadata().map_err(|e| e.to_string())?.len(),
+            .map_err(|e| format!("Failed to build transfer path: {e}"))?;
+        let name = relative
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
+        files.push(sendme_lib::OutgoingFile {
+            path: entry.path().to_path_buf(),
+            name,
         });
     }
     Ok(files)
@@ -3010,43 +2863,6 @@ fn copy_path_recursive(source: &Path, destination: &Path) -> Result<(), String> 
     std::fs::copy(source, destination)
         .map_err(|e| format!("Failed to stage file {}: {e}", source.display()))?;
     Ok(())
-}
-
-async fn write_nearby_message(
-    send: &mut (impl AsyncWriteExt + Unpin),
-    msg: &sendme_lib::nearby::Message,
-) -> Result<(), String> {
-    let data =
-        serde_json::to_vec(msg).map_err(|e| format!("Failed to encode nearby message: {e}"))?;
-    send.write_u32(data.len() as u32)
-        .await
-        .map_err(|e| format!("Failed to write nearby message size: {e}"))?;
-    send.write_all(&data)
-        .await
-        .map_err(|e| format!("Failed to write nearby message: {e}"))?;
-    send.flush()
-        .await
-        .map_err(|e| format!("Failed to flush nearby message: {e}"))?;
-    Ok(())
-}
-
-async fn read_nearby_message(
-    recv: &mut (impl AsyncReadExt + Unpin),
-) -> Result<sendme_lib::nearby::Message, String> {
-    const READ_TIMEOUT: Duration = Duration::from_secs(30);
-    tokio::time::timeout(READ_TIMEOUT, async {
-        let len = recv
-            .read_u32()
-            .await
-            .map_err(|e| format!("Failed to read nearby message size: {e}"))?;
-        let mut buf = vec![0u8; len as usize];
-        recv.read_exact(&mut buf)
-            .await
-            .map_err(|e| format!("Failed to read nearby message body: {e}"))?;
-        serde_json::from_slice(&buf).map_err(|e| format!("Failed to decode nearby message: {e}"))
-    })
-    .await
-    .map_err(|_| "Nearby message read timed out (30s)".to_string())?
 }
 
 #[tauri::command]
@@ -3974,18 +3790,15 @@ pub fn run() {
     app.run(move |app_handle, event| {
         match event {
             tauri::RunEvent::Exit => {
-                // Gracefully close the nearby iroh Endpoint so it doesn't log
-                // "Endpoint dropped without calling Endpoint::close".
+                // Stop the nearby service so its sockets are released.
                 let nearby = nearby_for_exit.clone();
                 tauri::async_runtime::block_on(async move {
-                    let endpoint = {
+                    let service = {
                         let mut guard = nearby.write().await;
-                        guard.discovery = None;
-                        guard.listener_started = false;
-                        guard.endpoint.take()
+                        guard.service.take()
                     };
-                    if let Some(ep) = endpoint {
-                        ep.close().await;
+                    if let Some(service) = service {
+                        service.stop().await;
                     }
                 });
             }

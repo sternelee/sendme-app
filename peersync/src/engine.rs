@@ -461,10 +461,7 @@ impl SyncEngine {
                 "skipping file due to security policy"
             );
             self.emit(EngineEvent::Warning {
-                message: format!(
-                    "Skipped {} (security): {}",
-                    relative, reason
-                ),
+                message: format!("Skipped {} (security): {}", relative, reason),
             });
             return Ok(());
         }

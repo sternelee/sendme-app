@@ -29,6 +29,7 @@ sendme-app/
 ├── pnpm-workspace.yaml     # pnpm workspace: app, browser, packages/*
 ├── package.json            # Root package.json (thin, mostly peer deps)
 ├── lib/                    # sendme-lib: core send/receive/nearby logic
+├── localsend/              # Vendored LocalSend protocol crate (from localsend/packages/core)
 ├── cli/                    # sendme binary: TUI + CLI commands
 ├── app/                    # Tauri SolidJS frontend
 │   ├── src/                # SolidJS/TypeScript UI
@@ -57,7 +58,7 @@ sendme-app/
 
 ### Rust
 - **MSRV**: 1.81
-- **Workspace members**: `lib`, `cli`, `app/src-tauri`
+- **Workspace members**: `lib`, `cli`, `app/src-tauri`, `peersync`, `localsend` (vendored)
 - **Key crates**: `iroh` 1.0.0-rc.1, `iroh-blobs` 0.102.0, `tokio`, `anyhow`, `serde`, `tauri` 2.x
 - **Release profile**: `panic = "abort"`, `opt-level = "s"`, `lto = true`, `codegen-units = 1`
 
@@ -93,7 +94,7 @@ sendme-app/
 | `lib/src/import.rs` / `export.rs` | Filesystem ↔ blob-store conversion |
 | `lib/src/progress.rs` | Transfer progress event types |
 | `lib/src/types.rs` | Shared request/config types (`CommonConfig`, `SendArgs`, `ReceiveArgs`) |
-| `lib/src/nearby/` | mDNS discovery and nearby transfer protocol |
+| `lib/src/nearby/` | LocalSend-protocol nearby runtime (discovery, send/receive wrapper) |
 
 The cross-product transfer contract is an `iroh_blobs::ticket::BlobTicket` using collection/`HashSeq` data so filenames and directory structure survive across CLI, Tauri, and browser flows.
 
@@ -326,7 +327,7 @@ pnpm run deploy:cf
 - **app/ and browser/ are separate products**: Both use SolidJS but share no state or build configuration.
 - **iOS first-time Xcode setup**: Before `xcodebuild` on a new machine, open the project in Xcode GUI once and confirm the Team. The daemon cannot access credentials without this.
 - **iOS entitlements**: `app/src-tauri/gen/apple/app_iOS/app_iOS.entitlements` must remain empty (`<dict></dict>`) for personal-team signing.
-- **iOS mDNS limitation**: iOS cannot publish mDNS services without the `com.apple.developer.networking.multicast` entitlement (requires Apple Developer Program). On personal-team signing, iOS can receive nearby broadcasts but other devices may not see it. This is a platform limit, not a code bug.
+- **iOS multicast limitation**: Nearby uses the LocalSend protocol (UDP multicast announcements + HTTPS transfers). Without the `com.apple.developer.networking.multicast` entitlement (unavailable to personal teams), iOS cannot receive multicast announcements, so nearby discovery of other devices is limited. HTTPS serving and outbound registration still work. This is a platform limit, not a code bug.
 - **Recursion limit**: If you hit "recursion limit reached" compiling `app/src-tauri/src/lib.rs`, add `#![recursion_limit = "256"]` at the top.
 - **Android sodium_memcmp crash**: Cross-compiling Android on macOS can produce an empty libsodium static library. See `ANDROID_DEBUG_GUIDE.md` for the one-time NDK fix.
 - **CI tests require staging relays**: Run `IROH_FORCE_STAGING_RELAYS=1` before `cargo test` in CI.
@@ -373,7 +374,7 @@ pnpm run deploy:cf
 | --- | --- |
 | `lib/src/send.rs` | Core send logic; router keep-alive lives here |
 | `lib/src/receive.rs` | Core receive/download logic |
-| `lib/src/nearby/` | mDNS discovery primitives |
+| `lib/src/nearby/` | LocalSend protocol wrapper (runtime, identity, device types) |
 | `cli/src/main.rs` | CLI entry point and TUI launcher |
 | `cli/src/tui/` | ratatui TUI implementation |
 
@@ -428,7 +429,7 @@ The Tauri app authenticates via the browser app's better-auth instance using the
 - `README.md` — Human-facing overview, installation, and usage.
 - `CLAUDE.md` — Additional Claude Code guidance with command reference and deep implementation notes.
 - `docs/ios-build-install.md` — Full iOS build, install, and troubleshooting guide.
-- `docs/nearby-discovery.md` — mDNS service naming and iOS multicast entitlement limitations.
+- `docs/nearby-discovery.md` — LocalSend nearby protocol architecture and platform limitations.
 - `ANDROID_DEBUG_GUIDE.md` — Android `libsodium` cross-compile fix and debugging workflow.
 - `ANDROID_FIX_SUMMARY.md` — Android temp directory fixes.
 - `API_CONTRACT_REFERENCE.md` — API contract details.

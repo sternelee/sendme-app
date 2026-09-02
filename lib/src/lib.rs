@@ -13,7 +13,11 @@ pub mod receive;
 pub mod send;
 pub mod types;
 
-pub use nearby::{DeviceType, NearbyDevice, NearbyDiscovery, SERVICE_TYPE};
+pub use nearby::{
+    DeviceType, IncomingFile, NearbyDevice, NearbyEvent, NearbyIdentity, NearbyIncomingDecision,
+    NearbyPrepareError, NearbyRuntime, NearbyRuntimeConfig, NearbySendEvent, NearbySendSession,
+    OutgoingFile, ReceiveOutcome, ReceiveRequest,
+};
 pub use progress::*;
 pub use types::*;
 
