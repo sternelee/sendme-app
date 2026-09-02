@@ -194,6 +194,9 @@ struct RuntimeInner {
     discovery: DiscoveryHandle,
     event_tx: mpsc::Sender<NearbyEvent>,
     sessions: Mutex<HashMap<String, ReceiveSession>>,
+    /// Last emitted device list, for change detection (peers re-register on
+    /// every announcement; only actual changes are signalled).
+    last_devices: Mutex<Option<Vec<NearbyDevice>>>,
     /// Cancellation tokens of outgoing sends, by session ID, so that a
     /// peer-initiated cancel can abort them.
     send_sessions: std::sync::Mutex<HashMap<String, CancellationToken>>,
@@ -470,6 +473,7 @@ impl NearbyRuntime {
             discovery,
             event_tx: config.event_tx,
             sessions: Mutex::new(HashMap::new()),
+            last_devices: Mutex::new(None),
             send_sessions: std::sync::Mutex::new(HashMap::new()),
             server_stop: Mutex::new(Some(server_stop)),
             discovery_stop: Mutex::new(Some(discovery_stop_tx)),
@@ -738,11 +742,26 @@ impl RuntimeInner {
         }
     }
 
+    /// Emits the device list, but only when it actually changed: peers
+    /// re-register on every announcement, and the store reports each
+    /// confirmation as an update.
+    async fn emit_devices_changed(&self) {
+        let mut devices = self.devices();
+        for device in &mut devices {
+            device.addresses.sort();
+        }
+        devices.sort_by(|a, b| a.id.cmp(&b.id));
+        let mut last = self.last_devices.lock().await;
+        if last.as_ref() != Some(&devices) {
+            *last = Some(devices.clone());
+            self.emit(NearbyEvent::DevicesChanged(devices)).await;
+        }
+    }
+
     async fn handle_discovery_event(&self, event: DiscoveryEvent) {
         match event {
             DiscoveryEvent::Discovered { .. } | DiscoveryEvent::Updated { .. } => {
-                let devices = self.devices();
-                self.emit(NearbyEvent::DevicesChanged(devices)).await;
+                self.emit_devices_changed().await;
             }
             DiscoveryEvent::MulticastFailed => {
                 tracing::warn!("Nearby multicast sockets failed; discovery degraded");
@@ -782,8 +801,7 @@ impl RuntimeInner {
                     download: info.download,
                 };
                 if self.discovery.add_device(device).await {
-                    let devices = self.devices();
-                    self.emit(NearbyEvent::DevicesChanged(devices)).await;
+                    self.emit_devices_changed().await;
                 }
             }
             ServerEventV2::PrepareUpload {
@@ -872,6 +890,7 @@ impl RuntimeInner {
         );
 
         self.emit(NearbyEvent::ReceiveRequest(request)).await;
+        tracing::info!("Nearby receive request {session_id} from {}", info.alias);
 
         // Answer the protocol side once the application decides, in a task so
         // this handler returns immediately. Dropping the decision channel
@@ -1011,6 +1030,7 @@ impl RuntimeInner {
     }
 
     async fn handle_session_end(&self, session_id: String, reason: SessionEndReasonV2) {
+        tracing::info!("Nearby session {session_id} ended: {reason:?}");
         let session = self.sessions.lock().await.remove(&session_id);
         let Some(session) = session else {
             return;

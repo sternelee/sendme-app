@@ -1711,7 +1711,9 @@ fn spawn_nearby_event_pump(
     mut rx: mpsc::Receiver<sendme_lib::NearbyEvent>,
 ) {
     tokio::spawn(async move {
+        tracing::info!("Nearby event pump started");
         while let Some(event) = rx.recv().await {
+            tracing::debug!("Nearby event: {}", event_name(&event));
             match event {
                 sendme_lib::NearbyEvent::DevicesChanged(devices) => {
                     emit_nearby_devices_updated(&app, devices);
@@ -1743,6 +1745,7 @@ fn spawn_nearby_event_pump(
                     session_id,
                     outcome,
                 } => {
+                    tracing::info!("Nearby receive finished for {session_id}: {outcome:?}");
                     handle_nearby_receive_finished(&app, &nearby, session_id, outcome).await;
                 }
                 sendme_lib::NearbyEvent::SendCancelledByPeer { session_id } => {
@@ -1773,6 +1776,19 @@ fn spawn_nearby_event_pump(
             }
         }
     });
+}
+
+/// Short event name for pump logging.
+fn event_name(event: &sendme_lib::NearbyEvent) -> &'static str {
+    match event {
+        sendme_lib::NearbyEvent::DevicesChanged(_) => "DevicesChanged",
+        sendme_lib::NearbyEvent::ReceiveRequest(_) => "ReceiveRequest",
+        sendme_lib::NearbyEvent::ReceiveRequestAborted { .. } => "ReceiveRequestAborted",
+        sendme_lib::NearbyEvent::ReceiveProgress { .. } => "ReceiveProgress",
+        sendme_lib::NearbyEvent::ReceiveFinished { .. } => "ReceiveFinished",
+        sendme_lib::NearbyEvent::SendCancelledByPeer { .. } => "SendCancelledByPeer",
+        sendme_lib::NearbyEvent::ListenerFailed(_) => "ListenerFailed",
+    }
 }
 
 async fn handle_nearby_receive_request(
@@ -1816,7 +1832,29 @@ async fn handle_nearby_receive_request(
             .collect(),
         total_size,
     };
-    let _ = app.emit("incoming_nearby_request", payload);
+    match app.emit("incoming_nearby_request", payload) {
+        Ok(()) => tracing::info!("Emitted incoming_nearby_request for {session_id}"),
+        Err(error) => tracing::warn!("Failed to emit incoming_nearby_request: {error}"),
+    }
+
+    // Debug/testing hook: auto-accept into the download dir without UI.
+    if std::env::var("SENDME_NEARBY_AUTO_ACCEPT").is_ok() {
+        let pending = {
+            let mut guard = nearby.write().await;
+            guard.pending_requests.remove(&session_id)
+        };
+        if let Some(pending) = pending {
+            let output_dir = app
+                .path()
+                .download_dir()
+                .unwrap_or_else(|_| std::env::temp_dir());
+            tracing::info!("Auto-accepting {session_id} into {}", output_dir.display());
+            let _ = pending
+                .decision_tx
+                .send(sendme_lib::NearbyIncomingDecision::Accept { output_dir });
+        }
+        return;
+    }
 
     let notification_title = format!("{} wants to send you files", sender_alias);
     let notification_body = if files.len() == 1 {

@@ -251,8 +251,45 @@ pub(crate) async fn prepare_upload(
     let session_id = Uuid::new_v4().to_string();
     let cancelled = CancellationToken::new();
 
-    // Claim the single session slot.
+    // Claim the single session slot, evicting orphaned sessions first: a
+    // sender that disappeared mid-transfer must not block the server forever.
     {
+        let evicted = {
+            let mut slot = v2.session.lock().await;
+            let stale = match slot.as_ref() {
+                Some(SessionStateV2::Pending(pending)) => {
+                    pending.created_at.elapsed() > MAX_PENDING_SESSION_AGE
+                }
+                Some(SessionStateV2::Active(session)) => {
+                    session.created_at.elapsed() > MAX_ACTIVE_SESSION_AGE
+                }
+                None => false,
+            };
+            if stale {
+                slot.take()
+            } else {
+                None
+            }
+        };
+        match evicted {
+            Some(SessionStateV2::Pending(pending)) => {
+                // Cancelling unwinds the waiting request handler, which frees
+                // the (already replaced) slot logic and notifies the app.
+                pending.cancel.cancel();
+            }
+            Some(SessionStateV2::Active(session)) => {
+                tracing::warn!("Evicting stale upload session: {}", session.session_id);
+                let _ = v2
+                    .event_tx
+                    .send(ServerEventV2::SessionEnd {
+                        session_id: session.session_id,
+                        reason: SessionEndReasonV2::Cancelled,
+                    })
+                    .await;
+            }
+            None => {}
+        }
+
         let mut slot = v2.session.lock().await;
         if slot.is_some() {
             return Err(AppError::Message(
@@ -264,6 +301,7 @@ pub(crate) async fn prepare_upload(
             session_id: session_id.clone(),
             sender_ip: client_info.ip,
             cancel: cancelled.clone(),
+            created_at: std::time::Instant::now(),
         }));
     }
 
@@ -343,6 +381,7 @@ pub(crate) async fn prepare_upload(
             session_id: session_id.clone(),
             sender_ip: client_info.ip,
             files,
+            created_at: std::time::Instant::now(),
         }));
     }
     pending_guard.disarm();
@@ -644,6 +683,15 @@ impl Drop for UploadGuard {
 /// sender may retry a file after a checksum mismatch.
 /// Senders must not retry more often than this (see the upload isolate).
 const MAX_UPLOAD_ATTEMPTS: u8 = 3;
+
+/// A pending prepare-upload the application never answered is orphaned after
+/// this long, and the slot is reclaimed by the next request.
+const MAX_PENDING_SESSION_AGE: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// An active upload session that never completed (sender vanished
+/// mid-transfer) is orphaned after this long, and the slot is reclaimed by
+/// the next request.
+const MAX_ACTIVE_SESSION_AGE: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// Sets the final status of a file and ends the session once all files are done.
 ///

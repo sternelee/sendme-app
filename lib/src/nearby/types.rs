@@ -68,7 +68,7 @@ impl From<&str> for DeviceType {
 ///
 /// Serialized camelCase to match the frontend contract
 /// (`app/src/bindings.ts` `NearbyDevice`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct NearbyDevice {
     /// Stable identifier: the LocalSend fingerprint (SHA-256 of the peer's

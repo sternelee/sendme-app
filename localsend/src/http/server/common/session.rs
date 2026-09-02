@@ -25,6 +25,9 @@ pub(crate) struct PendingSessionV2 {
     pub(crate) sender_ip: PeerIp,
 
     pub(crate) cancel: CancellationToken,
+
+    /// When the request claimed the slot; used to expire orphaned sessions.
+    pub(crate) created_at: std::time::Instant,
 }
 
 pub(crate) struct UploadSessionV2 {
@@ -35,6 +38,9 @@ pub(crate) struct UploadSessionV2 {
 
     /// The accepted files, mapped by file ID.
     pub(crate) files: HashMap<String, SessionFileV2>,
+
+    /// When the session was created; used to expire orphaned sessions.
+    pub(crate) created_at: std::time::Instant,
 }
 
 impl UploadSessionV2 {
