@@ -5,6 +5,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
 } from "solid-js";
 import { Download, Copy, Shield, Scan, RefreshCw } from "lucide-solid";
 
