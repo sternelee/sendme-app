@@ -54,7 +54,7 @@ export function SplashScreen(props: SplashScreenProps) {
           </div>
         </div>
 
-        <div class="grid gap-3 sm:grid-cols-3">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <For each={steps()}>
             {(step, index) => {
               const Icon = stepIcons[index()];

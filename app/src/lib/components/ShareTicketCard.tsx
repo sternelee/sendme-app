@@ -33,7 +33,7 @@ export const ShareTicketCard: Component<ShareTicketCardProps> = (props) => {
         </Show>
       </div>
 
-      <div class="grid gap-2 sm:grid-cols-2">
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
