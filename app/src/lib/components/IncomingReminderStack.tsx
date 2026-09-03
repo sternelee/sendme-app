@@ -131,7 +131,7 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
                   transition={{ duration: 0.5, delay: 0.2 }}
                   class="bg-secondary/12 text-secondary flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
                 >
-                  {topReminder()!.scheme === "airbridge" ? <Radio size={20} /> : <Cloud size={20} />}
+                  {topReminder()?.scheme === "airbridge" ? <Radio size={20} /> : <Cloud size={20} />}
                 </Motion.div>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
@@ -145,10 +145,10 @@ export const IncomingReminderStack: Component<IncomingReminderStackProps> = (
                     </Show>
                   </div>
                   <p class="mt-2 truncate text-sm font-semibold">
-                    {topReminder()!.title}
+                    {topReminder()?.title}
                   </p>
                   <p class="text-base-content/65 mt-1 line-clamp-2 text-xs">
-                    {topReminder()!.fileLabel}
+                    {topReminder()?.fileLabel}
                   </p>
                   <p class="text-base-content/55 mt-2 text-xs">
                     {topMetaLabel()}

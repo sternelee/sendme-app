@@ -85,6 +85,21 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
     };
   });
 
+  async function handleCancelNearbyReceive() {
+    const state = globalStore.nearbyReceive.state();
+    const requestId =
+      state.activeRequestId ?? state.incomingRequests[0]?.id ?? null;
+    if (requestId) {
+      globalStore.nearbyReceive.removeIncomingRequest(requestId);
+    }
+    globalStore.nearbyReceive.setTransferProgress(null);
+    globalStore.nearbyReceive.setTransferState(
+      globalStore.nearbyReceive.state().incomingRequests.length > 0
+        ? "review"
+        : "idle",
+    );
+  }
+
   async function selectOutputDirectory() {
     try {
       if (props.isMobile) {
@@ -404,32 +419,30 @@ export const ReceivePanel: Component<ReceivePanelProps> = (props) => {
         </div>
       </Show>
 
-      <Show when={nearbyReceiveCard()}>
-        {(card) => (
-          <EnhancedTransferProgress
-            title={card().title}
-            transferred={card().transferred}
-            total={card().total}
-            speed={card().speed}
-            eta={card().eta}
-            isReceiving={true}
-            isPending={card().isPending}
-            onCancel={
-              card().isPending
-                ? undefined
-                : async () => {
-                    globalStore.nearbyReceive.removeIncomingRequest(card().id);
-                    globalStore.nearbyReceive.setTransferProgress(null);
-                    globalStore.nearbyReceive.setTransferState(
-                      globalStore.nearbyReceive.state().incomingRequests
-                        .length > 0
-                        ? "review"
-                        : "idle",
-                    );
-                  }
-            }
-          />
-        )}
+      <Show
+        when={
+          globalStore.nearbyReceive.state().transferState === "receiving" &&
+          nearbyReceiveCard()
+        }
+      >
+        {/*
+          Read through the plain memo with optional chaining instead of the
+          Show's callback accessor: when the request is removed (e.g. on
+          "done"), child computations may still evaluate prop getters in the
+          same update batch, and reading a stale Show accessor throws —
+          killing the event listener mid-flight and leaving the UI stuck at
+          100%. A plain memo read just yields null instead.
+        */}
+        <EnhancedTransferProgress
+          title={nearbyReceiveCard()?.title}
+          transferred={nearbyReceiveCard()?.transferred ?? 0}
+          total={nearbyReceiveCard()?.total ?? 1}
+          speed={nearbyReceiveCard()?.speed ?? 0}
+          eta={nearbyReceiveCard()?.eta ?? 0}
+          isReceiving={true}
+          isPending={nearbyReceiveCard()?.isPending ?? true}
+          onCancel={handleCancelNearbyReceive}
+        />
       </Show>
     </div>
   );

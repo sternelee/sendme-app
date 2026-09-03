@@ -240,7 +240,7 @@ export const EnhancedTransferProgress: Component<
       </div>
 
       {/* 取消按钮 */}
-      <Show when={props.onCancel && !props.isCompleted}>
+      <Show when={props.onCancel && !props.isCompleted && !props.isPending}>
         <Motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
