@@ -49,7 +49,10 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ${{ github.workflow }}-${{ github.ref }}
+          # Keyed by runner image: ubuntu-latest (24.04) and ubuntu-22.04 have
+          # different glibc versions, and a target/ cache saved on one cannot
+          # run its build scripts on the other (GLIBC_2.39 not found).
+          shared-key: cli-${{ matrix.os }}-${{ github.ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -120,7 +123,10 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ${{ github.workflow }}-${{ github.ref }}
+          # Distinct from the CLI job's cache: this matrix runs on
+          # ubuntu-22.04 while the CLI job uses ubuntu-latest (24.04), and
+          # build-script binaries are not portable across those glibcs.
+          shared-key: app-${{ matrix.platform }}-${{ github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -214,7 +220,9 @@ jobs:
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ${{ github.workflow }}-${{ github.ref }}
+          # Distinct from the Linux desktop job (ubuntu-22.04) — this job
+          # runs on ubuntu-latest (24.04) with a different glibc.
+          shared-key: android-${{ github.ref }}
 
       - name: Setup pnpm
         if: steps.check-secrets.outputs.has_android_secrets == 'true'
