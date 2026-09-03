@@ -76,7 +76,7 @@ export const SettingsPanel: Component<SettingsPanelProps> = (props) => {
         <p class="section-label">{t("settings.title")}</p>
       </div>
 
-      <Show when={auth.isSignedIn()} fallback={<AuthPanel />}>
+      <Show when={auth.isSignedIn()} fallback={<AuthPanel startCollapsed />}>
         <div class="surface-card p-5">
           <div class="flex items-center gap-3">
             <Show when={auth.user()?.imageUrl}>

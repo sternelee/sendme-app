@@ -1,16 +1,19 @@
 import { createSignal, Show, JSX } from "solid-js";
 import { useAuth } from "~/lib/auth";
 import { i18n } from "@sendme/shared";
-import { User, Mail, Lock, KeyRound } from "lucide-solid";
+import { User, Mail, Lock, KeyRound, ChevronUp } from "lucide-solid";
 
 const t = i18n.t;
 
 interface AuthPanelProps {
   icon?: JSX.Element;
+  /** Start collapsed to just a sign-in button; inputs appear on demand. */
+  startCollapsed?: boolean;
 }
 
 export default function AuthPanel(props: AuthPanelProps) {
   const auth = useAuth();
+  const [expanded, setExpanded] = createSignal(!props.startCollapsed);
   const [authMode, setAuthMode] = createSignal<"sign-in" | "sign-up">(
     "sign-in",
   );
@@ -51,110 +54,135 @@ export default function AuthPanel(props: AuthPanelProps) {
           <p class="font-semibold">{t("common.account")}</p>
           <p class="text-xs opacity-60">{t("common.signInToSync")}</p>
         </div>
+        <Show when={expanded()}>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm btn-circle shrink-0"
+            onClick={() => setExpanded(false)}
+            aria-label={t("common.collapse")}
+            title={t("common.collapse")}
+          >
+            <ChevronUp size={16} />
+          </button>
+        </Show>
       </div>
 
-      <Show when={authError()}>
-        <div class="alert alert-error text-sm">{authError()}</div>
-      </Show>
+      <Show
+        when={expanded()}
+        fallback={
+          <button
+            class="btn btn-primary w-full rounded-xl"
+            onClick={() => setExpanded(true)}
+          >
+            {t("common.signIn")}
+          </button>
+        }
+      >
+        <Show when={authError()}>
+          <div class="alert alert-error text-sm">{authError()}</div>
+        </Show>
 
-      <Show when={authMode() === "sign-up"}>
+        <Show when={authMode() === "sign-up"}>
+          <div>
+            <label class="label text-sm font-medium">{t("common.name")}</label>
+            <div class="relative">
+              <KeyRound
+                size={16}
+                class="text-base-content/40 absolute top-1/2 left-3 -translate-y-1/2"
+              />
+              <input
+                type="text"
+                class="input input-bordered w-full pl-10"
+                placeholder="Your name"
+                aria-label={t("common.name")}
+                value={name()}
+                onInput={(e) => setName(e.currentTarget.value)}
+              />
+            </div>
+          </div>
+        </Show>
+
         <div>
-          <label class="label text-sm font-medium">{t("common.name")}</label>
+          <label class="label text-sm font-medium">{t("common.email")}</label>
           <div class="relative">
-            <KeyRound
+            <Mail
               size={16}
               class="text-base-content/40 absolute top-1/2 left-3 -translate-y-1/2"
             />
             <input
-              type="text"
+              type="email"
               class="input input-bordered w-full pl-10"
-              placeholder="Your name"
-              aria-label={t("common.name")}
-              value={name()}
-              onInput={(e) => setName(e.currentTarget.value)}
+              placeholder="you@example.com"
+              aria-label={t("common.email")}
+              value={email()}
+              onInput={(e) => setEmail(e.currentTarget.value)}
             />
           </div>
         </div>
+
+        <div>
+          <label class="label text-sm font-medium">
+            {t("common.password")}
+          </label>
+          <div class="relative">
+            <Lock
+              size={16}
+              class="text-base-content/40 absolute top-1/2 left-3 -translate-y-1/2"
+            />
+            <input
+              type="password"
+              class="input input-bordered w-full pl-10"
+              placeholder="••••••••"
+              aria-label={t("common.password")}
+              value={password()}
+              onInput={(e) => setPassword(e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <button
+          class="btn btn-primary w-full rounded-xl"
+          disabled={authLoading()}
+          onClick={handleSubmit}
+        >
+          {authLoading()
+            ? t("common.loading")
+            : authMode() === "sign-in"
+              ? t("common.signIn")
+              : t("common.signUp")}
+        </button>
+
+        <div class="text-center">
+          <button
+            class="link link-primary text-sm"
+            onClick={() => {
+              setAuthMode(authMode() === "sign-in" ? "sign-up" : "sign-in");
+              setAuthError(null);
+            }}
+          >
+            {authMode() === "sign-in"
+              ? t("common.dontHaveAccount")
+              : t("common.alreadyHaveAccount")}
+          </button>
+        </div>
+
+        <div class="divider text-xs">{t("common.orContinueWith")}</div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <button
+            class="btn btn-outline gap-2 rounded-xl"
+            onClick={() => auth.signIn("github")}
+          >
+            GitHub
+          </button>
+          <button
+            class="btn btn-outline gap-2 rounded-xl"
+            onClick={() => auth.signIn("google")}
+          >
+            Google
+          </button>
+        </div>
       </Show>
-
-      <div>
-        <label class="label text-sm font-medium">{t("common.email")}</label>
-        <div class="relative">
-          <Mail
-            size={16}
-            class="text-base-content/40 absolute top-1/2 left-3 -translate-y-1/2"
-          />
-          <input
-            type="email"
-            class="input input-bordered w-full pl-10"
-            placeholder="you@example.com"
-            aria-label={t("common.email")}
-            value={email()}
-            onInput={(e) => setEmail(e.currentTarget.value)}
-          />
-        </div>
-      </div>
-
-      <div>
-        <label class="label text-sm font-medium">{t("common.password")}</label>
-        <div class="relative">
-          <Lock
-            size={16}
-            class="text-base-content/40 absolute top-1/2 left-3 -translate-y-1/2"
-          />
-          <input
-            type="password"
-            class="input input-bordered w-full pl-10"
-            placeholder="••••••••"
-            aria-label={t("common.password")}
-            value={password()}
-            onInput={(e) => setPassword(e.currentTarget.value)}
-          />
-        </div>
-      </div>
-
-      <button
-        class="btn btn-primary w-full rounded-xl"
-        disabled={authLoading()}
-        onClick={handleSubmit}
-      >
-        {authLoading()
-          ? t("common.loading")
-          : authMode() === "sign-in"
-            ? t("common.signIn")
-            : t("common.signUp")}
-      </button>
-
-      <div class="text-center">
-        <button
-          class="link link-primary text-sm"
-          onClick={() => {
-            setAuthMode(authMode() === "sign-in" ? "sign-up" : "sign-in");
-            setAuthError(null);
-          }}
-        >
-          {authMode() === "sign-in"
-            ? t("common.dontHaveAccount")
-            : t("common.alreadyHaveAccount")}
-        </button>
-      </div>
-
-      <div class="divider text-xs">{t("common.orContinueWith")}</div>
-
-      <div class="grid grid-cols-2 gap-3">
-        <button
-          class="btn btn-outline gap-2 rounded-xl"
-          onClick={() => auth.signIn("github")}
-        >
-          GitHub
-        </button>
-        <button
-          class="btn btn-outline gap-2 rounded-xl"
-          onClick={() => auth.signIn("google")}
-        >
-          Google
-        </button>
-      </div>
     </div>
   );
 }
