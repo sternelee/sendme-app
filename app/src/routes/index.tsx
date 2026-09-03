@@ -1,5 +1,6 @@
 import {
   createSignal,
+  createMemo,
   onMount,
   onCleanup,
   Show,
@@ -184,6 +185,18 @@ export default function MainPage() {
     setActiveTab("transfer");
   }
 
+  // Nearby requests still awaiting a decision. Requests accepted into a
+  // background transfer are hidden from the reminder stack so the
+  // accept/decline card does not linger while the transfer runs.
+  const actionableNearbyRequests = createMemo(() => {
+    const state = globalStore.nearbyReceive.state();
+    return state.incomingRequests.filter(
+      (request) =>
+        state.pendingRequestStates[request.id] !== "accepting" &&
+        state.activeRequestId !== request.id,
+    );
+  });
+
   async function handleAcceptNearbyRequest() {
     const request = globalStore.nearbyReceive.state().incomingRequests[0];
     if (!request) return;
@@ -195,7 +208,9 @@ export default function MainPage() {
       );
       globalStore.nearbyReceive.setActiveRequestId(request.id);
       globalStore.nearbyReceive.setTransferState("receiving");
-      openReceiveWorkspace();
+      // Keep the current tab; the transfer runs in the background and the
+      // completion toast fires from the nearby_receive_state listener.
+      toast.info(t("nearby.accepting"));
     } catch (e) {
       globalStore.nearbyReceive.setPendingRequestState(request.id, "pending");
       toast.error(`${t("nearby.acceptFailed")}: ${e}`);
@@ -255,7 +270,7 @@ export default function MainPage() {
       );
       globalStore.cloudReceive.setCurrentTicket(null);
       globalStore.cloudReceive.setTransferState("idle");
-      openReceiveWorkspace();
+      // Keep the current tab; the cloud receive runs in the background.
       toast.success(t("receive.connecting"));
       requestCloudApi(getCloudApiUrl(`/api/tickets/${ticket.id}/receive`), {
         method: "POST",
@@ -718,7 +733,7 @@ export default function MainPage() {
       </main>
       <IncomingReminderStack
         isMobile={isMobile()}
-        nearbyRequests={globalStore.nearbyReceive.state().incomingRequests}
+        nearbyRequests={actionableNearbyRequests()}
         cloudTickets={globalStore.cloudReceive.state().tickets}
         onOpenReceive={openReceiveWorkspace}
         onAcceptNearby={handleAcceptNearbyRequest}

@@ -62,13 +62,20 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
     }
   });
 
-  const incomingReminderCount = createMemo(
-    () =>
-      buildIncomingReminders({
-        nearbyRequests: globalStore.nearbyReceive.state().incomingRequests,
-        cloudTickets: globalStore.cloudReceive.state().tickets,
-      }).totalCount,
-  );
+  // Only requests awaiting a decision count as incoming; requests already
+  // accepted into a background transfer are excluded.
+  const incomingReminderCount = createMemo(() => {
+    const nearbyState = globalStore.nearbyReceive.state();
+    const actionableNearbyRequests = nearbyState.incomingRequests.filter(
+      (request) =>
+        nearbyState.pendingRequestStates[request.id] !== "accepting" &&
+        nearbyState.activeRequestId !== request.id,
+    );
+    return buildIncomingReminders({
+      nearbyRequests: actionableNearbyRequests,
+      cloudTickets: globalStore.cloudReceive.state().tickets,
+    }).totalCount;
+  });
 
   function renderTransferTitleIcon() {
     if (props.transferMode === "receive") {
