@@ -1,5 +1,5 @@
 import { Component, Show, createEffect } from "solid-js";
-import { FileText, Loader2, Sparkles } from "lucide-solid";
+import { FileText, Link2, Loader2, Sparkles } from "lucide-solid";
 import QRCode from "qrcode";
 import { getDisplayName } from "@sendme/ui";
 import { i18n } from "@sendme/shared";
@@ -33,10 +33,13 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
   const textContent = () => globalStore.send.state().textContent;
   const isTextMode = () => globalStore.send.state().isTextMode;
 
-  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let requestVersion = 0;
 
-  async function autoGenerateTicket() {
+  // Tickets are generated on demand now: picking a file no longer fires an
+  // iroh share before the user has chosen how (and to whom) to send. Direct
+  // recipients (nearby / devices / friends) create their own ticket when the
+  // transfer actually starts.
+  async function generateTicket() {
     if (isTextMode() && !textContent().trim()) return;
     if (!isTextMode() && !sendPath()) return;
 
@@ -95,8 +98,6 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
     if (selection.overflowCount > 0) {
       toast.info(t("send.firstFileOnly"));
     }
-
-    void autoGenerateTicket();
   }
 
   function handleRemoveFile() {
@@ -114,14 +115,13 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
     globalStore.send.setTicket("");
     globalStore.send.setTicketQrCode("");
     globalStore.send.setIsSending(false);
-    clearTimeout(debounceTimer);
-    if (value.trim()) {
-      debounceTimer = setTimeout(() => void autoGenerateTicket(), 800);
-    }
   }
 
   createEffect(() => {
-    return () => clearTimeout(debounceTimer);
+    return () => {
+      requestVersion += 1;
+      globalStore.send.setIsSending(false);
+    };
   });
 
   return (
@@ -129,7 +129,7 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
       <Show
         when={isTextMode()}
         fallback={
-          <div class="grid min-w-0 gap-3">
+          <div class="grid min-w-0 grid-cols-1 gap-3">
             <DropZone
               files={
                 sendPath()
@@ -181,20 +181,38 @@ export const SendPanel: Component<SendPanelProps> = (props) => {
         </div>
       </Show>
 
-      <Show when={isSending() && !sendTicket()}>
-        <Motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          class="surface-card flex items-center justify-center gap-3 py-8"
-        >
-          <Motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, easing: "linear" }}
+      <Show
+        when={
+          !sendTicket() &&
+          ((isTextMode() && textContent()?.trim()) ||
+            (!isTextMode() && sendPath()))
+        }
+      >
+        <div class="border-base-300/70 bg-base-100/60 flex min-w-0 items-center gap-3 rounded-2xl border px-4 py-3">
+          <div class="bg-base-200 text-base-content/60 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+            <Link2 size={18} />
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-medium">
+              {t("send.shareViaTicket")}
+            </p>
+            <p class="mt-0.5 text-xs leading-5 opacity-55">
+              {t("send.shareViaTicketHint")}
+            </p>
+          </div>
+          <button
+            onClick={() => void generateTicket()}
+            class="btn btn-outline btn-sm shrink-0 rounded-xl"
+            disabled={isSending()}
           >
-            <Loader2 size={20} class="text-primary" />
-          </Motion.div>
-          <span class="text-sm opacity-60">{t("send.sending")}</span>
-        </Motion.div>
+            <Show
+              when={!isSending()}
+              fallback={<Loader2 size={14} class="animate-spin" />}
+            >
+              {t("send.generateTicket")}
+            </Show>
+          </button>
+        </div>
       </Show>
 
       <Show when={sendTicket()}>

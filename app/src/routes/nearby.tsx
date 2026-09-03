@@ -218,16 +218,11 @@ export default function NearbyPage(props: NearbyPageProps) {
 
   return (
     <div class="space-y-4">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-base-content/60 text-sm font-bold tracking-wider uppercase">
-          {t("common.airbridgeLocal")}
-        </h2>
-        <Show when={nearbyProfile()}>
-          <div class="text-base-content/60 text-right text-xs">
-            <span class="font-medium">{nearbyProfile()!.name}</span>
-          </div>
-        </Show>
-      </div>
+      <Show when={nearbyProfile()}>
+        <p class="text-base-content/45 text-xs">
+          {t("nearby.visibleAs", { name: nearbyProfile()!.name })}
+        </p>
+      </Show>
 
       <Show when={!hasActiveTransfer()}>
         <Show when={!props.sendPath}>

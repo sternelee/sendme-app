@@ -140,9 +140,11 @@ export default function DevicesPage(props: DevicesPageProps) {
         }
       >
         <div class="flex items-center justify-between">
-          <h2 class="text-base-content/60 text-sm font-bold tracking-wider uppercase">
-            {t("devices.title")}
-          </h2>
+          <p class="text-base-content/55 text-xs">
+            {t("devices.countOnline", {
+              count: otherDevices().filter((d) => d.online).length,
+            })}
+          </p>
           <button
             onClick={handleRefresh}
             class="btn btn-ghost btn-sm btn-circle"

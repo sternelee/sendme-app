@@ -381,11 +381,8 @@ export default function FriendsPage(props: FriendsPageProps) {
           </div>
         }
       >
-        {/* Header with refresh */}
-        <div class="flex items-center justify-between">
-          <h2 class="text-base-content/60 text-sm font-bold tracking-wider uppercase">
-            {t("friends.title")}
-          </h2>
+        {/* Toolbar with refresh */}
+        <div class="flex items-center justify-end">
           <button
             onClick={handleRefresh}
             class="btn btn-ghost btn-sm btn-circle"

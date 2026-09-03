@@ -1,43 +1,25 @@
-import { Component, Show, createEffect, createMemo } from "solid-js";
-import {
-  Send,
-  Download,
-  FileText,
-  Share2,
-  Radio,
-  Smartphone,
-  User,
-  Shield,
-} from "lucide-solid";
+import { Component, Show, createMemo } from "solid-js";
+import { Send, Download, FileText, Share2 } from "lucide-solid";
 import { i18n } from "@sendme/shared";
 import { getDisplayName } from "@sendme/ui";
 
 import { useGlobalStore } from "~/lib/store";
 import { SendPanel } from "./SendPanel";
 import { ReceivePanel } from "./ReceivePanel";
-import NearbyPage from "~/routes/nearby";
-import DevicesPage from "~/routes/devices";
-import FriendsPage from "~/routes/friends";
+import { RecipientPicker } from "./RecipientPicker";
 import {
   buildIncomingReminders,
   type PendingReceiveCard,
   shouldShowShareWorkspace,
 } from "~/lib/transfer-ui";
-import type {
-  ShareSubTab,
-  TransferMode,
-  TransferRoutingPolicy,
-} from "~/lib/types";
+import type { TransferMode, TransferRoutingPolicy } from "~/lib/types";
 
 const t = i18n.t;
 
 interface TransferTabProps {
   transferMode: TransferMode;
   setTransferView: (mode: TransferMode) => void;
-  shareSubTab: ShareSubTab;
-  setShareSubTab: (tab: ShareSubTab) => void;
   routingPolicy: TransferRoutingPolicy;
-  setRoutingPolicy: (policy: TransferRoutingPolicy) => void;
   isMobile: boolean;
   showQrCode: boolean;
   setShowQrCode: (v: boolean) => void;
@@ -49,18 +31,6 @@ interface TransferTabProps {
 
 export const TransferTab: Component<TransferTabProps> = (props) => {
   const globalStore = useGlobalStore();
-
-  createEffect(() => {
-    if (props.routingPolicy === "local_only" && props.shareSubTab !== "nearby") {
-      props.setShareSubTab("nearby");
-    }
-    if (
-      props.routingPolicy === "remote_only" &&
-      props.shareSubTab === "nearby"
-    ) {
-      props.setShareSubTab("devices");
-    }
-  });
 
   // Only requests awaiting a decision count as incoming; requests already
   // accepted into a background transfer are excluded.
@@ -89,7 +59,7 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
 
   return (
     <div class="space-y-6">
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
+      <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
         <section class="surface-card space-y-5 p-5 md:p-6">
           <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div class="space-y-2">
@@ -186,12 +156,6 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
                 {t("send.readyToShare")}
               </span>
             </div>
-            <div class="text-base-content/55 text-xs">
-              {t("common.transportScheme")}:
-              {props.shareSubTab === "nearby"
-                ? ` ${t("common.airbridgeLocal")}`
-                : ` ${t("common.irohRemote")}`}
-            </div>
           </Show>
 
           <Show when={props.transferMode === "receive"}>
@@ -237,139 +201,23 @@ export const TransferTab: Component<TransferTabProps> = (props) => {
 
       <Show when={shouldShowShareWorkspace(props.transferMode)}>
         <section class="surface-card space-y-4 p-4 md:p-5">
-          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div class="flex items-center gap-2">
-                <Share2 size={18} class="text-primary" />
-                <h2 class="text-xl font-semibold">
-                  {t("nearby.workspaceTitle")}
-                </h2>
-              </div>
-              <p class="text-base-content/65 mt-2 text-sm leading-6">
-                {t("nearby.workspaceSubtitle")}
-              </p>
+          <div>
+            <div class="flex items-center gap-2">
+              <Share2 size={18} class="text-primary" />
+              <h2 class="text-xl font-semibold">{t("recipients.title")}</h2>
             </div>
-
-            <div class="flex flex-col items-end gap-2">
-              <div class="join border-base-300/80 bg-base-100/70 rounded-xl border p-1">
-                <button
-                  class={`join-item btn btn-xs rounded-lg ${
-                    props.routingPolicy === "auto" ? "btn-primary" : "btn-ghost"
-                  }`}
-                  onClick={() => props.setRoutingPolicy("auto")}
-                >
-                  {t("common.routingPolicyAuto")}
-                </button>
-                <button
-                  class={`join-item btn btn-xs rounded-lg ${
-                    props.routingPolicy === "local_only" ? "btn-primary" : "btn-ghost"
-                  }`}
-                  onClick={() => props.setRoutingPolicy("local_only")}
-                >
-                  {t("common.routingPolicyLocalOnly")}
-                </button>
-                <button
-                  class={`join-item btn btn-xs rounded-lg ${
-                    props.routingPolicy === "remote_only" ? "btn-primary" : "btn-ghost"
-                  }`}
-                  onClick={() => props.setRoutingPolicy("remote_only")}
-                >
-                  {t("common.routingPolicyRemoteOnly")}
-                </button>
-              </div>
-              <div class="tabs tabs-boxed bg-base-100/80 p-1">
-                <button
-                  class={`tab gap-2 rounded-xl ${
-                    props.shareSubTab === "nearby" ? "tab-active" : ""
-                  }`}
-                  onClick={() => props.setShareSubTab("nearby")}
-                  disabled={props.routingPolicy === "remote_only"}
-                >
-                  <Radio size={16} />
-                  {t("common.airbridgeLocal")}
-                </button>
-                <button
-                  class={`tab gap-2 rounded-xl ${
-                    props.shareSubTab !== "nearby" ? "tab-active" : ""
-                  }`}
-                  onClick={() => props.setShareSubTab("devices")}
-                  disabled={props.routingPolicy === "local_only"}
-                >
-                  <Smartphone size={16} />
-                  {t("common.irohRemote")}
-                </button>
-              </div>
-            </div>
+            <p class="text-base-content/65 mt-2 max-w-2xl text-sm leading-6">
+              {t("recipients.subtitle")}
+            </p>
           </div>
 
-          <Show when={props.shareSubTab !== "nearby"}>
-            <div class="tabs tabs-boxed bg-base-100/80 p-1">
-              <button
-                class={`tab gap-2 rounded-xl ${props.shareSubTab === "devices" ? "tab-active" : ""}`}
-                onClick={() => props.setShareSubTab("devices")}
-                disabled={props.routingPolicy === "local_only"}
-              >
-                <Smartphone size={16} />
-                {t("devices.title")}
-              </button>
-              <button
-                class={`tab gap-2 rounded-xl ${props.shareSubTab === "friends" ? "tab-active" : ""}`}
-                onClick={() => props.setShareSubTab("friends")}
-                disabled={props.routingPolicy === "local_only"}
-              >
-                <User size={16} />
-                {t("friends.title")}
-              </button>
-            </div>
-          </Show>
-
-          <Show when={props.shareSubTab === "nearby"}>
-            <NearbyPage
-              sendPath={globalStore.send.state().path || undefined}
-              isFolder={globalStore.send.state().isFolder}
-              allowAutoFallback={props.routingPolicy === "auto"}
-              onFallbackToRemote={() => props.setShareSubTab("devices")}
-            />
-          </Show>
-          <Show when={props.shareSubTab === "devices"}>
-            <DevicesPage
-              sendPath={globalStore.send.state().path || undefined}
-              isTextMode={globalStore.send.state().isTextMode}
-              textContent={globalStore.send.state().textContent}
-            />
-          </Show>
-          <Show when={props.shareSubTab === "friends"}>
-            <FriendsPage
-              sendPath={globalStore.send.state().path || undefined}
-              isTextMode={globalStore.send.state().isTextMode}
-              textContent={globalStore.send.state().textContent}
-            />
-          </Show>
+          <RecipientPicker
+            sendPath={globalStore.send.state().path || undefined}
+            isFolder={globalStore.send.state().isFolder}
+            routingPolicy={props.routingPolicy}
+          />
         </section>
       </Show>
-
-      <section class="surface-card p-5">
-        <div class="mb-4 flex items-center gap-2">
-          <Shield size={18} class="text-primary" />
-          <h2 class="text-lg font-semibold">{t("common.protocol")}</h2>
-        </div>
-        <div class="space-y-3">
-          <div class="border-base-300/70 bg-base-100/70 rounded-xl border p-4">
-            <p class="text-sm font-medium">
-              {t("landing.features.encryptedTitle")}
-            </p>
-            <p class="text-base-content/65 mt-1 text-xs leading-5">
-              {t("landing.features.encryptedDesc")}
-            </p>
-          </div>
-          <div class="border-base-300/70 bg-base-100/70 rounded-xl border p-4">
-            <p class="text-sm font-medium">{t("landing.features.fastTitle")}</p>
-            <p class="text-base-content/65 mt-1 text-xs leading-5">
-              {t("landing.features.fastDesc")}
-            </p>
-          </div>
-        </div>
-      </section>
     </div>
   );
 };

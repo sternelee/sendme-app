@@ -1,5 +1,5 @@
 import { Component, createSignal, onMount, Show } from "solid-js";
-import { User, LogOut } from "lucide-solid";
+import { User, LogOut, Route } from "lucide-solid";
 import { platform } from "@tauri-apps/plugin-os";
 import { i18n } from "@sendme/shared";
 import { ThemeSwitcher, LanguageSwitcher } from "@sendme/ui";
@@ -12,10 +12,16 @@ import {
 } from "~/bindings";
 import { clearDebugLog, exportDebugLog } from "~/lib/debug-log";
 import { copyToClipboard } from "~/lib/utils";
+import type { TransferRoutingPolicy } from "~/lib/types";
 
 const t = i18n.t;
 
-export const SettingsPanel: Component = () => {
+interface SettingsPanelProps {
+  routingPolicy?: TransferRoutingPolicy;
+  setRoutingPolicy?: (policy: TransferRoutingPolicy) => void;
+}
+
+export const SettingsPanel: Component<SettingsPanelProps> = (props) => {
   const auth = useAuth();
   const currentPlatform = platform();
   const isDesktop =
@@ -105,7 +111,7 @@ export const SettingsPanel: Component = () => {
         </div>
       </Show>
 
-      <div class="grid gap-4 md:grid-cols-2">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div class="surface-card p-5">
           <div class="flex items-start justify-between gap-4">
             <div>
@@ -172,6 +178,52 @@ export const SettingsPanel: Component = () => {
             </div>
           </div>
         </Show>
+
+        <div class="surface-card p-5 md:col-span-2">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <Route size={16} class="text-primary" />
+                <p class="font-semibold">{t("settings.routingPolicy")}</p>
+              </div>
+              <p class="text-base-content/60 mt-2 text-sm">
+                {t("settings.routingPolicyDescription")}
+              </p>
+            </div>
+            <Show when={props.routingPolicy && props.setRoutingPolicy}>
+              <div
+                class="join border-base-300/80 bg-base-100/70 shrink-0 rounded-xl border p-1"
+                role="radiogroup"
+                aria-label={t("settings.routingPolicy")}
+              >
+                <button
+                  class={`join-item btn btn-xs rounded-lg ${props.routingPolicy === "auto" ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() => props.setRoutingPolicy!("auto")}
+                  role="radio"
+                  aria-checked={props.routingPolicy === "auto"}
+                >
+                  {t("common.routingPolicyAuto")}
+                </button>
+                <button
+                  class={`join-item btn btn-xs rounded-lg ${props.routingPolicy === "local_only" ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() => props.setRoutingPolicy!("local_only")}
+                  role="radio"
+                  aria-checked={props.routingPolicy === "local_only"}
+                >
+                  {t("common.routingPolicyLocalOnly")}
+                </button>
+                <button
+                  class={`join-item btn btn-xs rounded-lg ${props.routingPolicy === "remote_only" ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() => props.setRoutingPolicy!("remote_only")}
+                  role="radio"
+                  aria-checked={props.routingPolicy === "remote_only"}
+                >
+                  {t("common.routingPolicyRemoteOnly")}
+                </button>
+              </div>
+            </Show>
+          </div>
+        </div>
 
         <div class="surface-card p-5 md:col-span-2">
           <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

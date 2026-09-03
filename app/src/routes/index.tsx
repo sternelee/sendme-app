@@ -49,7 +49,6 @@ import { copyToClipboard, nativeShare } from "~/lib/utils";
 import { triggerHaptic } from "~/lib/haptics";
 import type {
   ProgressUpdate,
-  ShareSubTab,
   Tab,
   Theme,
   Transfer,
@@ -69,7 +68,6 @@ export default function MainPage() {
   const [, setTheme] = createSignal<Theme>("system");
   const [activeTab, setActiveTab] = createSignal<Tab>("transfer");
   const [transferMode, setTransferMode] = createSignal<TransferMode>("send");
-  const [shareSubTab, setShareSubTab] = createSignal<ShareSubTab>("nearby");
   const [routingPolicy, setRoutingPolicy] =
     createSignal<TransferRoutingPolicy>("auto");
   const [showQrCode, setShowQrCode] = createSignal(false);
@@ -324,13 +322,21 @@ export default function MainPage() {
     if (savedRoutingPolicy) {
       setRoutingPolicy(savedRoutingPolicy);
       set_transport_routing_policy(savedRoutingPolicy).catch((error) =>
-        debugError("routing-policy", "Failed to set saved routing policy", error),
+        debugError(
+          "routing-policy",
+          "Failed to set saved routing policy",
+          error,
+        ),
       );
     } else {
       get_transport_routing_policy()
         .then((policy) => setRoutingPolicy(policy))
         .catch((error) =>
-          debugError("routing-policy", "Failed to read backend routing policy", error),
+          debugError(
+            "routing-policy",
+            "Failed to read backend routing policy",
+            error,
+          ),
         );
     }
 
@@ -534,15 +540,20 @@ export default function MainPage() {
       // parsing the full event envelope.
     });
 
-    const unlistenPeerSyncRefresh = await listen("peersync-status-refresh", () => {
-      peersync_get_status()
-        .then((s) => {
-          globalStore.peerSync.setStatus(s.status);
-          globalStore.peerSync.setEngineRunning(s.engineRunning);
-          if (s.ticket) globalStore.peerSync.setTicket(s.ticket);
-        })
-        .catch((e) => debugError("peersync-refresh", "status refresh failed", e));
-    });
+    const unlistenPeerSyncRefresh = await listen(
+      "peersync-status-refresh",
+      () => {
+        peersync_get_status()
+          .then((s) => {
+            globalStore.peerSync.setStatus(s.status);
+            globalStore.peerSync.setEngineRunning(s.engineRunning);
+            if (s.ticket) globalStore.peerSync.setTicket(s.ticket);
+          })
+          .catch((e) =>
+            debugError("peersync-refresh", "status refresh failed", e),
+          );
+      },
+    );
 
     const unlistenDockFile = await listen<string>(
       "dock-file-opened",
@@ -677,10 +688,7 @@ export default function MainPage() {
                 <TransferTab
                   transferMode={transferMode()}
                   setTransferView={handleTransferView}
-                  shareSubTab={shareSubTab()}
-                  setShareSubTab={setShareSubTab}
                   routingPolicy={routingPolicy()}
-                  setRoutingPolicy={setRoutingPolicy}
                   isMobile={isMobile()}
                   showQrCode={showQrCode()}
                   setShowQrCode={setShowQrCode}
@@ -714,7 +722,10 @@ export default function MainPage() {
                 transition={{ duration: 0.15 }}
                 class="space-y-4"
               >
-                <SettingsPanel />
+                <SettingsPanel
+                  routingPolicy={routingPolicy()}
+                  setRoutingPolicy={setRoutingPolicy}
+                />
               </Motion.div>
             </Match>
 

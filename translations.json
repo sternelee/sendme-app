@@ -152,8 +152,8 @@
       "sendToFriend": "Send to Friend",
       "ticketReady": "Your ticket is ready",
       "chooseFriend": "Choose a friend",
-      "shareViaTicket": "Share via Ticket Link",
-      "shareViaTicketHint": "Generate a ticket link to share with anyone - paste in forums, chats, or anywhere.",
+      "shareViaTicket": "Share via ticket",
+      "shareViaTicketHint": "Generate a ticket link or QR code for anyone, on any network",
       "firstFileOnly": "Multiple selection isn't available yet - sharing the first file only.",
       "selectSomethingFirst": "Choose a file or message in the Share panel first."
     },
@@ -220,12 +220,12 @@
     },
     "preview": {
       "imagePreview": "Image Preview",
-      "textPreview": "Text Preview", 
+      "textPreview": "Text Preview",
       "noPreview": "No preview available"
     },
     "toast": {
       "transferStarted": "Transfer started",
-      "transferComplete": "Transfer complete", 
+      "transferComplete": "Transfer complete",
       "transferFailed": "Transfer failed",
       "transferCancelled": "Transfer cancelled"
     },
@@ -240,7 +240,9 @@
       "contextMenuDescription": "Add 'Send with Sendme' to Finder's Quick Actions / Services menu (macOS) or the file manager right-click menu (Windows & Linux).",
       "diagnostics": "Diagnostics",
       "diagnosticsDescription": "Copy recent startup, auth, cloud, and UI-freeze logs when reporting app hangs.",
-      "copyDiagnostics": "Copy diagnostics"
+      "copyDiagnostics": "Copy diagnostics",
+      "routingPolicy": "Transfer routing",
+      "routingPolicyDescription": "Auto uses every available channel; local-only and remote-only restrict which recipient groups are shown."
     },
     "splash": {
       "eyebrow": "Private transfer workspace",
@@ -261,7 +263,8 @@
       "ticketSent": "Ticket sent to {{name}}",
       "sendFailed": "Failed to send to device",
       "online": "Online",
-      "offline": "Offline"
+      "offline": "Offline",
+      "countOnline": "{{count}} online"
     },
     "friends": {
       "title": "Friends",
@@ -332,7 +335,8 @@
       "dropFilesOrTap": "Drop files or tap to select",
       "tapToSelect": "Tap to select",
       "workspaceTitle": "More ways to share",
-      "workspaceSubtitle": "AirBridge is for local-network direct transfer. iroh is for remote transfer across the internet."
+      "workspaceSubtitle": "AirBridge is for local-network direct transfer. iroh is for remote transfer across the internet.",
+      "visibleAs": "Visible on this network as {{name}}"
     },
     "apiKeys": {
       "title": "API Keys",
@@ -359,6 +363,26 @@
       "noKeys": "No API keys yet.",
       "createError": "Failed to create key",
       "revokeError": "Failed to revoke key"
+    },
+    "recipients": {
+      "title": "Choose a recipient",
+      "subtitle": "Tap a target to send. Devices on your network transfer directly; everything else is relayed end-to-end encrypted via iroh.",
+      "nearby": {
+        "title": "On this network",
+        "badge": "LAN · Direct",
+        "subtitle": "Fastest transfer, no internet required"
+      },
+      "devices": {
+        "title": "Your devices"
+      },
+      "friends": {
+        "title": "Friends",
+        "subtitle": "Send to friends on any network via iroh"
+      },
+      "cloud": {
+        "badge": "iroh · Remote",
+        "subtitle": "Signed-in devices, end-to-end encrypted over the internet"
+      }
     }
   },
   "zh-CN": {
@@ -511,8 +535,8 @@
       "sendToFriend": "发送给好友",
       "ticketReady": "票据已就绪",
       "chooseFriend": "选择好友",
-      "shareViaTicket": "通过票据链接分享",
-      "shareViaTicketHint": "生成一个票据链接,可分享到论坛、群聊等任何地方。",
+      "shareViaTicket": "通过票据分享",
+      "shareViaTicketHint": "生成票据链接或二维码，任何网络的接收方都能使用",
       "firstFileOnly": "当前暂不支持一次分享多个文件,将只发送第一个文件。",
       "selectSomethingFirst": "请先在分享面板中选择文件或输入消息。"
     },
@@ -599,7 +623,9 @@
       "contextMenuDescription": "在 Finder 快速操作 / 服务菜单(macOS)或文件管理器右键菜单(Windows & Linux)中添加「Send with Sendme」。",
       "diagnostics": "诊断日志",
       "diagnosticsDescription": "反馈卡死问题时,可复制最近的启动、登录、云端连接和 UI 卡顿日志。",
-      "copyDiagnostics": "复制诊断"
+      "copyDiagnostics": "复制诊断",
+      "routingPolicy": "传输路由",
+      "routingPolicyDescription": "自动：使用所有可用通道；仅本地 / 仅远程：限制收件人列表中显示的分组。"
     },
     "splash": {
       "eyebrow": "私密传输工作区",
@@ -620,7 +646,8 @@
       "ticketSent": "票据已发送到 {{name}}",
       "sendFailed": "发送到设备失败",
       "online": "在线",
-      "offline": "离线"
+      "offline": "离线",
+      "countOnline": "{{count}} 台在线"
     },
     "friends": {
       "title": "好友",
@@ -691,7 +718,8 @@
       "dropFilesOrTap": "拖放文件或点击选择",
       "tapToSelect": "点击选择",
       "workspaceTitle": "更多分享方式",
-      "workspaceSubtitle": "AirBridge 用于本地网络直连传输；iroh 用于远程网络传输。"
+      "workspaceSubtitle": "AirBridge 用于本地网络直连传输；iroh 用于远程网络传输。",
+      "visibleAs": "在本网络中显示为 {{name}}"
     },
     "apiKeys": {
       "title": "API 密钥",
@@ -718,6 +746,26 @@
       "noKeys": "暂无 API 密钥。",
       "createError": "创建密钥失败",
       "revokeError": "吊销密钥失败"
+    },
+    "recipients": {
+      "title": "选择接收人",
+      "subtitle": "点击目标即可发送。同一网络的设备直连传输，其余通过 iroh 端到端加密中继。",
+      "nearby": {
+        "title": "本网络设备",
+        "badge": "局域网 · 直连",
+        "subtitle": "速度最快，无需联网"
+      },
+      "devices": {
+        "title": "我的设备"
+      },
+      "friends": {
+        "title": "好友",
+        "subtitle": "通过 iroh 给好友发送，不限网络"
+      },
+      "cloud": {
+        "badge": "iroh · 远程",
+        "subtitle": "已登录设备，经互联网端到端加密传输"
+      }
     }
   }
 }
